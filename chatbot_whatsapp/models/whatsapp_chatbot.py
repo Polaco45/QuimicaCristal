@@ -1,4 +1,3 @@
-# chatbot_whatsapp/models/whatsapp_chatbot.py
 from odoo import models, api, _
 import openai
 import logging
@@ -10,30 +9,34 @@ class WhatsAppMessage(models.Model):
 
     @api.model
     def create(self, vals):
-        message = super(WhatsAppMessage, self).create(vals)
+        message = super().create(vals)
 
-        if (
-            message.state == 'received'
-            and message.mobile_number
-            and message.body
-        ):
+        # Solo responder si es un mensaje entrante válido
+        if message.state == 'received' and message.mobile_number and message.body:
             chatbot_response = message._get_chatbot_response(message.body)
 
+            # Validamos que haya una respuesta generada
             if chatbot_response and chatbot_response.strip():
                 respuesta_texto = chatbot_response.strip()
             else:
                 respuesta_texto = _("Lo siento, no pude procesar tu consulta.")
 
+            # Creamos un mensaje nuevo con la respuesta
             try:
-                respuesta = self.sudo().create({
+                new_msg = self.sudo().create({
                     'mobile_number': message.mobile_number,
                     'body': respuesta_texto,
                     'state': 'outgoing',
-                    'create_uid': 2,  # Sergio Ramello (revisá si este ID es correcto)
+                    'create_uid': 2,  # Sergio Ramello
                     'wa_account_id': message.wa_account_id.id if message.wa_account_id else False,
                     'x_studio_contacto': message.x_studio_contacto.id if message.x_studio_contacto else False,
                 })
-                respuesta._send_message()
+
+                # Confirmamos que se guardó el cuerpo antes de enviarlo
+                if new_msg.body:
+                    new_msg._send_message()
+                else:
+                    _logger.error("El mensaje no tiene contenido en 'body', no se enviará.")
             except Exception as e:
                 _logger.error("Error al crear o enviar mensaje automático: %s", e)
 
