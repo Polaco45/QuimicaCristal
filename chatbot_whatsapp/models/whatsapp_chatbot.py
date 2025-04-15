@@ -14,14 +14,12 @@ class WhatsAppMessage(models.Model):
             if message.state == 'received' and message.mobile_number and message.body:
                 _logger.info("Mensaje recibido (ID %s): body = %s", message.id, message.body)
                 
-                # Generamos la respuesta del chatbot
                 chatbot_response = message._get_chatbot_response(message.body)
                 _logger.info("Respuesta cruda del chatbot para mensaje %s: %s", message.id, chatbot_response)
 
                 response_text = chatbot_response.strip() if chatbot_response and chatbot_response.strip() else _("Lo siento, no pude procesar tu consulta.")
                 if not chatbot_response or not chatbot_response.strip():
                     _logger.warning("La respuesta del chatbot quedó vacía para el mensaje %s", message.id)
-
                 try:
                     outgoing_vals = {
                         'mobile_number': message.mobile_number,
@@ -33,7 +31,6 @@ class WhatsAppMessage(models.Model):
                     outgoing_msg = self.env['whatsapp.message'].sudo().create(outgoing_vals)
                     outgoing_msg.sudo().write({'body': response_text})
                     _logger.info("Mensaje saliente creado: ID %s, body = %s", outgoing_msg.id, outgoing_msg.body)
-
                     if hasattr(outgoing_msg, '_send_message'):
                         outgoing_msg._send_message()
                     else:
@@ -44,40 +41,48 @@ class WhatsAppMessage(models.Model):
 
     def _get_chatbot_response(self, user_message):
         """
-        Responde al mensaje del usuario integrando:
-         1. Búsqueda de productos publicados en el catálogo (name, description, description_sale).
-         2. Si se encuentran, devuelve enlaces directos al sitio.
-         3. Si no, utiliza el historial de conversación (últimos 5 mensajes) como contexto
-            y llama a OpenAI con un base prompt que detalla el negocio, tono y preferencias.
+        Responde al mensaje del cliente de dos maneras:
+          1. Si se detecta que el mensaje está relacionado con productos (por ejemplo, contiene palabras clave como 'comprar', 'producto', etc.),
+             busca en el catálogo de productos publicados (is_published=True) y devuelve enlaces directos al sitio web, limitados a 10 productos.
+          2. Si no se detecta relación con productos, construye un contexto con los últimos 5 mensajes de la conversación
+             y consulta a OpenAI para generar la respuesta.
         """
-        # --- Sección 1: Buscar productos
-        Product = self.env['product.template']
-        palabras = user_message.lower().split()
-        
-        # Dominio base: productos publicados
-        dominio = [('is_published', '=', True)]
-        condiciones = []
-        for palabra in palabras:
-            condiciones += [
-                ('name', 'ilike', palabra),
-                ('description', 'ilike', palabra),
-                ('description_sale', 'ilike', palabra),
-            ]
-        if condiciones:
-            # Agregar operador OR entre condiciones (si hay más de una)
-            if len(condiciones) > 1:
-                dominio += ['|'] * (len(condiciones) - 1)
-            dominio += condiciones
+        # --- Sección 1: Búsqueda de productos solo si se detectan palabras clave relacionadas
+        product_keywords = ['comprar', 'producto', 'venden', 'tienen', 'oferta', 'catálogo', 'consulta']
+        text_lower = user_message.lower()
+        if any(kw in text_lower for kw in product_keywords):
+            Product = self.env['product.template']
+            palabras = text_lower.split()
 
-        productos = Product.search(dominio)
-        if productos:
-            links = [f"🔹 {p.name}: https://quimicacristal.com{p.website_url}" for p in productos if p.website_url]
-            if links:
-                return "¡Sí! Encontré estos productos relacionados:\n" + "\n".join(links)
+            # Dominio: únicamente productos publicados
+            dominio = [('is_published', '=', True)]
+            condiciones = []
+            for palabra in palabras:
+                condiciones += [
+                    ('name', 'ilike', palabra),
+                    ('description', 'ilike', palabra),
+                    ('description_sale', 'ilike', palabra),
+                ]
+            if condiciones:
+                if len(condiciones) > 1:
+                    dominio += ['|'] * (len(condiciones) - 1)
+                dominio += condiciones
 
-        # --- Sección 2: Construir contexto conversacional
+            productos = Product.search(dominio)
+            if productos:
+                max_mostrar = 10
+                total_encontrados = len(productos)
+                mostrados = productos[:max_mostrar]
+                links = [f"🔹 {p.name}: https://quimicacristal.com{p.website_url}" for p in mostrados if p.website_url]
+                mensaje = "¡Sí! Encontré estos productos relacionados:\n" + "\n".join(links)
+                if total_encontrados > max_mostrar:
+                    mensaje += (
+                        f"\n\n(Se encontraron {total_encontrados} resultados, te muestro los primeros {max_mostrar}. "
+                        "Podés visitar nuestro sitio para ver más.)"
+                    )
+                return mensaje
 
-        # Obtener los últimos 5 mensajes del mismo número en orden ascendente (más antiguos primero)
+        # --- Sección 2: Construcción de contexto conversacional
         recent_messages = self.env['whatsapp.message'].sudo().search([
             ('mobile_number', '=', self.mobile_number),
             ('id', '<', self.id),
@@ -90,21 +95,18 @@ class WhatsAppMessage(models.Model):
                 "role": role,
                 "content": msg.body
             })
-        # Incluir el mensaje actual
         context_messages.append({"role": "user", "content": user_message})
 
-        # --- Sección 3: Definir el prompt base (system message)
+        # --- Sección 3: Mensaje System (Prompt base)
         system_message = (
-            "Sos un asistente de atención al cliente de Química Cristal, una empresa con amplia experiencia en la venta "
-            "de productos de limpieza para el hogar e instituciones en Río Cuarto. "
-            "Tu tono es profesional, amable y claro. Cuando respondas, si corresponde, proporciona enlaces directos "
-            "al sitio web https://quimicacristal.com para que los clientes puedan ver los productos. "
-            "No menciones precios, solo ayuda para encontrar el producto."
+            "Sos un asistente de atención al cliente de Química Cristal, "
+            "una empresa especializada en productos de limpieza para el hogar e instituciones. "
+            "Tu tono es profesional, amable y claro. Si un cliente saluda, simplemente responde cordialmente. "
+            "Cuando te hagan consultas sobre productos, proporcioná enlaces directos a nuestro sitio web sin mencionar precios."
         )
-
         messages = [{"role": "system", "content": system_message}] + context_messages
 
-        # --- Sección 4: Llamada a OpenAI
+        # --- Sección 4: Consulta a OpenAI
         try:
             response = openai.ChatCompletion.create(
                 model="gpt-3.5-turbo",
