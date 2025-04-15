@@ -1,4 +1,4 @@
-from odoo import models, api, _
+from odoo import models, api
 import openai
 import logging
 
@@ -15,68 +15,50 @@ class WhatsAppMessage(models.Model):
                 _logger.info("Mensaje recibido (ID %s): body = %s", message.id, message.body)
                 chatbot_response = message._get_chatbot_response(message.body)
                 _logger.info("Respuesta cruda del chatbot para mensaje %s: %s", message.id, chatbot_response)
-
-                response_text = chatbot_response.strip() if chatbot_response and chatbot_response.strip() else _("Lo siento, no pude procesar tu consulta.")
-                if not chatbot_response or not chatbot_response.strip():
-                    _logger.warning("La respuesta del chatbot quedó vacía para el mensaje %s", message.id)
-
-                try:
-                    outgoing_vals = {
-                        'mobile_number': message.mobile_number,
-                        'body': response_text,
-                        'state': 'outgoing',
-                        'create_uid': self.env.ref('base.user_admin').id,
-                        'wa_account_id': message.wa_account_id.id if message.wa_account_id else False,
-                    }
-                    outgoing_msg = self.env['whatsapp.message'].sudo().create(outgoing_vals)
-                    outgoing_msg.sudo().write({'body': response_text})
-                    _logger.info("Mensaje saliente creado: ID %s, body = %s", outgoing_msg.id, outgoing_msg.body)
-
-                    if hasattr(outgoing_msg, '_send_message'):
-                        outgoing_msg._send_message()
-                    else:
-                        _logger.info("No se encontró _send_message; el mensaje quedará en cola.")
-                except Exception as e:
-                    _logger.error("Error al crear/enviar el mensaje saliente para el registro %s: %s", message.id, e)
+                message.env['whatsapp.message'].create({
+                    'mobile_number': message.mobile_number,
+                    'body': chatbot_response,
+                    'direction': 'outgoing',
+                    'account_id': message.account_id.id,
+                })
         return records
 
-    def _get_chatbot_response(self, user_message):
-        """
-        Llama a la API de OpenAI con contexto del último mensaje de ese número.
-        """
-        try:
-            api_key = self.env['ir.config_parameter'].sudo().get_param('openai.api_key')
-            if not api_key:
-                _logger.error("La API key de OpenAI no está configurada en ir.config_parameter")
-                return _("Lo siento, no pude procesar tu mensaje.")
+    def _get_chatbot_response(self, message_text):
+        Product = self.env['product.template']
+        palabras = message_text.lower().split()
 
-            openai.api_key = api_key
+        # Dominio base: productos publicados
+        dominio = [('is_published', '=', True)]
 
-            # Recuperamos último mensaje anterior de este número
-            last_message = self.env['whatsapp.message'].sudo().search([
-                ('mobile_number', '=', self.mobile_number),
-                ('id', '<', self.id),
-                ('state', '=', 'received'),
-                ('body', '!=', False)
-            ], order="id desc", limit=1).body or ''
-
-            # Armamos el contexto
-            messages = [
-                {"role": "system", "content": "Sos un asistente de atención al cliente de Química Cristal. Respondé de forma clara, amable y concisa."},
-                {"role": "user", "content": str(last_message)},
-                {"role": "user", "content": str(user_message)}
+        # Condiciones: coincidencias en name, description o description_sale
+        condiciones = []
+        for palabra in palabras:
+            condiciones += [
+                ('name', 'ilike', palabra),
+                ('description', 'ilike', palabra),
+                ('description_sale', 'ilike', palabra),
             ]
 
-            response = openai.ChatCompletion.create(
-                model='gpt-3.5-turbo',
-                messages=messages
-            )
+        if condiciones:
+            if len(condiciones) > 1:
+                dominio += ['|'] * (len(condiciones) - 1)
+            dominio += condiciones
 
-            _logger.info("Respuesta completa de OpenAI para el mensaje '%s': %s", user_message, response)
-            try:
-                return response.choices[0].message.content.strip()
-            except Exception:
-                return response.choices[0].message['content'].strip()
+        productos = Product.search(dominio)
+
+        if productos:
+            links = [f"🔹 {p.name}: https://quimicacristal.com{p.website_url}" for p in productos if p.website_url]
+            return "¡Sí! Encontré estos productos relacionados:\n" + "\n".join(links)
+
+        try:
+            respuesta = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": "Sos un asistente de atención al cliente de una tienda de limpieza llamada Química Cristal."},
+                    {"role": "user", "content": message_text},
+                ]
+            )
+            return respuesta['choices'][0]['message']['content']
         except Exception as e:
-            _logger.error("Error al obtener respuesta de OpenAI: %s", e, exc_info=True)
-            return _("Lo siento, hubo un problema técnico al generar la respuesta.")
+            _logger.error("Error al generar respuesta del chatbot: %s", e)
+            return "¡Gracias por tu mensaje! Enseguida te respondemos."
