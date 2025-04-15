@@ -16,7 +16,7 @@ class WhatsAppMessage(models.Model):
                 _logger.info("Mensaje recibido (ID %s): body = %s", message.id, message.body)
                 chatbot_response = message._get_chatbot_response(message.body)
                 _logger.info("Respuesta cruda del chatbot para mensaje %s: %s", message.id, chatbot_response)
-                
+
                 response_text = chatbot_response.strip() if chatbot_response and chatbot_response.strip() else _("Lo siento, no pude procesar tu consulta.")
                 if not chatbot_response or not chatbot_response.strip():
                     _logger.warning("La respuesta del chatbot quedó vacía para el mensaje %s", message.id)
@@ -41,28 +41,40 @@ class WhatsAppMessage(models.Model):
 
     def _get_chatbot_response(self, user_message):
         """
-        Responde al mensaje del cliente de dos maneras:
-         1. Si el mensaje contiene palabras clave (por ejemplo, 'comprar', 'producto', 'venden', etc.), busca en el catálogo
-            productos publicados (is_published=True) y devuelve enlaces a los productos.
-         2. Si no se detectan consultas sobre productos, utiliza los últimos 5 mensajes para armar el contexto conversacional.
-            Usa un prompt del sistema que indica que debes tratar al cliente de forma cálida y natural, y en caso de ser un saludo,
-            deberás responder saludando y preguntando por su nombre.
+        Esta función genera la respuesta del chatbot de dos maneras:
+         1. Si el mensaje del usuario contiene palabras clave definidas (por ejemplo, 'precio', 'cera', 'pisos', etc.),
+            se buscarán productos publicados (is_published=True) en el catálogo (modelo product.template) filtrando
+            por los términos encontrados en el mensaje. Si se encuentran productos, se arma un mensaje con enlaces completos.
+         2. Si no se detecta que es una consulta de producto, se utiliza un contexto conversacional usando los
+            últimos 5 mensajes para formular una respuesta cálida y personalizada. El sistema de prompt le indica
+            al asistente que debe saludar de forma empática y preguntar el nombre del cliente si es un saludo.
         """
-        # Sección 1: Búsqueda de productos si se detectan palabras clave
-        product_keywords = ['comprar', 'producto', 'oferta', 'catálogo', 'venden', 'tienen']
-        if any(kw in user_message.lower() for kw in product_keywords):
+        # --- Parte 1: Búsqueda de productos ---
+        product_keywords = ['comprar', 'producto', 'oferta', 'catálogo', 'venden', 'tienen', 'precio', 'cera', 'pisos']
+        lower_msg = user_message.lower()
+        if any(kw in lower_msg for kw in product_keywords):
             Product = self.env['product.template']
-            # Construir el dominio para buscar productos publicados cuyo nombre o descripción contenga algunas palabras del mensaje
+            # Se arma el dominio para buscar productos cuyo nombre o descripción contenga palabras clave del mensaje
             dominio = [('is_published', '=', True)]
             for word in user_message.split():
-                dominio += ['|', ('name', 'ilike', word), ('description_sale', 'ilike', word)]
+                word = word.strip().lower()
+                if word:
+                    # Se agrega condición OR para que coincida en name o description_sale
+                    dominio += ['|', ('name', 'ilike', word), ('description_sale', 'ilike', word)]
             productos = Product.search(dominio, limit=10)
             if productos:
-                links = [f"🔹 {prod.name}: https://quimicacristal.com{prod.website_url}" for prod in productos if prod.website_url]
-                mensaje = "¡Encontré estos productos para vos:\n" + "\n".join(links)
-                return mensaje
+                links = []
+                for prod in productos:
+                    if prod.website_url:
+                        # Asegurarse de que la URL tenga el prefijo https://
+                        url = prod.website_url if prod.website_url.startswith("http") else "https://quimicacristal.com" + prod.website_url
+                        links.append(f"🔹 {prod.name}: {url}")
+                if links:
+                    mensaje_productos = "¡Encontré los siguientes productos que podrían interesarte:\n" + "\n".join(links)
+                    return mensaje_productos
 
-        # Sección 2: Preparar API key
+        # --- Parte 2: Flujo conversacional con contexto ---
+        # Configuración de la API Key: buscar en parámetros de configuración, sino en variable de entorno.
         api_key = self.env['ir.config_parameter'].sudo().get_param('openai.api_key')
         if not api_key:
             api_key = environ.get('OPENAI_API_KEY')
@@ -71,28 +83,33 @@ class WhatsAppMessage(models.Model):
             return _("Lo siento, no pude procesar tu mensaje.")
         openai.api_key = api_key
 
-        # Sección 3: Crear contexto conversacional usando los últimos 5 mensajes
+        # Recupera los últimos 5 mensajes de este número (excluyendo el actual)
         recent_messages = self.env['whatsapp.message'].sudo().search([
             ('mobile_number', '=', self.mobile_number),
             ('id', '<', self.id),
             ('body', '!=', False)
         ], order='id desc', limit=5)
         context_messages = []
+        # Se ordenan cronológicamente de más antiguo a más reciente.
         for msg in reversed(recent_messages):
             role = 'user' if msg.state == 'received' else 'assistant'
             context_messages.append({"role": role, "content": msg.body})
+        # Agregar el mensaje actual
         context_messages.append({"role": "user", "content": user_message})
-        
-        # Sección 4: Definir un prompt del sistema personalizado para los consumidores
+
+        # Definir un prompt del sistema que distingue el caso de consumidor final:
         system_message = (
-            "Eres un asistente de atención al cliente de Química Cristal, una empresa especializada en productos de limpieza para el hogar. "
-            "Tu comunicación debe ser cálida, empática y cercana. Si recibes un saludo, responde de forma amigable y pregunta el nombre del cliente, "
-            "por ejemplo: '¡Hola! Gracias por comunicarte con Química Cristal. ¿Cómo te llamás?'. "
-            "Si el mensaje es una consulta sobre productos, responde con enlaces directos a los productos (sin precios) y sin mencionar información de precios."
+            "Eres un asistente de atención al cliente de Química Cristal, especializado en productos de limpieza para el hogar. "
+            "Tu tarea es atender al cliente de forma cálida y amigable. Si recibes un saludo simple (por ejemplo, 'Hola'), "
+            "responde preguntando su nombre, por ejemplo: '¡Hola! Gracias por comunicarte con Química Cristal. ¿Cómo te llamás?'. "
+            "Si el mensaje es una consulta sobre productos, responde con información útil y, si corresponde, sin incluir precios, "
+            "sino con enlaces directos a la sección o al producto en nuestro sitio web. "
+            "Recuerda siempre tratar al cliente de manera cercana y profesional."
         )
+
         messages = [{"role": "system", "content": system_message}] + context_messages
 
-        # Sección 5: Consultar a OpenAI
+        # Consultar a OpenAI
         try:
             response = openai.ChatCompletion.create(
                 model="gpt-3.5-turbo",
