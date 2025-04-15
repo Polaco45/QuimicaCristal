@@ -1,0 +1,17 @@
+{
+    'name': "Chatbot WhatsApp",
+    'version': '1.0',
+    'summary': "Integración de un chatbot (OpenAI) con el WhatsApp integrado en Odoo.",
+    'description': """
+        Este módulo extiende el modelo whatsapp.message para enviar respuestas automáticas
+        mediante OpenAI al recibir mensajes entrantes.
+    """,
+    'author': "Tu Nombre",
+    'website': "https://tusitio.com",
+    'category': 'Tools',
+    'depends': ['base'],  # Agrega aquí las dependencias que necesites, por ejemplo 'base'
+    'data': [],
+    'installable': True,
+    'application': False,
+    'auto_install': False,
+}
