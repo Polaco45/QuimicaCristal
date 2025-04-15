@@ -34,20 +34,31 @@ def has_greeting(text):
 
 def has_product_keywords(text):
     """Verifica si el texto menciona palabras relacionadas a productos."""
-    keywords = ("comprar", "producto", "oferta", "catálogo", "precio", "cera", "detergente", "pisos")
+    keywords = ("comprar", "producto", "oferta", "catálogo", "precio", "jabón", "cera", "detergente", "pisos")
     return any(kw in text.lower() for kw in keywords)
 
 # -----------------------------------------------------------
 # RESPUESTAS FAQ (BASADAS EN REGLAS)
 # -----------------------------------------------------------
 FAQ_RESPONSES = {
-    "horario": "Nuestros horarios de atención son: lunes a viernes de 8:30 a 12:30 y de 16:00 a 20:00, y sábados de 9:00 a 13:00. 😊",
-    "horarios": "Nuestros horarios de atención son: lunes a viernes de 8:30 a 12:30 y de 16:00 a 20:00, y sábados de 9:00 a 13:00. 😊",
+    "horario": ("Nuestros horarios de atención son: lunes a viernes de 8:30 a 12:30 y de 16:00 a 20:00, "
+                "y sábados de 9:00 a 13:00. Además, nos encuentras en San Martin 2350, Río Cuarto, Córdoba. "
+                "Visita www.quimicacristal.com para más detalles. 😊"),
+    "horarios": ("Nuestros horarios de atención son: lunes a viernes de 8:30 a 12:30 y de 16:00 a 20:00, "
+                 "y sábados de 9:00 a 13:00. Además, nos encontramos en San Martin 2350, Río Cuarto, Córdoba. "
+                 "Ingresa a www.quimicacristal.com para más info. 😊"),
     "estado de cuenta": "Para ver tu estado de cuenta, ingresa a www.quimicacristal.com y accede a tu cuenta. 💻",
-    "que haces": "Soy el asistente virtual de Química Cristal y estoy aquí para ayudarte con tus consultas sobre productos, horarios o información de cuenta. 🤖",
-    "local": "Nuestro local se encuentra en San Martin 2350, Río Cuarto, Córdoba (Química Cristal). ¡Te esperamos! Puedes encontrarnos aquí: [Google Maps](https://www.google.com/maps/search/?api=1&query=San+Martin+2350,+Rio+Cuarto,+Cordoba) 📍",
-    "dirección": "Nuestra dirección es San Martin 2350, Río Cuarto, Córdoba (Química Cristal). Visítanos o consulta en [Google Maps](https://www.google.com/maps/search/?api=1&query=San+Martin+2350,+Rio+Cuarto,+Cordoba) 📍",
-    "ubicación": "Nos ubicamos en San Martin 2350, Río Cuarto, Córdoba (Química Cristal). ¡Mira en [Google Maps](https://www.google.com/maps/search/?api=1&query=San+Martin+2350,+Rio+Cuarto,+Cordoba) para encontrarnos! 📍",
+    "que haces": "Soy tu asistente de Química Cristal y estoy aquí para ayudarte con consultas sobre productos, "
+                 "horarios o información de cuenta. 🤖",
+    "local": ("Nuestro local está en San Martin 2350, Río Cuarto, Córdoba (Química Cristal). "
+              "El horario es lunes a viernes de 8:30 a 12:30 y de 16:00 a 20:00, y sábados de 9:00 a 13:00. "
+              "¡Visítanos o checa www.quimicacristal.com! 📍"),
+    "dirección": ("Nos encontramos en San Martin 2350, Río Cuarto, Córdoba (Química Cristal). "
+                  "Nuestro horario: lunes a viernes 8:30–12:30 y 16:00–20:00, sábados 9:00–13:00. "
+                  "Más info en www.quimicacristal.com. 📍"),
+    "ubicación": ("Te encuentras con nosotros en San Martin 2350, Río Cuarto, Córdoba (Química Cristal). "
+                  "Nuestro horario es lunes a viernes de 8:30 a 12:30 y de 16:00 a 20:00, y sábados de 9:00 a 13:00. "
+                  "Consulta www.quimicacristal.com para más info. 📍"),
 }
 
 def check_faq(user_text):
@@ -72,15 +83,13 @@ class WhatsAppMessage(models.Model):
             if message.state == 'received' and message.mobile_number and plain_body:
                 _logger.info("Mensaje recibido (ID %s): %s", message.id, plain_body)
 
-                # Primero revisar FAQs (horarios, dirección, etc.)
+                # Primero revisar respuestas FAQ (horarios, local, etc.)
                 faq_answer = check_faq(plain_body)
                 if faq_answer:
                     response = faq_answer
-                # Si es consulta de producto, se intenta buscar en el catálogo
+                # Si es consulta de producto, redirige a la web de forma amigable
                 elif has_product_keywords(plain_body):
                     response = self._handle_product_query(plain_body)
-                    if not response:
-                        response = self._generate_chatbot_reply(plain_body)
                 else:
                     response = self._generate_chatbot_reply(plain_body)
 
@@ -95,7 +104,7 @@ class WhatsAppMessage(models.Model):
                         'wa_account_id': message.wa_account_id.id if message.wa_account_id else False,
                     }
                     outgoing_msg = self.env['whatsapp.message'].sudo().create(outgoing_vals)
-                    # Forzamos la escritura del campo body para asegurar que contenga el texto
+                    # Forzamos la escritura del campo body para garantizar que tenga el contenido correcto.
                     outgoing_msg.sudo().write({'body': response_text})
                     _logger.info("Mensaje saliente creado: ID %s, body: %s", outgoing_msg.id, outgoing_msg.body)
                     if hasattr(outgoing_msg, '_send_message'):
@@ -105,7 +114,7 @@ class WhatsAppMessage(models.Model):
                 except Exception as e:
                     _logger.error("Error al crear/enviar mensaje saliente para mensaje %s: %s", message.id, e)
 
-                # Actualizar datos del partner (nombre/email) si es posible
+                # Actualiza datos del partner (nombre/email) si se detectan en el texto
                 partner = self.env['res.partner'].sudo().search([('phone', '=', message.mobile_number)], limit=1)
                 if partner:
                     data = extract_user_data(plain_body)
@@ -120,30 +129,19 @@ class WhatsAppMessage(models.Model):
         return records
 
     def _handle_product_query(self, user_text):
-        """Realiza una búsqueda en el catálogo y devuelve una respuesta persuasiva junto a un CTA."""
-        Product = self.env['product.template']
-        domain = [('is_published', '=', True), '|', ('name', 'ilike', user_text), ('description_sale', 'ilike', user_text)]
-        productos = Product.search(domain, limit=10)
-        if productos:
-            links = []
-            for prod in productos:
-                if prod.website_url:
-                    url = prod.website_url if prod.website_url.startswith("http") else "https://quimicacristal.com" + prod.website_url
-                else:
-                    url = "https://quimicacristal.com/shop/product/%s" % prod.id
-                links.append(f"🔹 {prod.name} – {url}")
-            if links:
-                return (
-                    "He encontrado los siguientes productos que podrían interesarte:\n\n" +
-                    "\n".join(links) +
-                    "\n\n¡No esperes más y aprovecha nuestras ofertas! Visita nuestra tienda en línea ahora mismo. 🛒✨"
-                )
-        return None
+        """
+        Responde de forma persuasiva para consultas de productos sin listar un monólogo.
+        Redirige al usuario a la web para que vea el producto o alternativa que busca,
+        e incluye siempre el link www.quimicacristal.com.
+        """
+        return ("¡Hola! Para encontrar el producto o alternativa que buscas, "
+                "te invito a visitar nuestra tienda en línea en www.quimicacristal.com. "
+                "Ahí encontrarás justo lo que necesitas. Cualquier duda, ¡me consultas! 😊")
 
     def _generate_chatbot_reply(self, user_text):
         """
-        Genera una respuesta conversacional utilizando OpenAI, evitando saludos y promociones reiteradas.
-        Se utiliza el contexto de los últimos 5 mensajes para dar una respuesta precisa, amable y persuasiva.
+        Genera una respuesta conversacional utilizando OpenAI. Se apoya en el contexto de los últimos 5 mensajes
+        y utiliza un lenguaje muy casual, cercano y persuasivo, incorporando emojis y un CTA con el link de la web.
         """
         api_key = self.env['ir.config_parameter'].sudo().get_param('openai.api_key') or environ.get('OPENAI_API_KEY')
         if not api_key:
@@ -151,7 +149,6 @@ class WhatsAppMessage(models.Model):
             return _("Lo siento, no pude procesar tu mensaje. 😔")
         openai.api_key = api_key
 
-        # Construir el contexto: últimos 5 mensajes en orden ascendente
         recent_msgs = self.env['whatsapp.message'].sudo().search([
             ('mobile_number', '=', self.mobile_number),
             ('id', '<', self.id),
@@ -163,7 +160,6 @@ class WhatsAppMessage(models.Model):
             context.append({"role": role, "content": clean_html(msg.body)})
         context.append({"role": "user", "content": user_text})
 
-        # Evitar repetir saludos si ya se ha saludado previamente
         already_greeted = False
         recent_outgoing = self.env['whatsapp.message'].sudo().search([
             ('mobile_number', '=', self.mobile_number),
@@ -173,10 +169,10 @@ class WhatsAppMessage(models.Model):
             already_greeted = True
 
         system_prompt = (
-            "Eres el asistente virtual de atención al cliente de Química Cristal. Tu tarea es responder de forma concisa, precisa y profesional, "
-            "centrándote en resolver la consulta del usuario de forma amable y persuasiva, incorporando emojis y un claro llamado a la acción (CTA) cuando sea pertinente. "
-            "No repitas saludos ni menciones promocionales innecesarias si ya se han usado previamente. "
-            "Si el usuario pregunta sobre un producto, explica brevemente sus beneficios y termina con un CTA, por ejemplo, '¡Compra ahora!' o 'Visita nuestra tienda en línea'."
+            "Eres el asistente virtual de atención al cliente de Química Cristal. Habla de forma muy casual y cercana, "
+            "usa un tono amigable y agrega emojis. Cuando el usuario pregunte por un producto, redirígelo a la tienda en línea en www.quimicacristal.com y agrega un CTA claro (por ejemplo, '¡Compra ahora!' o 'Visita nuestra web'). "
+            "Si el usuario consulta por la ubicación o los horarios, incluye ambos datos en la respuesta. "
+            "Responde de forma concisa y sin repetir saludos innecesarios si ya se han usado previamente."
         )
 
         messages = [{"role": "system", "content": system_prompt}] + context
@@ -190,7 +186,6 @@ class WhatsAppMessage(models.Model):
             )
             _logger.info("Respuesta completa de OpenAI: %s", reply_result)
             reply_text = reply_result.choices[0].message.content.strip()
-            # Si la respuesta inicia con un saludo y ya se ha saludado, eliminar la primera línea
             if has_greeting(reply_text) and already_greeted:
                 lines = reply_text.splitlines()
                 if len(lines) > 1:
