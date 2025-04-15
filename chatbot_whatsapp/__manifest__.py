@@ -9,7 +9,8 @@
     'author': "Tu Nombre",
     'website': "https://tusitio.com",
     'category': 'Tools',
-    'depends': ['base'],  # Agrega aquí las dependencias que necesites, por ejemplo 'base'
+    'license': 'LGPL-3',
+    'depends': ['base', 'whatsapp_connector'],  # ← cambialo por el módulo correcto
     'data': [],
     'installable': True,
     'application': False,
