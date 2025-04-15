@@ -17,7 +17,10 @@ def clean_html(text):
     return re.sub(HTML_TAGS, "", text or "").strip()
 
 def extract_user_data(text):
-    """Extrae nombre y correo si se menciona 'me llamo/soy/mi nombre es' y un email válido."""
+    """
+    Extrae nombre y correo si se menciona 'me llamo', 'soy' o 'mi nombre es'
+    y se encuentra un email válido.
+    """
     name_pat = r"(?:me llamo|soy|mi nombre es)\s+([A-ZÁÉÍÓÚÑa-záéíóúñ]+(?:\s+[A-ZÁÉÍÓÚÑa-záéíóúñ]+)*)"
     email_pat = r"[\w\.\-]+@(?:gmail|hotmail|yahoo|outlook|icloud)\.(?:com|ar)"
     name_match = re.search(name_pat, text, re.IGNORECASE)
@@ -33,28 +36,46 @@ def has_greeting(text):
     return any(g in text.lower() for g in greetings)
 
 def has_product_keywords(text):
-    """Verifica si el texto menciona palabras relacionadas a productos."""
+    """Verifica si el texto contiene palabras comunes relacionadas a productos."""
     keywords = ("comprar", "producto", "oferta", "catálogo", "precio", "jabón", "cera", "detergente", "pisos")
     return any(kw in text.lower() for kw in keywords)
 
 def is_valid_product_query(user_text):
     """
-    Comprueba si la consulta incluye palabras que se relacionan con nuestros productos.
-    Si NO se encuentra ninguna coincidencia en la lista de palabras permitidas, se considera
-    que la consulta es fuera del dominio.
+    Verifica que la consulta se refiera a un producto dentro de nuestro dominio,
+    utilizando todas las categorías permitidas.
     """
     allowed_keywords = [
         "combos", "ofertas",
-        "líquidos de limpieza", "lavandinas", "detergentes", "limpiadores", "desengrasantes", "desinfectantes", "insecticida", "mantenimiento de pisos", "químicos para piletas", "higiene personal",
-        "lampazos", "mopas", "pasaceras", "artículos de limpieza", "alfombras", "felpudos", "baldes", "fuentones", "barrenderos", "mopas institucionales", "limpiavidrios", "bazar", "gatillos", "pulverizadores",
-        "plumeros", "guantes", "secadores", "sopapas", "bolsas", "trapos", "gamuzas", "repasadores", "palas", "cestos", "contenedores", "casa", "jardín", "escobillones", "cepillos",
-        "piscina", "cloro", "químicos para pileta", "accesorios para piletas",
-        "cuidado del automotor", "aromatizantes", "papel", "jabones", "suavizantes", "cabos",
-        "consumo masivo", "dispensers", "boyas", "mantenimiento", "barrefondos", "sacabichos"
+        "líquidos de limpieza", "lavandinas", "detergentes", "limpiadores desodorantes",
+        "desengrasantes", "desinfectantes", "insecticida", "mantenimiento de pisos", "químicos para piletas", "higiene personal",
+        "lampazos", "mopas", "pasaceras", "articulos de limpieza", "alfombras", "felpudos",
+        "baldes", "fuentones", "barrenderos", "mopas institucionales", "limpiavidrios", "bazar",
+        "gatillos", "pulverizadores", "plumeros", "guantes", "secadores", "sopapas",
+        "bolsas", "trapos", "gamuzas", "repasadores", "palas", "cestos", "contenedores",
+        "casa y jardin", "escobillones", "cepillos",
+        "piscina", "cloro granulado", "pastillas", "químicos para pileta", "accesorios para piletas",
+        "cuidado del automotor", "líquidos", "aromatizantes", "accesorios",
+        "papel", "papel higienico", "rollos de cocina", "toallas intercaladas", "bobinas",
+        "aerosoles aromatizantes", "sahumerios", "difusores", "aceites esenciales", "perfumes textiles",
+        "residuos", "cuidado de la ropa", "jabones y suavizantes", "otros", "cabos",
+        "consumo masivo", "dispensers", "químicos para tu pileta", "boyas", "accesorios y mantenimiento", "barrefondos", "sacabichos"
     ]
     text_lower = user_text.lower()
     for kw in allowed_keywords:
         if kw in text_lower:
+            return True
+    return False
+
+def is_obscene_query(user_text):
+    """
+    Detecta si la consulta contiene términos obscenos o fuera del dominio.
+    Ejemplos: "dildo", "dildos", "penes de goma", etc.
+    """
+    obscene_terms = ["dildo", "dildos", "pene de goma", "penes de goma"]
+    text_lower = user_text.lower()
+    for term in obscene_terms:
+        if term in text_lower:
             return True
     return False
 
@@ -80,8 +101,10 @@ FAQ_RESPONSES = {
     "ubicacion": ("Nos encontramos en San Martin 2350, Río Cuarto, Córdoba (Química Cristal). "
                   "Horario: lunes a viernes 8:30–12:30 y 16:00–20:00, sábados 9:00–13:00. Más info en www.quimicacristal.com. 📍"),
     "ubicados": ("Nos encontramos en San Martin 2350, Río Cuarto, Córdoba (Química Cristal). "
-                 "Nuestro horario es lunes a viernes de 8:30 a 12:30 y de 16:00 a 20:00, y sábados de 9:00 a 13:00. "
+                 "Nuestro horario es de lunes a viernes de 8:30 a 12:30 y de 16:00 a 20:00, y sábados de 9:00 a 13:00. "
                  "Visita www.quimicacristal.com para más info. 📍"),
+    "ubix": ("Nos encontramos en San Martin 2350, Río Cuarto, Córdoba (Química Cristal). "
+             "Horario: lunes a viernes 8:30–12:30 y 16:00–20:00, sábados 9:00–13:00. Más info en www.quimicacristal.com. 📍")
 }
 
 def check_faq(user_text):
@@ -106,21 +129,34 @@ class WhatsAppMessage(models.Model):
             if message.state == 'received' and message.mobile_number and plain_body:
                 _logger.info("Mensaje recibido (ID %s): %s", message.id, plain_body)
 
-                # Primero revisar FAQ (por horarios, local, dirección, etc.)
-                faq_answer = check_faq(plain_body)
-                if faq_answer:
-                    response = faq_answer
-                # Si es consulta de producto, se utiliza la lógica de validación
-                elif has_product_keywords(plain_body):
-                    if is_valid_product_query(plain_body):
-                        response = self._handle_product_query(plain_body)
-                    else:
-                        response = ("Lo siento, en Química Cristal nos especializamos en productos de limpieza y cuidado del hogar. "
-                                    "Te invito a ver nuestro catálogo en www.quimicacristal.com para ver lo que ofrecemos. 😉")
+                # Si la consulta es obscena, responder de forma predeterminada.
+                if is_obscene_query(plain_body):
+                    response = ("Lo siento, en Química Cristal Minorista nos especializamos en la venta de insumos de limpieza para el hogar. "
+                                "Te invito a ver nuestro catálogo en www.quimicacristal.com para conocer nuestros productos.")
                 else:
-                    response = self._generate_chatbot_reply(plain_body)
+                    # Revisar si la consulta coincide con alguna FAQ (ubicación, horarios, etc.)
+                    faq_answer = check_faq(plain_body)
+                    if faq_answer:
+                        response = faq_answer
+                    # Si se menciona producto, validamos la consulta
+                    elif has_product_keywords(plain_body):
+                        if is_valid_product_query(plain_body):
+                            response = self._handle_product_query(plain_body)
+                        else:
+                            response = ("Lo siento, en Química Cristal Minorista nos especializamos en insumos de limpieza y cuidado del hogar. "
+                                        "Te invito a ver nuestro catálogo en www.quimicacristal.com para conocer lo que ofrecemos. 😉")
+                    else:
+                        response = self._generate_chatbot_reply(plain_body)
 
                 response_text = str(response.strip()) if response and response.strip() else _("Lo siento, no pude procesar tu consulta en este momento. 😔")
+                
+                # Si el partner ya existe pero aún no tiene nombre y no se indica en el mensaje, se le pregunta el nombre.
+                partner = self.env['res.partner'].sudo().search([('phone', '=', message.mobile_number)], limit=1)
+                data_from_msg = extract_user_data(plain_body)
+                if partner:
+                    if not partner.name and not data_from_msg.get("name"):
+                        response_text += " Por cierto, ¿cómo te llamás? 😊"
+                
                 _logger.info("Respuesta a enviar para el mensaje %s: %s", message.id, response_text)
                 try:
                     outgoing_vals = {
@@ -131,7 +167,7 @@ class WhatsAppMessage(models.Model):
                         'wa_account_id': message.wa_account_id.id if message.wa_account_id else False,
                     }
                     outgoing_msg = self.env['whatsapp.message'].sudo().create(outgoing_vals)
-                    # Forzar que el campo body se guarde correctamente
+                    # Forzar la escritura del campo body
                     outgoing_msg.sudo().write({'body': response_text})
                     _logger.info("Mensaje saliente creado: ID %s, body: %s", outgoing_msg.id, outgoing_msg.body)
                     if hasattr(outgoing_msg, '_send_message'):
@@ -141,8 +177,7 @@ class WhatsAppMessage(models.Model):
                 except Exception as e:
                     _logger.error("Error al crear/enviar mensaje saliente para mensaje %s: %s", message.id, e)
 
-                # Actualizar datos del partner (nombre, email) si están ausentes
-                partner = self.env['res.partner'].sudo().search([('phone', '=', message.mobile_number)], limit=1)
+                # Actualizar datos del partner (nombre y email) si están ausentes
                 if partner:
                     data = extract_user_data(plain_body)
                     updates = {}
@@ -157,8 +192,8 @@ class WhatsAppMessage(models.Model):
 
     def _handle_product_query(self, user_text):
         """
-        Responde de forma persuasiva para consultas de productos:
-        Redirige al usuario a la web y utiliza un CTA con el link www.quimicacristal.com.
+        Responde de forma persuasiva para consultas de productos.
+        Redirige al usuario a la web (www.quimicacristal.com) con un claro CTA.
         """
         return ("¡Hola! Para encontrar el producto o alternativa que buscas, "
                 "te invito a visitar nuestra tienda en línea en www.quimicacristal.com. "
@@ -166,9 +201,16 @@ class WhatsAppMessage(models.Model):
 
     def _generate_chatbot_reply(self, user_text):
         """
-        Genera una respuesta conversacional utilizando OpenAI, con un tono muy casual, cercano y persuasivo.
-        Se apoya en el contexto de los últimos 5 mensajes y siempre incluye un CTA con el link de la web.
+        Genera una respuesta conversacional utilizando OpenAI con un tono muy casual, cercano y persuasivo.
+        Se apoya en el contexto de los últimos 5 mensajes e inyecta el nombre del cliente (si se conoce)
+        en el prompt para tratarlo personalmente.
         """
+        # Obtener partner y agregar su nombre al prompt si se conoce
+        partner = self.env['res.partner'].sudo().search([('phone', '=', self.mobile_number)], limit=1)
+        extra_prompt = ""
+        if partner and partner.name:
+            extra_prompt = f" Recuerda que el cliente se llama {partner.name}."
+            
         api_key = self.env['ir.config_parameter'].sudo().get_param('openai.api_key') or environ.get('OPENAI_API_KEY')
         if not api_key:
             _logger.error("La API key de OpenAI no está configurada.")
@@ -195,11 +237,11 @@ class WhatsAppMessage(models.Model):
             already_greeted = True
 
         system_prompt = (
-            "Eres el asistente virtual de atención al cliente de Química Cristal. Habla de forma muy casual, cercana y amigable, "
-            "con un tono personal y persuasivo. Agrega emojis y usa frases coloquiales. Cuando un usuario pregunte por un producto, "
-            "redirígelo a nuestra web (www.quimicacristal.com) incluyendo un claro llamado a la acción, por ejemplo, '¡Compra ahora!' "
-            "o 'Visita nuestra web'. Si el usuario pregunta por la ubicación o los horarios, incluye ambos datos en la respuesta. "
-            "Sé conciso y evita repetir saludos innecesarios si ya se han usado previamente."
+            "Eres el asistente virtual de atención al cliente de Química Cristal Minorista, especializada en la venta de insumos de limpieza para el hogar. "
+            "Habla de forma muy casual, cercana y amigable, usando un tono personal y persuasivo, e incorpora emojis en tus respuestas. "
+            "Cuando un usuario pregunte por un producto, redirígalo a nuestra web (www.quimicacristal.com) con un claro llamado a la acción, por ejemplo, '¡Compra ahora!' o 'Visita nuestra web'. "
+            "Si el usuario pregunta por la ubicación o los horarios, incluye ambos datos en la respuesta. Sé conciso y evita repetir saludos si ya se han utilizado. "
+            + extra_prompt
         )
 
         messages = [{"role": "system", "content": system_prompt}] + context
