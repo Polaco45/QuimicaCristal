@@ -1,1 +1,3 @@
-openai==0.28
+# requerimientos del chatbot
+openai>=1.13
+python-magic>=0.4
