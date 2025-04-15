@@ -10,25 +10,25 @@ class WhatsAppMessage(models.Model):
 
     @api.model
     def create(self, vals):
-        # Crear el mensaje entrante
-        message = super(WhatsAppMessage, self).create(vals)
+        # Crear el mensaje recibido
+        message = super().create(vals)
 
-        # Procesar solo si es recibido y tiene contenido
+        # Procesar si es entrante con número y texto
         if message.state == 'received' and message.mobile_number and message.body:
             response_text = message._get_chatbot_response(message.body)
 
             if response_text:
                 try:
-                    # Buscar el usuario Sergio Ramello (admin)
+                    # Buscar usuario admin (Sergio Ramello)
                     user = self.env.ref('base.user_admin')
                 except Exception as e:
-                    _logger.warning("No se encontró el usuario Sergio Ramello: %s", e)
-                    user = self.env.uid  # Fallback
+                    _logger.warning("Fallo al asignar usuario Sergio Ramello: %s", e)
+                    user = self.env.uid  # fallback
 
-                # Crear la respuesta en estado "outgoing"
-                self.with_user(user).create({
+                # Crear el mensaje saliente manualmente
+                self.with_user(user).sudo().create({
                     'mobile_number': message.mobile_number,
-                    'body': response_text,
+                    'body': response_text,  # <-- Guardamos el texto ANTES de cambiar usuario
                     'state': 'outgoing',
                     'wa_account_id': message.wa_account_id.id,
                 })
@@ -39,8 +39,8 @@ class WhatsAppMessage(models.Model):
         try:
             api_key = self.env['ir.config_parameter'].sudo().get_param('openai.api_key')
             if not api_key:
-                _logger.error("La API key de OpenAI no está configurada")
-                return _("Lo siento, no pude procesar tu mensaje.")
+                _logger.error("API key de OpenAI no encontrada")
+                return _("Lo siento, no pude responder tu mensaje.")
             openai.api_key = api_key
 
             respuesta = openai.ChatCompletion.create(
@@ -48,7 +48,7 @@ class WhatsAppMessage(models.Model):
                 messages=[
                     {
                         'role': 'system',
-                        'content': 'Sos un asistente de atención al cliente de una empresa de productos de limpieza. Respondé de forma clara, profesional y empática.'
+                        'content': 'Sos un asistente para clientes de Química Cristal. Respondé dudas de limpieza de forma profesional y clara.'
                     },
                     {
                         'role': 'user',
@@ -58,5 +58,5 @@ class WhatsAppMessage(models.Model):
             )
             return respuesta.choices[0].message['content'].strip()
         except Exception as e:
-            _logger.error("Error al obtener respuesta de OpenAI: %s", e)
-            return _("Hubo un error al generar la respuesta.")
+            _logger.error("Error de OpenAI: %s", e)
+            return _("Lo siento, hubo un problema técnico al generar la respuesta.")
