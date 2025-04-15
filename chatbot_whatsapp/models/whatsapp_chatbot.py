@@ -14,14 +14,15 @@ class WhatsAppMessage(models.Model):
         if message.state == 'received' and message.mobile_number and message.body:
             chatbot_response = message._get_chatbot_response(message.body)
             if chatbot_response and chatbot_response.strip():
-                self.sudo().create({
+                respuesta = self.sudo().create({
                     'mobile_number': message.mobile_number,
                     'body': chatbot_response.strip(),
                     'state': 'outgoing',
-                    'create_uid': 2,  # ID del usuario Sergio Ramello
+                    'create_uid': 2,  # Sergio Ramello
                     'wa_account_id': message.wa_account_id.id if message.wa_account_id else False,
                     'x_studio_contacto': message.x_studio_contacto.id if message.x_studio_contacto else False,
                 })
+                respuesta._send_message()  # 🔥 Enviamos el mensaje automático al instante
             else:
                 _logger.warning("Respuesta vacía del chatbot. No se generó mensaje para: %s", message.body)
 
@@ -41,7 +42,7 @@ class WhatsAppMessage(models.Model):
                 messages=[
                     {
                         'role': 'system',
-                        'content': 'Sos el asistente automático de Química Cristal. Respondé de manera clara, amable y concisa a las consultas por WhatsApp.'
+                        'content': 'Sos el asistente automático de Química Cristal. Respondé consultas de clientes de manera clara, amable y precisa.'
                     },
                     {
                         'role': 'user',
