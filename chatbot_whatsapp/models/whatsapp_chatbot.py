@@ -31,6 +31,7 @@ class WhatsAppMessage(models.Model):
                     outgoing_msg = self.env['whatsapp.message'].sudo().create(outgoing_vals)
                     outgoing_msg.sudo().write({'body': response_text})
                     _logger.info("Mensaje saliente creado: ID %s, body = %s", outgoing_msg.id, outgoing_msg.body)
+                    
                     if hasattr(outgoing_msg, '_send_message'):
                         outgoing_msg._send_message()
                     else:
@@ -42,19 +43,18 @@ class WhatsAppMessage(models.Model):
     def _get_chatbot_response(self, user_message):
         """
         Responde al mensaje del cliente de dos maneras:
-          1. Si se detecta que el mensaje está relacionado con productos (por ejemplo, contiene palabras clave como 'comprar', 'producto', etc.),
-             busca en el catálogo de productos publicados (is_published=True) y devuelve enlaces directos al sitio web, limitados a 10 productos.
-          2. Si no se detecta relación con productos, construye un contexto con los últimos 5 mensajes de la conversación
-             y consulta a OpenAI para generar la respuesta.
+          1. Si el mensaje contiene palabras clave (como 'comprar', 'producto', etc.), se busca en el catálogo de 
+             productos publicados (is_published=True) y se devuelve un listado (máximo 10) con enlaces al sitio web.
+          2. Si no se detectan esas palabras, se arma el contexto de la conversación (últimos 5 mensajes) y se consulta
+             a OpenAI utilizando un prompt base que indica un tono cálido, humano y personal (preguntando, por ejemplo, 
+             el nombre del cliente si es la primera interacción).
         """
-        # --- Sección 1: Búsqueda de productos solo si se detectan palabras clave relacionadas
+        # --- Sección 1: Búsqueda de Productos  
         product_keywords = ['comprar', 'producto', 'venden', 'tienen', 'oferta', 'catálogo', 'consulta']
-        text_lower = user_message.lower()
-        if any(kw in text_lower for kw in product_keywords):
+        if any(kw in user_message.lower() for kw in product_keywords):
             Product = self.env['product.template']
-            palabras = text_lower.split()
-
-            # Dominio: únicamente productos publicados
+            palabras = user_message.lower().split()
+            
             dominio = [('is_published', '=', True)]
             condiciones = []
             for palabra in palabras:
@@ -82,7 +82,7 @@ class WhatsAppMessage(models.Model):
                     )
                 return mensaje
 
-        # --- Sección 2: Construcción de contexto conversacional
+        # --- Sección 2: Construcción de contexto conversacional  
         recent_messages = self.env['whatsapp.message'].sudo().search([
             ('mobile_number', '=', self.mobile_number),
             ('id', '<', self.id),
@@ -96,17 +96,19 @@ class WhatsAppMessage(models.Model):
                 "content": msg.body
             })
         context_messages.append({"role": "user", "content": user_message})
-
-        # --- Sección 3: Mensaje System (Prompt base)
+        
+        # --- Sección 3: Prompt base (System Message) personalizado
         system_message = (
-            "Sos un asistente de atención al cliente de Química Cristal, "
-            "una empresa especializada en productos de limpieza para el hogar e instituciones. "
-            "Tu tono es profesional, amable y claro. Si un cliente saluda, simplemente responde cordialmente. "
-            "Cuando te hagan consultas sobre productos, proporcioná enlaces directos a nuestro sitio web sin mencionar precios."
+            "Sos un asistente de atención al cliente de Química Cristal, una empresa especializada en productos de limpieza para el hogar e instituciones. "
+            "Tu tono debe ser cálido, humano y cercano. "
+            "Cuando recibas un saludo de un cliente y sea la primera interacción, saluda y preguntale su nombre, por ejemplo: "
+            "'¡Hola! Gracias por comunicarte con Química Cristal. ¿Cómo te llamás?'. "
+            "Si se hacen consultas sobre productos, proporcioná enlaces directos a nuestro sitio web sin mencionar precios. "
+            "Mantené una comunicación empática y personalizada."
         )
         messages = [{"role": "system", "content": system_message}] + context_messages
 
-        # --- Sección 4: Consulta a OpenAI
+        # --- Sección 4: Consulta a OpenAI  
         try:
             response = openai.ChatCompletion.create(
                 model="gpt-3.5-turbo",
