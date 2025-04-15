@@ -43,8 +43,8 @@ def has_product_keywords(text):
 FAQ_RESPONSES = {
     "horario": "Nuestros horarios de atención son: lunes a viernes de 8:30 a 12:30 y de 16:00 a 20:00, y sábados de 9:00 a 13:00.",
     "horarios": "Nuestros horarios de atención son: lunes a viernes de 8:30 a 12:30 y de 16:00 a 20:00, y sábados de 9:00 a 13:00.",
-    "estado de cuenta": "Para ver tu estado de cuenta ingresa a www.quimicacristal.com, accede a tu cuenta y encontrarás el detalle de tus movimientos.",
-    "que haces": "Soy el asistente virtual de Química Cristal. Estoy aquí para ayudarte a responder tus consultas sobre productos, horarios o información de cuenta.",
+    "estado de cuenta": "Para ver tu estado de cuenta, ingresa a www.quimicacristal.com y accede a tu cuenta.",
+    "que haces": "Soy el asistente virtual de Química Cristal y estoy aquí para ayudarte con tus consultas sobre productos, horarios o información de cuenta.",
 }
 
 def check_faq(user_text):
@@ -69,7 +69,7 @@ class WhatsAppMessage(models.Model):
             if message.state == 'received' and message.mobile_number and plain_body:
                 _logger.info("Mensaje recibido (ID %s): %s", message.id, plain_body)
 
-                # Primero, buscar respuestas FAQ
+                # Busca respuestas FAQ primero
                 faq_answer = check_faq(plain_body)
                 if faq_answer:
                     response = faq_answer
@@ -77,12 +77,11 @@ class WhatsAppMessage(models.Model):
                 elif has_product_keywords(plain_body):
                     response = self._handle_product_query(plain_body)
                     if not response:
-                        # Si no se encontraron productos, se sigue con la respuesta conversacional
                         response = self._generate_chatbot_reply(plain_body)
                 else:
                     response = self._generate_chatbot_reply(plain_body)
 
-                # Evitar asignar valores nulos: forzamos respuesta como string
+                # Forzar a que response_text sea string y no vacío
                 response_text = str(response.strip()) if response and response.strip() else _("Lo siento, no pude procesar tu consulta en este momento.")
                 _logger.info("Respuesta a enviar para el mensaje %s: %s", message.id, response_text)
                 try:
@@ -94,6 +93,8 @@ class WhatsAppMessage(models.Model):
                         'wa_account_id': message.wa_account_id.id if message.wa_account_id else False,
                     }
                     outgoing_msg = self.env['whatsapp.message'].sudo().create(outgoing_vals)
+                    # Forzamos la escritura del campo body
+                    outgoing_msg.sudo().write({'body': response_text})
                     _logger.info("Mensaje saliente creado: ID %s, body: %s", outgoing_msg.id, outgoing_msg.body)
                     if hasattr(outgoing_msg, '_send_message'):
                         outgoing_msg._send_message()
@@ -101,8 +102,8 @@ class WhatsAppMessage(models.Model):
                         _logger.info("Método _send_message no disponible; el mensaje quedará en cola.")
                 except Exception as e:
                     _logger.error("Error al crear/enviar mensaje saliente para mensaje %s: %s", message.id, e)
-                    
-                # Actualiza datos de partner si es posible
+
+                # Actualiza datos del partner si es posible
                 partner = self.env['res.partner'].sudo().search([('phone', '=', message.mobile_number)], limit=1)
                 if partner:
                     data = extract_user_data(plain_body)
@@ -142,14 +143,13 @@ class WhatsAppMessage(models.Model):
         Genera una respuesta conversacional utilizando OpenAI, evitando saludos y promociones reiteradas.
         Se utiliza el contexto de los últimos 5 mensajes para dar una respuesta precisa y personalizada.
         """
-        # Configuración de la API
         api_key = self.env['ir.config_parameter'].sudo().get_param('openai.api_key') or environ.get('OPENAI_API_KEY')
         if not api_key:
             _logger.error("La API key de OpenAI no está configurada.")
             return _("Lo siento, no pude procesar tu mensaje.")
         openai.api_key = api_key
 
-        # Construir el contexto (últimos 5 mensajes, orden ascendente)
+        # Construir el contexto: últimos 5 mensajes (orden ascendente)
         recent_msgs = self.env['whatsapp.message'].sudo().search([
             ('mobile_number', '=', self.mobile_number),
             ('id', '<', self.id),
@@ -161,7 +161,7 @@ class WhatsAppMessage(models.Model):
             context.append({"role": role, "content": clean_html(msg.body)})
         context.append({"role": "user", "content": user_text})
 
-        # Determinar si ya se saludó en mensajes anteriores para evitar repetir.
+        # Evitar repetir saludos si ya se saludó previamente
         already_greeted = False
         recent_outgoing = self.env['whatsapp.message'].sudo().search([
             ('mobile_number', '=', self.mobile_number),
@@ -170,12 +170,11 @@ class WhatsAppMessage(models.Model):
         if recent_outgoing and has_greeting(clean_html(recent_outgoing.body)):
             already_greeted = True
 
-        # Sistema de prompt ajustado para evitar saludos y promoción reiterada:
         system_prompt = (
             "Eres el asistente virtual de atención al cliente de Química Cristal. Tu tarea es responder de forma precisa y profesional, "
             "centrándote en la consulta que realiza el usuario. Si el usuario formula una pregunta concreta o pide información específica, responde sin incluir saludos o menciones promocionales innecesarias. "
             "Solo saluda si es la primera interacción en la conversación o si el usuario inicia un saludo, y evita repetir la promoción en cada respuesta. "
-            "En respuestas generales, mantén un tono cálido y cercano, pero sin reiterar ofertas promocionales de forma excesiva."
+            "En respuestas generales, mantén un tono cálido y cercano, pero sin reiterar ofertas promocionales excesivamente."
         )
 
         messages = [{"role": "system", "content": system_prompt}] + context
@@ -189,7 +188,7 @@ class WhatsAppMessage(models.Model):
             )
             _logger.info("Respuesta completa de OpenAI: %s", reply_result)
             reply_text = reply_result.choices[0].message.content.strip()
-            # Si la respuesta inicia con un saludo y ya se saludó previamente, eliminar la línea del saludo.
+            # Si la respuesta inicia con un saludo y ya se saludó previamente, eliminar la primera línea.
             if has_greeting(reply_text) and already_greeted:
                 lines = reply_text.splitlines()
                 if len(lines) > 1:
