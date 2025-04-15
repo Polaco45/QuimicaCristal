@@ -10,7 +10,7 @@
     'website': "https://tusitio.com",
     'category': 'Tools',
     'license': 'LGPL-3',
-    'depends': ['base'],
+    'depends': ['whatsapp_connector'],
     'data': [],
     'installable': True,
     'application': False,
