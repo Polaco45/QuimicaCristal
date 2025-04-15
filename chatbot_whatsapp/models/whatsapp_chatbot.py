@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+# chatbot_whatsapp/models/whatsapp_chatbot.py
 from odoo import models, api, fields, _
 import openai
 import logging
@@ -10,19 +10,20 @@ class WhatsAppMessage(models.Model):
     
     @api.model
     def create(self, vals):
-        # Creamos el mensaje normalmente
+        # Se crea el mensaje normalmente
         message = super(WhatsAppMessage, self).create(vals)
         
-        # Si el mensaje es entrante y tiene contenido, llamamos al chatbot
-        if message.direction == 'inbound' and message.mobile_number and message.message:
-            chatbot_response = message._get_chatbot_response(message.message)
+        # Se verifica que el mensaje sea entrante (state == 'received'),
+        # y que disponga de un número de teléfono y contenido en body.
+        if message.state == 'received' and message.mobile_number and message.body:
+            chatbot_response = message._get_chatbot_response(message.body)
             if chatbot_response:
-                # Creamos un nuevo mensaje de salida para responder
+                # Se crea un nuevo mensaje de salida (outgoing)
                 response_vals = {
-                    'mobile_number': message.mobile_number,  # Se responde al mismo número
-                    'message': chatbot_response,
-                    'direction': 'outbound',
-                    # Agrega aquí otros campos necesarios (por ejemplo, usuario, fecha, etc.)
+                    'mobile_number': message.mobile_number,  # Responder al mismo número
+                    'body': chatbot_response,                 # El contenido de la respuesta
+                    'state': 'outgoing',                      # Se asume que 'outgoing' indica mensaje en cola para enviar
+                    # Puedes agregar otros campos si es necesario (por ejemplo, fecha o usuario)
                 }
                 self.create(response_vals)
         return message
@@ -32,14 +33,14 @@ class WhatsAppMessage(models.Model):
         Llama a la API de OpenAI para obtener una respuesta basada en el mensaje del usuario.
         """
         try:
-            # Recuperar la API key desde los parámetros del sistema
+            # Recupera la API key desde los parámetros del sistema
             openai_api_key = self.env['ir.config_parameter'].sudo().get_param('openai.api_key')
             if not openai_api_key:
                 _logger.error("La API key de OpenAI no está configurada en ir.config_parameter")
                 return _("Lo siento, no se pudo procesar tu mensaje.")
             openai.api_key = openai_api_key
             
-            # Llamar a la API de OpenAI utilizando el modelo gpt-3.5-turbo
+            # Llama a la API de OpenAI utilizando el modelo gpt-3.5-turbo
             openai_response = openai.ChatCompletion.create(
                 model='gpt-3.5-turbo',
                 messages=[
