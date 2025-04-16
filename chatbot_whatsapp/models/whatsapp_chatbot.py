@@ -16,10 +16,14 @@ def clean_html(text):
     """Elimina etiquetas HTML y espacios sobrantes."""
     return re.sub(HTML_TAGS, "", text or "").strip()
 
+def normalize_phone(phone):
+    """Normaliza un número de teléfono extrayendo solo dígitos."""
+    return re.sub(r'\D+', '', phone or "")
+
 def extract_user_data(text):
     """
-    Extrae nombre y correo a partir de frases en el mensaje.
-    Este método se usa cuando el usuario incluye su nombre en el mensaje.
+    Extrae nombre y correo a partir de frases como "me llamo", "soy" o "mi nombre es"
+    y, si se encuentra, un email válido.
     """
     name_pat = r"(?:me llamo|soy|mi nombre es)\s+([A-ZÁÉÍÓÚÑa-záéíóúñ]+(?:\s+[A-ZÁÉÍÓÚÑa-záéíóúñ]+)*)"
     email_pat = r"[\w\.\-]+@(?:gmail|hotmail|yahoo|outlook|icloud)\.(?:com|ar)"
@@ -43,7 +47,7 @@ def has_product_keywords(text):
 def is_valid_product_query(user_text):
     """
     Verifica que la consulta se refiera a un producto dentro de nuestro dominio,
-    utilizando la siguiente lista de palabras permitidas (categorías):
+    utilizando la siguiente lista de palabras permitidas (categorías).
     """
     allowed_keywords = [
         "combos", "ofertas",
@@ -69,8 +73,8 @@ def is_valid_product_query(user_text):
 
 def is_obscene_query(user_text):
     """
-    Detecta si la consulta contiene términos obscenos o fuera del dominio.
-    Ejemplo: "dildo", "dildos", "pene de goma", "penes de goma".
+    Detecta si la consulta contiene términos obscenos o fuera de nuestro dominio.
+    Ejemplos: "dildo", "dildos", "pene de goma", "penes de goma".
     """
     obscene_terms = ["dildo", "dildos", "pene de goma", "penes de goma"]
     text_lower = user_text.lower()
@@ -131,7 +135,11 @@ class WhatsAppMessage(models.Model):
             plain_body = clean_html(message.body)
             if message.state == 'received' and message.mobile_number and plain_body:
                 _logger.info("Mensaje recibido (ID %s): %s", message.id, plain_body)
-
+                normalized_phone = normalize_phone(message.mobile_number)
+                
+                # Buscar partner usando el número normalizado
+                partner = self.env['res.partner'].sudo().search([('phone', '=', normalized_phone)], limit=1)
+                
                 # Si la consulta es obscena, responder de forma predeterminada.
                 if is_obscene_query(plain_body):
                     response = ("Lo siento, en Química Cristal Minorista nos especializamos en la venta de insumos de limpieza para el hogar. "
@@ -141,7 +149,7 @@ class WhatsAppMessage(models.Model):
                     faq_answer = check_faq(plain_body)
                     if faq_answer:
                         response = faq_answer
-                    # Si se menciona productos, validar la consulta
+                    # Si se menciona producto, validar la consulta
                     elif has_product_keywords(plain_body):
                         if is_valid_product_query(plain_body):
                             response = self._handle_product_query(plain_body)
@@ -153,13 +161,18 @@ class WhatsAppMessage(models.Model):
 
                 response_text = str(response.strip()) if response and response.strip() else _("Lo siento, no pude procesar tu consulta en este momento. 😔")
                 
-                # Si el partner ya existe pero no tiene nombre y el mensaje no lo dice, se le pregunta el nombre.
-                partner = self.env['res.partner'].sudo().search([('phone', '=', message.mobile_number)], limit=1)
+                # Si el partner ya existe pero no tiene nombre y el mensaje no indica uno, se le pregunta el nombre.
                 data_from_msg = extract_user_data(plain_body)
                 if partner:
                     if not partner.name and not data_from_msg.get("name"):
                         response_text += " Por cierto, ¿cómo te llamás? 😊"
-                
+                else:
+                    # Si no existe, crear un partner con el teléfono normalizado y, si se indica nombre, asignarlo
+                    partner = self.env['res.partner'].sudo().create({
+                        'phone': normalized_phone,
+                        'name': data_from_msg.get("name") or "",
+                    })
+
                 _logger.info("Respuesta a enviar para el mensaje %s: %s", message.id, response_text)
                 try:
                     outgoing_vals = {
@@ -180,13 +193,13 @@ class WhatsAppMessage(models.Model):
                 except Exception as e:
                     _logger.error("Error al crear/enviar mensaje saliente para mensaje %s: %s", message.id, e)
 
-                # Actualizar datos del partner (nombre, email) si están ausentes
+                # Actualizar datos del partner (nombre y email) si aparecen en el mensaje y no están ya configurados
                 if partner:
                     data = extract_user_data(plain_body)
                     updates = {}
-                    if data.get("name") and not partner.name:
+                    if data.get("name") and (not partner.name or data.get("name").lower() != partner.name.lower()):
                         updates["name"] = data["name"]
-                    if data.get("email") and not partner.email:
+                    if data.get("email") and (not partner.email or data.get("email").lower() != partner.email.lower()):
                         updates["email"] = data["email"]
                     if updates:
                         _logger.info("Actualizando partner %s: %s", partner.id, updates)
@@ -205,10 +218,10 @@ class WhatsAppMessage(models.Model):
         """
         Genera una respuesta conversacional utilizando OpenAI con un tono muy casual, cercano y persuasivo.
         Se apoya en el contexto de los últimos 5 mensajes e inyecta el nombre del cliente (si se conoce)
-        en el prompt para tratarlo personalmente.
+        en el prompt para tratarlo de forma personalizada.
         """
         # Obtener partner y agregar su nombre al prompt si se conoce
-        partner = self.env['res.partner'].sudo().search([('phone', '=', self.mobile_number)], limit=1)
+        partner = self.env['res.partner'].sudo().search([('phone', '=', normalize_phone(self.mobile_number))], limit=1)
         extra_prompt = ""
         if partner and partner.name:
             extra_prompt = f" Recuerda que el cliente se llama {partner.name}."
@@ -240,8 +253,8 @@ class WhatsAppMessage(models.Model):
 
         system_prompt = (
             "Eres el asistente virtual de atención al cliente de Química Cristal Minorista, especializada en la venta de insumos de limpieza para el hogar. "
-            "Habla de forma muy casual, cercana y amigable, con un tono personal y persuasivo, e incorpora emojis en tus respuestas. "
-            "Cuando un usuario pregunte por un producto, redirígalo a nuestra web (www.quimicacristal.com) con un claro llamado a la acción, "
+            "Habla de forma muy casual, cercana y amigable, usando un tono personal y persuasivo, e incorpora emojis en tus respuestas. "
+            "Cuando un usuario pregunte por un producto, redirígalo a nuestra web (www.quimicacristal.com) con un llamado a la acción claro, "
             "por ejemplo, '¡Compra ahora!' o 'Visita nuestra web'. Si el usuario pregunta por la ubicación o los horarios, incluye ambos datos. "
             "Sé conciso y no repitas saludos innecesarios. " + extra_prompt
         )
