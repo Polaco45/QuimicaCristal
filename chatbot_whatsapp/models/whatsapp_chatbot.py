@@ -17,11 +17,7 @@ def clean_html(text):
     return re.sub(HTML_TAGS, "", text or "").strip()
 
 def normalize_phone(phone):
-    """
-    Normaliza un número de teléfono extrayendo solo dígitos y
-    eliminando prefijos internacionales: si comienza con "549", se remueve los 3 primeros dígitos;
-    si comienza con "54", se remueven los 2 primeros.
-    """
+    """Normaliza un número de teléfono extrayendo solo dígitos y eliminando prefijos '54' o '549'."""
     phone_norm = phone.replace('+', '').replace(' ', '').replace('-', '').replace('(', '').replace(')', '')
     if phone_norm.startswith('549'):
         phone_norm = phone_norm[3:]
@@ -32,7 +28,7 @@ def normalize_phone(phone):
 def extract_user_data(text):
     """
     Extrae nombre y correo a partir de frases como "me llamo", "soy", o "mi nombre es"
-    y, si se encuentra, un email válido.
+    y un email válido.
     """
     name_pat = r"(?:me llamo|soy|mi nombre es)\s+([A-ZÁÉÍÓÚÑa-záéíóúñ]+(?:\s+[A-ZÁÉÍÓÚÑa-záéíóúñ]+)*)"
     email_pat = r"[\w\.\-]+@(?:gmail|hotmail|yahoo|outlook|icloud)\.(?:com|ar)"
@@ -56,7 +52,7 @@ def has_product_keywords(text):
 def is_valid_product_query(user_text):
     """
     Verifica que la consulta se refiera a un producto dentro de nuestro dominio,
-    utilizando la siguiente lista de palabras permitidas (categorías):
+    utilizando la siguiente lista de palabras permitidas (categorías).
     """
     allowed_keywords = [
         "combos", "ofertas",
@@ -158,7 +154,7 @@ class WhatsAppMessage(models.Model):
                     response = ("Lo siento, en Química Cristal Minorista nos especializamos en la venta de insumos de limpieza para el hogar. "
                                 "Te invito a ver nuestro catálogo en www.quimicacristal.com para conocer nuestros productos.")
                 else:
-                    # Revisar si la consulta coincide con alguna FAQ (ubicación, horarios, etc.)
+                    # Revisar FAQ (ubicación, horarios, etc.)
                     faq_answer = check_faq(plain_body)
                     if faq_answer:
                         response = faq_answer
@@ -174,8 +170,7 @@ class WhatsAppMessage(models.Model):
 
                 response_text = str(response.strip()) if response and response.strip() else _("Lo siento, no pude procesar tu consulta en este momento. 😔")
                 
-                # Si el partner existe y no tiene nombre, o si el mensaje indica un nombre diferente,
-                # se actualiza el registro, o bien se le pregunta el nombre si sigue sin saberlo.
+                # Revisar datos del partner y actualizar el nombre si se indica en el mensaje
                 data_from_msg = extract_user_data(plain_body)
                 if partner:
                     if data_from_msg.get("name") and (not partner.name or data_from_msg.get("name").lower() != partner.name.lower()):
@@ -238,7 +233,14 @@ class WhatsAppMessage(models.Model):
         Se apoya en el contexto de los últimos 5 mensajes e inyecta el nombre del cliente (si se conoce)
         en el prompt para tratarlo de forma personalizada.
         """
-        partner = self.env['res.partner'].sudo().search([('phone', 'ilike', normalize_phone(self.mobile_number))], limit=1)
+        # Usar self.mobile_number normalizado si es cadena; de lo contrario, usar cadena vacía.
+        mobile_to_use = self.mobile_number if isinstance(self.mobile_number, str) else ""
+        normalized_mobile = normalize_phone(mobile_to_use)
+        
+        partner = self.env['res.partner'].sudo().search([
+            ('phone', 'ilike', normalized_mobile),
+            ('mobile', 'ilike', normalized_mobile)
+        ], limit=1)
         extra_prompt = ""
         if partner and partner.name:
             extra_prompt = f" Recuerda que el cliente se llama {partner.name}."
