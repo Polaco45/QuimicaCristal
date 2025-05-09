@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates id="template" xml:space="preserve">
+  <t t-name="JournalSelectorPaymentScreen">
+    <t t-jquery="div.payment-controls" t-operation="append">
+      <div style="margin-top: 10px;">
+        <button t-on-click="() => alert('Selector de diario pronto')" class="btn btn-outline-primary">
+          ▼ Elegir Diario
+        </button>
+        <p style="color:green; font-size: 0.9em;">Botón de diario activo (v7)</p>
+      </div>
+    </t>
+  </t>
+</templates>
