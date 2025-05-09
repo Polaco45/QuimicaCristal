@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates id="template" xml:space="preserve">
+  <t t-name="OrderWidgetWithJournalSelector" t-inherit="point_of_sale.OrderWidget" t-inherit-mode="extension">
+    <xpath expr="//div[contains(@class, 'control-buttons')]//button[contains(@class, 'invoice-button')]" position="after">
+      <div class="journal-selector" style="display:inline-block; margin-left: 5px;">
+        <button t-on-click="toggleJournalSelector" class="button toggle-journal" style="padding: 4px 6px; font-size: 18px;">
+          ▼
+        </button>
+        <t t-if="journalOptionsVisible">
+          <ul class="journal-dropdown" style="position: absolute; background: white; border: 1px solid #ccc; padding: 5px; list-style: none; z-index: 1000;">
+            <t t-foreach="env.pos.pos_journals" t-as="journal">
+              <li t-on-click="selectJournal" t-att-data-journal-id="journal.id" style="cursor: pointer; padding: 3px 10px;">
+                <t t-esc="journal.name"/>
+              </li>
+            </t>
+          </ul>
+        </t>
+      </div>
+    </xpath>
+  </t>
+</templates>
