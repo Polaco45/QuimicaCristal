@@ -16,25 +16,23 @@ patch(PaymentScreen.prototype, {
     },
 
     is_check_default_journal() {
-        var journal_id = this.pos.config.default_journal_id;
-        if (journal_id) {
-            return true
-        }
+        const journal_id = this.pos.config.default_journal_id;
+        return !!journal_id;
     },
+
     apply_default_journal() {
-        var journal_id = this.pos.config.default_journal_id;
+        const journal_id = this.pos.config.default_journal_id;
         if (journal_id) {
             this.currentOrder.set_invoice_journal_id(journal_id.id);
-
         }
     },
+
     // Función para manejar el clic de selección de diarios
     click_diarios(journal_id) {
         const order = this.currentOrder;
 
         this.render();
 
-        // Actualizar la selección del diario
         if (order.get_invoice_journal_id() !== journal_id) {
             order.set_invoice_journal_id(journal_id);
         } else {
@@ -43,4 +41,15 @@ patch(PaymentScreen.prototype, {
         }
     },
 
+    // Activar factura si se selecciona el método de pago con ID 9
+    addNewPaymentLine(paymentMethod) {
+        super.addNewPaymentLine(...arguments);
+        const order = this.currentOrder;
+
+        if (paymentMethod && paymentMethod.id === 9) {
+            order.set_to_invoice(true);
+        } else {
+            order.set_to_invoice(false);
+        }
+    },
 });
