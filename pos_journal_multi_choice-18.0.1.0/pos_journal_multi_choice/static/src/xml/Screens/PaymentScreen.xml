@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<templates id="template" xml:space="preserve">
+    <t t-extend="PaymentScreenButtons" t-inherit="point_of_sale.PaymentScreenButtons" t-inherit-mode="extension" owl="1">
+        <xpath expr="//div[1]" position="inside">
+            <t t-if="pos.config.invoice_journal_ids">
+                <h2 style="text-align: center; font-weight: bold;">Select a Journal</h2>
+
+                <t t-foreach="pos.config.invoice_journal_ids" t-as="journal" t-key="journal.id">
+                    <button 
+                        class="button js_sale_journal btn btn-light py-3 text-start rounded-0 border-bottom"
+                        t-att-class="{ 'highlight text-bg-primary': currentOrder.get_invoice_journal_id() === journal.id }"
+                        t-att-data-id="journal.id"
+                        t-on-click="() => click_diarios.bind(this)(journal.id)">
+                        <i class="fa fa-file-text-o me-2" />
+                        <t t-esc="journal.name" />
+                    </button>
+                </t>
+            </t>
+        </xpath>
+    </t>
+</templates>
