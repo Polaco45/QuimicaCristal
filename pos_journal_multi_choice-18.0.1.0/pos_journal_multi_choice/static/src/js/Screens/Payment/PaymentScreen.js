@@ -25,13 +25,13 @@ patch(PaymentScreen.prototype, {
         var journal_id = this.pos.config.default_journal_id;
         if (journal_id) {
             this.currentOrder.set_invoice_journal_id(journal_id.id);
-            this.currentOrder.set_to_invoice(true);
+
         }
     },
     // Función para manejar el clic de selección de diarios
     click_diarios(journal_id) {
         const order = this.currentOrder;
-        order.set_to_invoice(true);  // Para asegurarse de que el pedido esté configurado para facturar
+
         this.render();
 
         // Actualizar la selección del diario
