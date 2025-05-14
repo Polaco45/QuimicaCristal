@@ -211,8 +211,6 @@ class WhatsAppMessage(models.Model):
                 if partner:
                     data = extract_user_data(plain_body)
                     updates = {}
-                    if data.get("name") and (not partner.name or data.get("name").lower() != partner.name.lower()):
-                        updates["name"] = data["name"]
                     if data.get("email") and (not partner.email or data.get("email").lower() != partner.email.lower()):
                         updates["email"] = data["email"]
                     if updates:
@@ -241,9 +239,8 @@ class WhatsAppMessage(models.Model):
             ('phone', 'ilike', normalized_mobile),
             ('mobile', 'ilike', normalized_mobile)
         ], limit=1)
-        extra_prompt = ""
-        if partner and partner.name:
-            extra_prompt = f" Recuerda que el cliente se llama {partner.name}."
+   extra_prompt = ""
+    
             
         api_key = self.env['ir.config_parameter'].sudo().get_param('openai.api_key') or environ.get('OPENAI_API_KEY')
         if not api_key:
