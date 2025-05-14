@@ -38,10 +38,11 @@
             <t t-if="pos.config.payment_reference_detail">
                 <t t-if="payment_method_ids.includes(line.payment_method_id.id)">
                     <div class="payment-ref-button"
-                        t-on-click="() => this.props.addPayRefLine(line.uuid)"
-                        aria-label="Payment Reference" title="Payment Reference">
-                        <i class="fa fa-bank"/> Payment Reference
-                    </div>
+    t-on-click="() => this.props.addPayRefLine(line.uuid)"
+    aria-label="Referencia de pago" title="Cargar referencia de esta transacción">
+    <i class="fa fa-edit"/> Añadir referencia
+</div>
+
                 </t>
             </t>
         </xpath>
