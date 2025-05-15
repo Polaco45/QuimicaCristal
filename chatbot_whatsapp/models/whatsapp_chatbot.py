@@ -190,4 +190,3 @@ class WhatsAppMessage(models.Model):
         except Exception as e:
             _logger.error("Error OpenAI: %s", e, exc_info=True)
             return _("Lo siento, hubo un problema al generar la respuesta. 😔")
-
