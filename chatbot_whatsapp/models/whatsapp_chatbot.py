@@ -71,7 +71,7 @@ class WhatsAppMessage(models.Model):
                     '|', ('phone','ilike',phone), ('mobile','ilike',phone)
                 ], limit=1)
 
-                # Elegir respuesta
+                # Determinar la respuesta
                 if is_obscene_query(plain):
                     resp = "Lo siento, en Química Cristal solo vendemos insumos de limpieza. Mirá nuestro catálogo online."
                 else:
@@ -92,15 +92,19 @@ class WhatsAppMessage(models.Model):
                     })
                     resp += " Por cierto, ¿cómo te llamás? 😊"
 
-                # Envío vía Facebook Graph API
-                acct = msg.wa_account_id
-                token = acct.access_token or \
-                        self.env['ir.config_parameter'].sudo().get_param('whatsapp.access_token') or \
-                        environ.get('WHATSAPP_ACCESS_TOKEN')
-                phone_id = acct.phone_number_id or \
-                           self.env['ir.config_parameter'].sudo().get_param('whatsapp.phone_number_id')
+                # ——— Envío vía Facebook Graph API ———
+                # Ahora obtenemos siempre de ir.config_parameter (o variable de entorno)
+                token = (
+                    self.env['ir.config_parameter'].sudo()
+                        .get_param('whatsapp.access_token')
+                    or environ.get('WHATSAPP_ACCESS_TOKEN')
+                )
+                phone_id = (
+                    self.env['ir.config_parameter'].sudo()
+                        .get_param('whatsapp.phone_number_id')
+                )
                 if not token or not phone_id:
-                    _logger.error("❌ Credenciales de WhatsApp no configuradas.")
+                    _logger.error("❌ Credenciales de WhatsApp no configuradas en ir.config_parameter.")
                     continue
 
                 url = f"https://graph.facebook.com/v14.0/{phone_id}/messages"
@@ -119,12 +123,16 @@ class WhatsAppMessage(models.Model):
                     r.raise_for_status()
                     _logger.info("✅ Enviado a %s -> %s", phone, r.json())
                 except Exception as e:
-                    _logger.error("❌ Error GraphAPI: %s / %s", getattr(e,'response',e), e)
+                    _logger.error("❌ Error GraphAPI: %s", e)
 
         return records
 
     def _generate_chatbot_reply(self, user_text):
-        api_key = self.env['ir.config_parameter'].sudo().get_param('openai.api_key') or environ.get('OPENAI_API_KEY')
+        api_key = (
+            self.env['ir.config_parameter'].sudo()
+                .get_param('openai.api_key')
+            or environ.get('OPENAI_API_KEY')
+        )
         if not api_key:
             _logger.error("❌ Falta openai.api_key.")
             return _("Lo siento, no pude procesar tu mensaje. 😔")
