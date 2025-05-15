@@ -1,60 +1,74 @@
-# -*- coding: utf-8 -*-
 from odoo import models, api, _
 import logging
 import re
 
 _logger = logging.getLogger(__name__)
 
-TRIGGER_WORDS = [
-    "quiero mi regalo", "quiero mi Regalo", "regalo", "Regalo", "🎁",
-    "mi regalo", "el regalo", "promo", "promoción", "cupon", "cupón"
-]
+REGALO_KEYWORDS = ['quiero mi regalo', 'regalo', '🎁']
+RESPUESTA_INICIAL = (
+    "🎉 ¡Felicitaciones! Ganaste hasta $10.000 en productos de limpieza.\n"
+    "¿Querés usar tu regalo en la Tienda Web 🛒 o en el Local Físico 🏪?\n"
+    "Respondé con 'Web', 'Tienda', 'Online' o 'Local', 'Negocio', etc."
+)
+RESPUESTA_CUPON = (
+    "Tenés 3 días para usarlo. Si se te complica, avisanos 😉"
+)
 
-WEB_KEYWORDS = ["web", "tienda", "online", "sitio", "página"]
-LOCAL_KEYWORDS = ["local", "físico", "negocio", "sucursal", "ir personalmente"]
+def contiene_palabra_clave(texto, palabras_clave):
+    return any(palabra.lower() in texto.lower() for palabra in palabras_clave)
 
-class WhatsappMessage(models.Model):
+class WhatsAppMessage(models.Model):
     _inherit = 'whatsapp.message'
 
     @api.model_create_multi
     def create(self, vals_list):
-        records = super().create(vals_list)
-        for msg in records:
-            if msg.state != 'received' or not msg.body:
+        records = super(WhatsAppMessage, self).create(vals_list)
+        for message in records:
+            if message.state != 'received' or not message.mobile_number:
                 continue
 
-            texto = msg.body.strip().lower()
+            texto = (message.body or "").strip().lower()
+            if contiene_palabra_clave(texto, REGALO_KEYWORDS):
+                respuesta = RESPUESTA_INICIAL
+            elif contiene_palabra_clave(texto, ['web', 'tienda', 'online', 'comprar']):
+                self._enviar_cupon(message)
+                continue
+            elif contiene_palabra_clave(texto, ['local', 'negocio', 'físico', 'fisico']):
+                self._enviar_cupon(message)
+                continue
+            else:
+                continue  # Ignora todos los demás mensajes
 
-            # Verificamos si el mensaje es uno de los disparadores
-            if any(palabra in texto for palabra in TRIGGER_WORDS):
-                respuesta = "🎉 ¡Felicitaciones! Ganaste hasta $10.000 en productos.\n¿Querés usarlo en la web 🛒 o en el local 🏪?"
-                self._responder(msg, respuesta)
-
-            elif any(palabra in texto for palabra in WEB_KEYWORDS + LOCAL_KEYWORDS):
-                imagen = self.env['ir.attachment'].search([('name', '=', 'cupon_web')], limit=1)
-                if imagen:
-                    msg.env['whatsapp.message'].sudo().create({
-                        'mobile_number': msg.mobile_number,
-                        'state': 'outgoing',
-                        'attachment_id': imagen.id,
-                        'wa_account_id': msg.wa_account_id.id,
-                    })
-                texto = "Tenés 3 días para usarlo. Si se te complica, escribinos 😉"
-                self._responder(msg, texto)
+            self._crear_mensaje_salida(message, respuesta)
 
         return records
 
-    def _responder(self, mensaje_obj, texto):
-        """Crea y envía una respuesta simple por WhatsApp"""
-        try:
-            outgoing_msg = self.env['whatsapp.message'].sudo().create({
-                'mobile_number': mensaje_obj.mobile_number,
-                'body': texto,
-                'state': 'outgoing',
-                'create_uid': self.env.ref('base.user_admin').id,
-                'wa_account_id': mensaje_obj.wa_account_id.id,
-            })
-            if hasattr(outgoing_msg, '_send_message'):
-                outgoing_msg._send_message()
-        except Exception as e:
-            _logger.error("❌ Error al enviar respuesta automática: %s", e)
+    def _crear_mensaje_salida(self, mensaje_entrada, texto):
+        vals = {
+            'mobile_number': mensaje_entrada.mobile_number,
+            'body': texto,
+            'state': 'outgoing',
+            'create_uid': self.env.ref('base.user_admin').id,
+            'wa_account_id': mensaje_entrada.wa_account_id.id if mensaje_entrada.wa_account_id else False,
+        }
+        mensaje_saliente = self.env['whatsapp.message'].sudo().create(vals)
+        if hasattr(mensaje_saliente, '_send_message'):
+            mensaje_saliente._send_message()
+
+    def _enviar_cupon(self, mensaje_entrada):
+        adjunto = self.env['ir.attachment'].sudo().search([('name', '=', 'cupon_web')], limit=1)
+        if not adjunto:
+            _logger.warning("Imagen de cupón no encontrada.")
+            return
+
+        mensaje_con_imagen = {
+            'mobile_number': mensaje_entrada.mobile_number,
+            'body': RESPUESTA_CUPON,
+            'attachment_ids': [(6, 0, [adjunto.id])],
+            'state': 'outgoing',
+            'create_uid': self.env.ref('base.user_admin').id,
+            'wa_account_id': mensaje_entrada.wa_account_id.id if mensaje_entrada.wa_account_id else False,
+        }
+        mensaje = self.env['whatsapp.message'].sudo().create(mensaje_con_imagen)
+        if hasattr(mensaje, '_send_message'):
+            mensaje._send_message()
