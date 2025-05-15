@@ -241,10 +241,6 @@ class WhatsAppMessage(models.Model):
             ('phone', 'ilike', normalized_mobile),
             ('mobile', 'ilike', normalized_mobile)
         ], limit=1)
-        extra_prompt = ""
-        if partner and partner.name:
-            extra_prompt = f" Recuerda que el cliente se llama {partner.name}."
-            
         api_key = self.env['ir.config_parameter'].sudo().get_param('openai.api_key') or environ.get('OPENAI_API_KEY')
         if not api_key:
             _logger.error("La API key de OpenAI no está configurada.")
@@ -274,8 +270,9 @@ class WhatsAppMessage(models.Model):
             "Eres el asistente virtual de atención al cliente de Química Cristal Minorista, especializada en la venta de insumos de limpieza para el hogar. "
             "Habla de forma muy casual, cercana y amigable, usando un tono personal y persuasivo, e incorpora emojis en tus respuestas. "
             "Cuando un usuario pregunte por un producto, redirígalo a nuestra web (www.quimicacristal.com) con un claro llamado a la acción, "
-            "por ejemplo, '¡Compra ahora!' o 'Visita nuestra web'. Si el usuario pregunta por la ubicación o los horarios, incluye ambos datos. "
-            "Sé conciso y no repitas saludos innecesarios. " + extra_prompt
+           "por ejemplo, '¡Compra ahora!' o 'Visita nuestra web'. Si el usuario pregunta por la ubicación o los horarios, incluye ambos datos. "
+"**Sé conciso y no repitas saludos innecesarios.**"
+
         )
 
         messages = [{"role": "system", "content": system_prompt}] + context
