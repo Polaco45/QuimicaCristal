@@ -56,20 +56,26 @@ class WhatsappMessage(models.Model):
 
     def _generate_chatbot_reply(self, user_text):
         """
-        Entrypoint to call OpenAI's ChatCompletion API.
-        Returns the assistant's reply as a string.
+        Llama a la API de OpenAI y devuelve la respuesta del asistente como texto plano.
         """
         self.ensure_one()
-        # Build the messages payload; you can extend this with system or context messages
-        messages = [
-            {"role": "user", "content": user_text}
-        ]
-        # Call the OpenAI API
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=messages,
-            temperature=0.7,
-            max_tokens=150,
-        )
-        # Extract and return the assistant's reply
-        return response.choices[0].message.content.strip()
+
+        prompt = f"""Sos un asesor de ventas por WhatsApp de una empresa de productos de limpieza.
+Tu tarea es responder de forma amable, clara y profesional.
+Respondé solo consultas relacionadas con productos de limpieza, promociones o ventas.
+Si no entendés algo, pedí que reformulen la pregunta.
+Nunca repitas saludos ni nombres.
+Este es el mensaje del cliente:\n\n{user_text.strip()}
+"""
+
+        try:
+            response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.5,
+                max_tokens=500,
+            )
+            return response.choices[0].message['content'].strip()
+
+        except Exception as e:
+            raise UserError(f"Error al generar la respuesta del chatbot: {str(e)}")
