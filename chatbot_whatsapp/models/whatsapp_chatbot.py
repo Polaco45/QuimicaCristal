@@ -73,7 +73,7 @@ FAQ_RESPONSES = {
                 "y sábados de 9:00 a 13:00. Además, nos encuentras en San Martin 2350, Río Cuarto, Córdoba. 😊"),
     "horarios": ("Nuestros horarios de atención son: lunes a viernes de 8:30 a 12:30 y de 16:00 a 20:00, "
                  "y sábados de 9:00 a 13:00. Además, nos encontramos en San Martin 2350, Río Cuarto, Córdoba. 😊"),
-    "estado de cuenta": "Para ver tu estado de cuenta, ingresa a www.quimicacristal.com y accede a tu cuenta. 💻",
+    "estado de cuenta": "Para ver tu estado de cuenta, ingresa a www.quimicacristal.com.ar.ar y accede a tu cuenta. 💻",
     "que haces": "Soy tu asistente de Química Cristal y estoy aquí para ayudarte con consultas sobre productos, horarios o información de cuenta. 🤖",
     "local": ("Nuestro local está en San Martin 2350, Río Cuarto, Córdoba (Química Cristal). "
               "Nuestro horario es de lunes a viernes de 8:30 a 12:30 y de 16:00 a 20:00, y sábados de 9:00 a 13:00. 📍"),
@@ -115,7 +115,7 @@ class WhatsAppMessage(models.Model):
 
                 if is_obscene_query(plain_body):
                     response = ("Lo siento, en Química Cristal nos especializamos en la venta de insumos de limpieza. "
-                                "Visita www.quimicacristal.com para conocer nuestros productos.")
+                                "Visita www.quimicacristal.com.ar para conocer nuestros productos.")
                 else:
                     faq_answer = check_faq(plain_body)
                     if faq_answer:
@@ -125,7 +125,7 @@ class WhatsAppMessage(models.Model):
                             response = self._handle_product_query(plain_body)
                         else:
                             response = ("Lo siento, en Química Cristal Minorista nos especializamos en insumos de limpieza y cuidado del hogar. "
-                                        "Visitá www.quimicacristal.com 😉")
+                                        "Visitá www.quimicacristal.com.ar 😉")
                     else:
                         response = self._generate_chatbot_reply(plain_body)
 
@@ -173,7 +173,7 @@ class WhatsAppMessage(models.Model):
 
     def _handle_product_query(self, user_text):
         return ("¡Hola! Para encontrar el producto o alternativa que buscás, "
-                "visitá nuestra tienda online en www.quimicacristal.com. ¡No lo dejes pasar! 🛒")
+                "visitá nuestra tienda online en www.quimicacristal.com.ar. ¡No lo dejes pasar! 🛒")
 
     def _generate_chatbot_reply(self, user_text):
         mobile_to_use = self.mobile_number if isinstance(self.mobile_number, str) else ""
@@ -210,8 +210,9 @@ class WhatsAppMessage(models.Model):
 
         system_prompt = (
             "Eres el asistente virtual de atención al cliente de Química Cristal Minorista. "
+            "Eres ustilizado unicamente para una Campaña en la que al Recibir la palabra "Regalo", "Quiero mi Regalo", "¡Quiero mi Regalo🎁!" y variantes debes responder solamente la palabra "Caramelo"
             "Habla de forma muy casual, cercana y amigable, usando un tono personal y persuasivo, e incorpora emojis. "
-            "Cuando un usuario pregunte por un producto, redirígelo a nuestra web (www.quimicacristal.com). "
+            "Cuando un usuario pregunte por un producto, redirígelo a nuestra web (www.quimicacristal.com.ar). "
             "Sé conciso y no repitas saludos innecesarios."
         )
 
