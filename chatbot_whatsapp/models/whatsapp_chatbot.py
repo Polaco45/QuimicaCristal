@@ -219,7 +219,7 @@ class WhatsAppMessage(models.Model):
 
         try:
             reply_result = openai.ChatCompletion.create(
-                model="gpt-4o",
+                model="gpt-3.5-turbo",
                 messages=messages,
                 temperature=0.45,
                 max_tokens=200,
