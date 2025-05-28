@@ -11,17 +11,21 @@ patch(ProductScreen.prototype, {
         await super.addProductToOrder(product, options);
 
         // Luego mostramos productos sugeridos si existen
-        rpc('/web/dataset/call_kw/pos.cross.selling/get_cross_selling_products', {
-            model: 'pos.cross.selling',
-            method: 'get_cross_selling_products',
-            args: [[], product.id],
-            kwargs: {},
-        }).then(async(result) => {
-            if (result.length > 0) {
-                await this.dialog.add(CrossProduct, {
-                    product: result
-                });
-            }
-        });
+     const order     = this.currentOrder;
+const pricelist = order.pricelist;          // lista activa
+const partner   = order.get_partner();      // cliente (puede ser null)
+
+rpc('/web/dataset/call_kw/pos.cross.selling/get_cross_selling_products', {
+    model:  'pos.cross.selling',
+    method: 'get_cross_selling_products',
+    args:   [[], product.id],
+    // --- enviamos contexto ---
+    context: {
+        pricelist:  pricelist && pricelist.id,
+        partner_id: partner   && partner.id,
     },
+}).then(async (result) => {
+    if (result.length) {
+        await this.dialog.add(CrossProduct, { product: result });
+    }
 });
