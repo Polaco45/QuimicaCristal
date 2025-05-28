@@ -19,9 +19,7 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 ################################################################################
-from odoo import api, fields, models, _
-from odoo.exceptions import ValidationError
-
+from odoo import api, models, fields, _
 
 class PosCrossSelling(models.Model):
     """Model Pos Cross-Selling Products"""
@@ -29,51 +27,60 @@ class PosCrossSelling(models.Model):
     _description = 'POS Cross-Selling'
     _rec_name = 'product_id'
 
-    product_id = fields.Many2one('product.product',
-                                 domain=[('available_in_pos', '=', 'True')],
-                                 required=True, string='Product Name',
-                                 help="Product details")
-    active = fields.Boolean(string='Active',
-                            help="To check the cross selling is active or not",
-                            default=True)
-    pos_cross_product_ids = fields.One2many('pos.cross.selling.line',
-                                            'pos_cross_product_id',
-                                            string='Pos Cross products',
-                                            help="Pos Cross products")
-
-    @api.constrains('product_id')
-    def _check_product_id(self):
-        """This method for avoid multiple creation of pos
-         cross-selling products"""
-        for rec in self:
-            pos = self.env['pos.cross.selling'].search(
-                [('product_id', '=', rec.product_id.id)])
-            if len(pos) > 1:
-                raise ValidationError(_('Already exist a cross product with the'
-                                        ' %s product ') % rec.product_id.name)
-
-    @api.constrains('pos_cross_product_ids')
-    def _check_pos_cross_product_ids(self):
-        """This method for add cross product lines"""
-        for rec in self:
-            if len(rec.pos_cross_product_ids) < 0:
-                raise ValidationError(_("Please add the cross products lines"))
+    product_id = fields.Many2one(
+        'product.product',
+        domain=[('available_in_pos', '=', True)],
+        required=True,
+        string='Product Name',
+        help="Base product for cross-selling suggestions"
+    )
+    active = fields.Boolean(
+        string='Active',
+        default=True,
+        help="Activate or deactivate this cross-selling record"
+    )
+    pos_cross_product_ids = fields.One2many(
+        'pos.cross.selling.line',
+        'pos_cross_product_id',
+        string='POS Cross products',
+        help="Products suggested as cross-sell for the base product"
+    )
 
     def get_cross_selling_products(self, product_id):
         """
-        Getting the required values for the tables
-         and return the values to that template
+        Returns a list of suggested cross-sell products for the given product,
+        including their correct price based on the active POS pricelist.
         """
-        cross = self.env['pos.cross.selling'].search(
-            [('product_id', '=', product_id)])
+        # Search the cross-selling record for the given base product
+        cross = self.search([('product_id', '=', product_id)], limit=1)
         vals = []
-        for rec in cross.pos_cross_product_ids:
+
+        # Determine the active pricelist: from context, current POS session, or default
+        Pricelist = self.env['product.pricelist']
+        pricelist = False
+        if self.env.context.get('pricelist'):
+            pricelist = Pricelist.browse(self.env.context['pricelist'])
+        if not pricelist:
+            # Try to get pricelist from current POS session (if any)
+            session = self.env['pos.session'].search([('user_id', '=', self.env.uid), 
+                                                     ('state', '=', 'opened')], limit=1)
+            if session:
+                pricelist = session.config_id.pricelist_id
+        if not pricelist:
+            # Fallback to default pricelist (e.g. default sales pricelist)
+            pricelist = Pricelist.get_default_pricelist()
+
+        # Collect data for each suggested product
+        for line in cross.pos_cross_product_ids:
+            product = line.product_id
+            # Compute price using the determined pricelist
+            price = product.with_context(pricelist=pricelist.id).price
             vals.append({
-                'id': rec.product_id.id,
-                'image': '/web/image?model=product.product&field=image_128&id='
-                         + str(rec.product_id.id),
-                'name': rec.product_id.name,
-                'symbol': rec.product_id.cost_currency_id.symbol,
-                'price': rec.product_id.lst_price,
-                'selected': False})
+                'id': product.id,
+                'image': f"/web/image?model=product.product&field=image_128&id={product.id}",
+                'name': product.name,
+                'symbol': pricelist.currency_id.symbol if pricelist else product.currency_id.symbol,
+                'price': price,
+                'selected': False,
+            })
         return vals
