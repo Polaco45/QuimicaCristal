@@ -74,7 +74,7 @@ class PosCrossSelling(models.Model):
         for line in cross.pos_cross_product_ids:
             product = line.product_id
             # Compute price using the determined pricelist
-            price = product.with_context(pricelist=pricelist.id).price
+            price = product.with_context(pricelist=pricelist.id)._get_display_price(pricelist)
             vals.append({
                 'id': product.id,
                 'image': f"/web/image?model=product.product&field=image_128&id={product.id}",
