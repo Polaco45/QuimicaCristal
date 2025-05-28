@@ -7,12 +7,10 @@ import { CrossProduct } from "@pos_pro_cross_selling/app/cross_product/cross_pro
 
 patch(ProductScreen.prototype, {
     async addProductToOrder(product, options = {}) {
-        // Agregamos el producto normalmente al pedido
-        const order = this.pos.get_order();
-        const productObj = this.pos.db.get_product_by_id(product.id);
-        order.add_product(productObj);
+        // Agrega el producto normalmente usando la lógica nativa de Odoo
+        await super.addProductToOrder(product, options);
 
-        // Pedimos productos relacionados al backend
+        // Luego mostramos productos sugeridos si existen
         rpc('/web/dataset/call_kw/pos.cross.selling/get_cross_selling_products', {
             model: 'pos.cross.selling',
             method: 'get_cross_selling_products',
