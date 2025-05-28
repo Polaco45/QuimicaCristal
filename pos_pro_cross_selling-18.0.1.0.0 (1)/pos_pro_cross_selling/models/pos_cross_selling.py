@@ -19,71 +19,61 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 ################################################################################
-
 from odoo import api, fields, models, _
 from odoo.exceptions import ValidationError
 
 
 class PosCrossSelling(models.Model):
+    """Model Pos Cross-Selling Products"""
     _name = 'pos.cross.selling'
     _description = 'POS Cross-Selling'
     _rec_name = 'product_id'
 
-    product_id = fields.Many2one(
-        'product.product',
-        domain=[('available_in_pos', '=', 'True')],
-        required=True,
-        string='Product Name',
-        help="Product details"
-    )
-    active = fields.Boolean(
-        string='Active',
-        help="To check the cross selling is active or not",
-        default=True
-    )
-    pos_cross_product_ids = fields.One2many(
-        'pos.cross.selling.line',
-        'pos_cross_product_id',
-        string='Pos Cross products',
-        help="Pos Cross products"
-    )
+    product_id = fields.Many2one('product.product',
+                                 domain=[('available_in_pos', '=', 'True')],
+                                 required=True, string='Product Name',
+                                 help="Product details")
+    active = fields.Boolean(string='Active',
+                            help="To check the cross selling is active or not",
+                            default=True)
+    pos_cross_product_ids = fields.One2many('pos.cross.selling.line',
+                                            'pos_cross_product_id',
+                                            string='Pos Cross products',
+                                            help="Pos Cross products")
 
     @api.constrains('product_id')
     def _check_product_id(self):
+        """This method for avoid multiple creation of pos
+         cross-selling products"""
         for rec in self:
             pos = self.env['pos.cross.selling'].search(
                 [('product_id', '=', rec.product_id.id)])
             if len(pos) > 1:
-                raise ValidationError(_('Already exists a cross product for "%s".') % rec.product_id.name)
+                raise ValidationError(_('Already exist a cross product with the'
+                                        ' %s product ') % rec.product_id.name)
 
     @api.constrains('pos_cross_product_ids')
     def _check_pos_cross_product_ids(self):
+        """This method for add cross product lines"""
         for rec in self:
-            if len(rec.pos_cross_product_ids) < 1:
-                raise ValidationError(_("Please add at least one cross product line."))
+            if len(rec.pos_cross_product_ids) < 0:
+                raise ValidationError(_("Please add the cross products lines"))
 
-    @api.model
-def get_cross_selling_products(self, product_id):
-    """Retorna los productos sugeridos con el precio desde la lista del POS"""
-    cross = self.search([('product_id', '=', product_id)], limit=1)
-    if not cross:
-        return []
-
-    pos_config = self.env['pos.config'].search([('active', '=', True)], limit=1)
-    pricelist = pos_config.pricelist_id
-
-    vals = []
-    for line in cross.pos_cross_product_ids:
-        product = line.product_id.with_context(pricelist=pricelist.id)
-        price = product.price
-
-        vals.append({
-            'id': product.id,
-            'image': '/web/image?model=product.product&field=image_128&id=' + str(product.id),
-            'name': product.name,
-            'symbol': product.currency_id.symbol,
-            'price': round(price, 2),
-            'selected': False,
-        })
-    return vals
-
+    def get_cross_selling_products(self, product_id):
+        """
+        Getting the required values for the tables
+         and return the values to that template
+        """
+        cross = self.env['pos.cross.selling'].search(
+            [('product_id', '=', product_id)])
+        vals = []
+        for rec in cross.pos_cross_product_ids:
+            vals.append({
+                'id': rec.product_id.id,
+                'image': '/web/image?model=product.product&field=image_128&id='
+                         + str(rec.product_id.id),
+                'name': rec.product_id.name,
+                'symbol': rec.product_id.cost_currency_id.symbol,
+                'price': rec.product_id.lst_price,
+                'selected': False})
+        return vals
