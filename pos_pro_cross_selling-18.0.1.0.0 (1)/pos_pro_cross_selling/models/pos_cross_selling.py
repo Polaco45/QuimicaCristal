@@ -46,30 +46,52 @@ class PosCrossSelling(models.Model):
         help="Products suggested as cross-sell for the base product"
     )
 
- @api.model
-def get_cross_selling_products(self, product_id):
-    cross = self.search([('product_id', '=', product_id)], limit=1)
-    if not cross:
-        return []
+    @api.model
+    def get_cross_selling_products(self, product_id):
+        """
+        Devuelve productos de cross-selling con el precio real según
+        la lista de precios activa del POS y el cliente en sesión.
+        """
+        # 1) Registro de cross-selling del producto base
+        cross = self.search([('product_id', '=', product_id)], limit=1)
+        if not cross:
+            return []
 
-    # Obtener lista de precios del POS abierto
-    session = self.env['pos.session'].search([
-        ('user_id', '=', self.env.uid),
-        ('state', '=', 'opened')
-    ], limit=1)
-    pricelist = session.config_id.pricelist_id or self.env['product.pricelist'].get_default_pricelist()
+        # 2) Determinar lista de precios activa
+        pricelist = False
+        # 2.a) ¿El contexto ya trae 'pricelist'? (POS a veces lo envía)
+        if self.env.context.get('pricelist'):
+            pricelist = self.env['product.pricelist'].browse(self.env.context['pricelist'])
 
-    vals = []
-    for line in cross.pos_cross_product_ids:
-        product = line.product_id
-        # Calcula el precio real según la lista de precios
-        price = pricelist.get_product_price(product, 1.0, partner=None)
-        vals.append({
-            'id': product.id,
-            'image': f"/web/image?model=product.product&field=image_128&id={product.id}",
-            'name': product.name,
-            'symbol': pricelist.currency_id.symbol,
-            'price': round(price, 2),
-            'selected': False,
-        })
-    return vals
+        # 2.b) Si no, tomar la de la sesión de POS abierta del usuario
+        if not pricelist:
+            session = self.env['pos.session'].search([
+                ('user_id', '=', self.env.uid),
+                ('state', '=', 'opened')
+            ], limit=1)
+            if session:
+                pricelist = session.config_id.pricelist_id
+
+        # 2.c) Fallback: primera lista de precios disponible
+        if not pricelist:
+            pricelist = self.env['product.pricelist'].search([], limit=1)
+
+        partner = session.partner_id if session and session.partner_id else False
+
+        # 3) Construir respuesta
+        vals = []
+        for line in cross.pos_cross_product_ids:
+            product = line.product_id
+
+            # ⚠️ Usar _get_product_price (u get_product_price) para reglas avanzadas
+            price = pricelist._get_product_price(product, 1, partner)
+
+            vals.append({
+                'id': product.id,
+                'image': f"/web/image?model=product.product&field=image_128&id={product.id}",
+                'name': product.name,
+                'symbol': pricelist.currency_id.symbol,
+                'price': round(price, 2),
+                'selected': False,
+            })
+        return vals
