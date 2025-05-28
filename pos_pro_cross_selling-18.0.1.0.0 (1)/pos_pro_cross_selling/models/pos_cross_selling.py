@@ -65,27 +65,29 @@ class PosCrossSelling(models.Model):
             if len(rec.pos_cross_product_ids) < 1:
                 raise ValidationError(_("Please add at least one cross product line."))
 
-    @api.model
-    def get_cross_selling_products(self, product_id):
-        """Get cross-selling products with prices based on the active POS pricelist"""
-        cross = self.env['pos.cross.selling'].search(
-            [('product_id', '=', product_id)], limit=1)
-        vals = []
+@api.model
+def get_cross_selling_products(self, *args, **kwargs):
+    product_id = args[0] if args else False
+    if not product_id:
+        return []
 
-        # Buscar la lista de precios activa del POS
-        pos_config = self.env['pos.config'].search([('active', '=', True)], limit=1)
-        pricelist = pos_config.pricelist_id
+    cross = self.env['pos.cross.selling'].search(
+        [('product_id', '=', product_id)], limit=1)
+    vals = []
 
-        for rec in cross.pos_cross_product_ids:
-            product = rec.product_id.with_context(pricelist=pricelist.id)
-            price = product.price
+    pos_config = self.env['pos.config'].search([('active', '=', True)], limit=1)
+    pricelist = pos_config.pricelist_id
 
-            vals.append({
-                'id': product.id,
-                'image': '/web/image?model=product.product&field=image_128&id=' + str(product.id),
-                'name': product.name,
-                'symbol': product.currency_id.symbol,
-                'price': round(price, 2),
-                'selected': False
-            })
-        return vals
+    for rec in cross.pos_cross_product_ids:
+        product = rec.product_id.with_context(pricelist=pricelist.id)
+        price = product.price
+
+        vals.append({
+            'id': product.id,
+            'image': '/web/image?model=product.product&field=image_128&id=' + str(product.id),
+            'name': product.name,
+            'symbol': product.currency_id.symbol,
+            'price': round(price, 2),
+            'selected': False
+        })
+    return vals
