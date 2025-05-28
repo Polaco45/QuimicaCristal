@@ -25,7 +25,6 @@ from odoo.exceptions import ValidationError
 
 
 class PosCrossSelling(models.Model):
-    """Model Pos Cross-Selling Products"""
     _name = 'pos.cross.selling'
     _description = 'POS Cross-Selling'
     _rec_name = 'product_id'
@@ -51,7 +50,6 @@ class PosCrossSelling(models.Model):
 
     @api.constrains('product_id')
     def _check_product_id(self):
-        """Avoid multiple creation of cross-selling for the same product"""
         for rec in self:
             pos = self.env['pos.cross.selling'].search(
                 [('product_id', '=', rec.product_id.id)])
@@ -60,34 +58,34 @@ class PosCrossSelling(models.Model):
 
     @api.constrains('pos_cross_product_ids')
     def _check_pos_cross_product_ids(self):
-        """Ensure there is at least one cross-selling line"""
         for rec in self:
             if len(rec.pos_cross_product_ids) < 1:
                 raise ValidationError(_("Please add at least one cross product line."))
 
-@api.model
-def get_cross_selling_products(self, *args, **kwargs):
-    product_id = args[0] if args else False
-    if not product_id:
-        return []
+    @api.model
+    def get_cross_selling_products(self, *args, **kwargs):
+        product_id = args[0] if args else False
+        if not product_id:
+            return []
 
-    cross = self.env['pos.cross.selling'].search(
-        [('product_id', '=', product_id)], limit=1)
-    vals = []
+        cross = self.env['pos.cross.selling'].search(
+            [('product_id', '=', product_id)], limit=1)
+        vals = []
 
-    pos_config = self.env['pos.config'].search([('active', '=', True)], limit=1)
-    pricelist = pos_config.pricelist_id
+        pos_config = self.env['pos.config'].search([('active', '=', True)], limit=1)
+        pricelist = pos_config.pricelist_id
 
-    for rec in cross.pos_cross_product_ids:
-        product = rec.product_id.with_context(pricelist=pricelist.id)
-        price = product.price
+        for rec in cross.pos_cross_product_ids:
+            product = rec.product_id.with_context(pricelist=pricelist.id)
+            price = product.price
 
-        vals.append({
-            'id': product.id,
-            'image': '/web/image?model=product.product&field=image_128&id=' + str(product.id),
-            'name': product.name,
-            'symbol': product.currency_id.symbol,
-            'price': round(price, 2),
-            'selected': False
-        })
-    return vals
+            vals.append({
+                'id': product.id,
+                'image': '/web/image?model=product.product&field=image_128&id=' + str(product.id),
+                'name': product.name,
+                'symbol': product.currency_id.symbol,
+                'price': round(price, 2),
+                'selected': False
+            })
+        return vals
+
