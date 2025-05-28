@@ -46,41 +46,30 @@ class PosCrossSelling(models.Model):
         help="Products suggested as cross-sell for the base product"
     )
 
-    def get_cross_selling_products(self, product_id):
-        """
-        Returns a list of suggested cross-sell products for the given product,
-        including their correct price based on the active POS pricelist.
-        """
-        # Search the cross-selling record for the given base product
-        cross = self.search([('product_id', '=', product_id)], limit=1)
-        vals = []
+ @api.model
+def get_cross_selling_products(self, product_id):
+    cross = self.search([('product_id', '=', product_id)], limit=1)
+    if not cross:
+        return []
 
-        # Determine the active pricelist: from context, current POS session, or default
-        Pricelist = self.env['product.pricelist']
-        pricelist = False
-        if self.env.context.get('pricelist'):
-            pricelist = Pricelist.browse(self.env.context['pricelist'])
-        if not pricelist:
-            # Try to get pricelist from current POS session (if any)
-            session = self.env['pos.session'].search([('user_id', '=', self.env.uid), 
-                                                     ('state', '=', 'opened')], limit=1)
-            if session:
-                pricelist = session.config_id.pricelist_id
-        if not pricelist:
-            # Fallback to default pricelist (e.g. default sales pricelist)
-            pricelist = Pricelist.get_default_pricelist()
+    # Obtener lista de precios del POS abierto
+    session = self.env['pos.session'].search([
+        ('user_id', '=', self.env.uid),
+        ('state', '=', 'opened')
+    ], limit=1)
+    pricelist = session.config_id.pricelist_id or self.env['product.pricelist'].get_default_pricelist()
 
-        # Collect data for each suggested product
-        for line in cross.pos_cross_product_ids:
-            product = line.product_id
-            # Compute price using the determined pricelist
-            price = product.with_context(pricelist=pricelist.id)._get_display_price(pricelist)
-            vals.append({
-                'id': product.id,
-                'image': f"/web/image?model=product.product&field=image_128&id={product.id}",
-                'name': product.name,
-                'symbol': pricelist.currency_id.symbol if pricelist else product.currency_id.symbol,
-                'price': price,
-                'selected': False,
-            })
-        return vals
+    vals = []
+    for line in cross.pos_cross_product_ids:
+        product = line.product_id
+        # Calcula el precio real según la lista de precios
+        price = pricelist.get_product_price(product, 1.0, partner=None)
+        vals.append({
+            'id': product.id,
+            'image': f"/web/image?model=product.product&field=image_128&id={product.id}",
+            'name': product.name,
+            'symbol': pricelist.currency_id.symbol,
+            'price': round(price, 2),
+            'selected': False,
+        })
+    return vals
