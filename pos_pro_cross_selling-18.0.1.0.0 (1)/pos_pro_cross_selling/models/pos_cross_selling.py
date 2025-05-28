@@ -59,21 +59,29 @@ class PosCrossSelling(models.Model):
             if len(rec.pos_cross_product_ids) < 0:
                 raise ValidationError(_("Please add the cross products lines"))
 
-    def get_cross_selling_products(self, product_id):
-        """
-        Getting the required values for the tables
-         and return the values to that template
-        """
-        cross = self.env['pos.cross.selling'].search(
-            [('product_id', '=', product_id)])
-        vals = []
-        for rec in cross.pos_cross_product_ids:
-            vals.append({
-                'id': rec.product_id.id,
-                'image': '/web/image?model=product.product&field=image_128&id='
-                         + str(rec.product_id.id),
-                'name': rec.product_id.name,
-                'symbol': rec.product_id.cost_currency_id.symbol,
-                'price': rec.product_id.lst_price,
-                'selected': False})
-        return vals
+def get_cross_selling_products(self, product_id):
+    """
+    Retorna los productos sugeridos con el precio correcto según la lista de precios del POS
+    """
+    cross = self.env['pos.cross.selling'].search(
+        [('product_id', '=', product_id)], limit=1)
+    vals = []
+
+    # Buscar la configuración del POS activo
+    pos_config = self.env['pos.config'].search([('active', '=', True)], limit=1)
+    pricelist = pos_config.pricelist_id
+
+    for rec in cross.pos_cross_product_ids:
+        # Aplicar contexto para calcular el precio real con la lista
+        product = rec.product_id.with_context(pricelist=pricelist.id)
+        price = product.price
+
+        vals.append({
+            'id': product.id,
+            'image': '/web/image?model=product.product&field=image_128&id=' + str(product.id),
+            'name': product.name,
+            'symbol': product.currency_id.symbol,
+            'price': round(price, 2),
+            'selected': False
+        })
+    return vals
