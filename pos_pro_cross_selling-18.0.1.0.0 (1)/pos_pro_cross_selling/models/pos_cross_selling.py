@@ -52,10 +52,10 @@ class PosCrossSelling(models.Model):
     def get_cross_selling_products(self, *args, **kwargs):
         """
         Devuelve los productos de cross-selling con el precio calculado
-        según la lista de precios activa del POS y el cliente de la sesión.
-        El método acepta *args porque el RPC le pasa:  [], product_id
+        según la lista de precios activa del POS.
+        El RPC del POS envía ([], product_id) ⇒ usamos el último parámetro.
         """
-        # args = (ids_list, product_id)  ← nosotros sólo usamos el último
+        # args = (ids_list, product_id)
         if not args:
             return []
         product_id = args[-1]
@@ -64,34 +64,35 @@ class PosCrossSelling(models.Model):
         if not cross:
             return []
 
-        # ───────────────── Obtener lista de precios activa ───────────
+        # ─────────────── Obtener lista de precios activa ─────────────
         pricelist = False
         if self.env.context.get('pricelist'):
             pricelist = self.env['product.pricelist'].browse(
                 self.env.context['pricelist'])
 
         if not pricelist:
+            # Sesión de POS abierta del usuario
             session = self.env['pos.session'].search(
                 [('user_id', '=', self.env.uid), ('state', '=', 'opened')],
                 limit=1
             )
             if session:
                 pricelist = session.config_id.pricelist_id
-                partner = session.partner_id
-            else:
-                partner = False
-        else:
-            partner = False
 
         if not pricelist:
             # Fallback a la primera lista de precios disponible
             pricelist = self.env['product.pricelist'].search([], limit=1)
 
-        # ───────────────── Construir respuesta ───────────────────────
+        # Partner opcional (si viene en el contexto)
+        partner = False
+        if self.env.context.get('partner_id'):
+            partner = self.env['res.partner'].browse(self.env.context['partner_id'])
+
+        # ─────────────── Construir respuesta ────────────────────────
         vals = []
         for line in cross.pos_cross_product_ids:
             prod = line.product_id
-            # Cantidad 1 (ajustar si querés otra)
+            # Cantidad fija a 1 (ajustar si se necesita otra)
             price = pricelist._get_product_price(prod, 1, partner)
 
             vals.append({
