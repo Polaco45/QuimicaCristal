@@ -32,7 +32,8 @@
                                 Allow POS user to enter Payment reference details for the payment methods selected below 
                             </div>
                             <div class="mt8">
-                                <field name="payment_method_ids" invisible="1"/>
+                                <!-- Campo técnico: solo visible para el grupo “No one” -->
+                                <field name="payment_method_ids" groups="base.group_no_one"/>
                                 <field name="payment_ref_method_ids" domain="[('id', 'in', payment_method_ids)]" placeholder="Payment methods..." widget="many2many_tags" required="payment_reference_detail == True" invisible="payment_reference_detail == False"/>
                             </div>
                         </div>
