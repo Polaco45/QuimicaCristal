@@ -137,7 +137,7 @@ wSaleUtils.updateCartNavBar = function (data) {
         : min_sale_amount - order_total;
 
     if (isValid) {
-        const msg = _t("You have reached the minimum purchase amount!");
+        const msg = _t("¡Alcanzaste el mínimo de compra!");
         $minAlert.html(`
             <div class="alert alert-success float-end d-none d-xl-inline-block text-decoration-none" role="alert">
                 ${msg}
@@ -145,7 +145,7 @@ wSaleUtils.updateCartNavBar = function (data) {
         `);
         updateCheckoutButton(true);
     } else {
-        const msg = _t("The minimum amount is %s — add %s to reach this amount.")
+        const msg = _t("El mínimo es %s — agregá %s para alcanzarlo.")
             .replace("%s", formatAmount(min_sale_amount))
             .replace("%s", formatAmount(remaining));
         $minAlert.html(`
