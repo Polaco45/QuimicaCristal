@@ -1,0 +1,67 @@
+# messages.yml
+
+# --- General ---
+error_default: "Perdón, no entendí eso 😅. ¿Podés reformular tu consulta?"
+onboarding_unquoted: "Gracias por escribirnos 😊. Un asesor te va a contactar para cotizarte."
+error_processing: "Hubo un problema al procesar tu solicitud. Por favor, intentá de nuevo."
+
+# --- B2C Específicos ---
+b2c_product_query_response: "¡Hola! Podés buscar '{query}' y otros productos en nuestra tienda online y recibirlos en tu casa. ¡Es muy fácil! 👉 {web_url}"
+b2c_create_order_response: "¡Genial! Podés hacer tu pedido directamente desde nuestra página web y te lo enviamos a tu casa. ¡Hacé clic acá y comprá ahora! 👉 {web_url}"
+b2c_invoice_response: "Por el momento, no puedo gestionar facturas para compras minoristas a través de WhatsApp. Podés solicitarla al momento de hacer tu compra en nuestra tienda online o en el local."
+
+
+# --- El saludo ahora es un fallback ---
+greeting_fallback: >-
+  ¡Hola, {partner_name}! Soy tu asistente virtual de Cristal 🤖.
+  Estoy aquí para ayudarte a hacer todo más rápido. ¿Qué te gustaría hacer hoy?
+
+  Conmigo podés:
+  - 🛍️ *Crear un pedido* directamente desde acá.
+  - 🧾 *Solicitar tus facturas* con solo pedirlas.
+  - 🕒 *Consultar productos, horarios y dirección.
+
+  Estoy disponible para vos 24/7. Si necesitás un asesor humano, nuestro equipo atiende de lunes a viernes, de 9 a 18 hs.
+
+# --- Fallbacks para el cierre ---
+closing_fallback: "¡De nada, {partner_name}! Me alegro de haberte ayudado. Si necesitás algo más, no dudes en consultar. 😊"
+product_query_not_found: "¡Hola! Busqué por todas partes pero no encontré nada parecido a '{query}'. 😟 ¿Podrías intentar con otro nombre o te ayudo a buscar otra cosa?"
+
+# --- Order Creation ---
+product_not_found_gpt: "No pude identificar ningún producto en tu mensaje. ¿Podés intentarlo de nuevo?"
+product_not_in_odoo: "No encontramos ningún producto que coincida con {query}."
+product_no_stock: "Lo sentimos, no hay stock disponible para {query}."
+customer_no_pricelist: "El cliente no tiene una tarifa asignada."
+ask_for_clarification: "Tenemos varias opciones para {query}:\n{buttons}\nRespondé con el número del producto que querés."
+ask_for_quantity: "¡Perfecto! Encontramos {name}. ¿Cuántas unidades querés?"
+confirm_item_added: "👍 Agregado: {qty}×{name}.\n\nTu pedido ahora es:\n{summary}\n\n¿Querés agregar o modificar algo más?"
+item_added_processing_next: "👍 Agregado: {qty}×{name}. Ahora sigo con el próximo producto."
+processing_next_item: "No encontré productos para {query}, Intenta ser más específico la próxima. Continúo con el resto de tu pedido."
+insufficient_stock: "Solo hay {avail} unidades de {name}.\nRespondé con:\n1) Sí, esa cantidad\n2) No, cancelar"
+order_finalized: "¡Perfecto! ✨ Tu pedido {order_name} fue creado con:\n{summary}\n\nUn asesor lo revisará a la brevedad. ¡Gracias!"
+cart_is_empty: "Tu carrito de compras está vacío. ¿Qué producto querés agregar?"
+
+# --- Order Modification ---
+cart_summary: "Este es tu pedido actual:\n{summary}\n\nRespondé con el número del producto que querés eliminar, o escribí *cancelar* para volver."
+item_removed_confirm: "Listo, producto eliminado.\n\nTu pedido ahora es:\n{summary}\n\n¿Querés hacer algo más?"
+cancel_modification: "Ok, no se modificó nada. ¿Querés agregar algo más o finalizamos tu pedido?"
+selection_cancelled: "Entendido, no hay problema. ¿Hay algo más en lo que te pueda ayudar?"
+invalid_number_for_deletion: "Número no válido. Por favor, elegí un número de la lista."
+invalid_input_for_deletion: "Respuesta no válida. Por favor, enviá el número del producto a eliminar o 'cancelar'."
+
+# --- Mensajes para el flujo de facturas ---
+invoice_direct_offer_or_search: "¡Claro! Te muestro las últimas 5 facturas que emitimos para vos:\n{invoices}\n\nPodés responder con el número de la que necesitás (ej: 1) o ingresar el número completo de otra factura que estés buscando (ej: 0001-001234). También podés escribir *cancelar*."
+invoice_search_failed_reoffer: "No encontré una factura con el número '{number}'. Te muestro nuevamente las más recientes:\n{invoices}\n\nPor favor, elegí una de la lista o probá con otro número."
+invoice_not_found_and_reset: "Tampoco pude encontrar una factura con el número '{number}'. Por favor, verificá los datos e intentá de nuevo."
+no_recent_invoices: "No encontré facturas recientes a tu nombre. Si necesitás una más antigua, por favor, dame su número completo para buscarla."
+invalid_invoice_option: "Opción no válida. Por favor, elegí un número de la lista o escribí *cancelar*."
+invoice_selection_cancelled: "Entendido. Si necesitás otra cosa, no dudes en preguntar."
+
+# --- Sub-flows ---
+invalid_option: "Opción no válida. Por favor, respondé solo con el número del producto que querés."
+invalid_quantity: "La cantidad debe ser un número positivo. ¿Cuántas unidades querés?"
+invalid_quantity_format: "No entendí la cantidad. Por favor, escribí solo el número."
+confirm_stock_cancellation: "Entendido, cancelamos ese producto. ¿Querés agregar o modificar otra cosa?"
+invalid_stock_confirmation: "No entendí tu respuesta. Por favor, respondé 'Sí' o 'No'."
+ask_for_delivery_address: "¡Ya casi terminamos! He visto que tenés varias direcciones de entrega. ¿A cuál de las siguientes querés que te enviemos el pedido?\n{addresses}\n\nRespondé con el número de la dirección que elegís."
+invalid_address_option: "Opción de dirección no válida. Por favor, elegí un número de la lista."

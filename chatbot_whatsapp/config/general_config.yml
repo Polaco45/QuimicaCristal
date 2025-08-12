@@ -1,0 +1,4 @@
+### Configuration for the WhatsApp Chatbot
+
+openai:
+  model: gpt-4o-mini 
