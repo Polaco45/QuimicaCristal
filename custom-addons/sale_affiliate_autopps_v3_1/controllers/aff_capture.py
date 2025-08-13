@@ -11,15 +11,16 @@ _logger = logging.getLogger(__name__)
 
 class WebsiteSaleAff(WebsiteSale):
     """
-    Mantiene el flujo original del checkout, captura y persiste x_affiliate_key
-    en la orden en todos los pasos relevantes y evita el 500 de /shop/confirm_order
-    cuando el método nativo no existe.
+    Mantiene el flujo original del checkout y persiste x_affiliate_key
+    en la orden en pasos clave, evitando 500s y bucles de redirección.
+    Importante: NO sobreescribimos /shop/checkout para no interferir
+    con la lógica de pasos (dirección/envío/pago) del core.
     """
 
     # ---- helpers ----
 
     def _capture_aff_key(self):
-        """Lee la affiliate key desde params, cookies o Referer."""
+        """Lee la affiliate key desde params, cookies o el Referer."""
         httpreq = request.httprequest
 
         # 1) params directos (GET/POST)
@@ -84,36 +85,14 @@ class WebsiteSaleAff(WebsiteSale):
         except Exception:  # pragma: no cover
             _logger.debug("No se pudo setear cookie x_affiliate_key.")
 
-    # ---- routes (cart / checkout / payment / confirm) ----
+    # ---- routes (cart / payment / confirm) ----
+    # Nota: NO sobreescribimos /shop/checkout para evitar el loop.
 
     @http.route(['/shop/cart'], type='http', auth='public', website=True, sitemap=False)
     def cart(self, **post):
         aff_key = self._capture_aff_key()
         self._persist_aff_on_order(aff_key)
         resp = super().cart(**post)
-        self._maybe_set_cookie(resp, aff_key)
-        return resp
-
-    @http.route(['/shop/checkout'], type='http', auth='public', website=True, sitemap=False)
-    def checkout(self, **post):
-        """
-        NO forzar salto al pago. Dejamos que el core decida los pasos (dirección, envío, etc.).
-        Removemos 'express' para evitar que se saltee el método de envío cuando corresponde.
-        """
-        aff_key = self._capture_aff_key()
-        self._persist_aff_on_order(aff_key)
-
-        method = getattr(super(), "checkout", None)
-        params = dict(request.params)
-        params.pop("express", None)  # clave: no saltar el paso de envío
-
-        if callable(method):
-            resp = method(**params)
-        else:
-            # Fallback conservador
-            order = request.website.sale_get_order(force_create=False)
-            resp = request.redirect("/shop/cart" if not order else "/shop/checkout")
-
         self._maybe_set_cookie(resp, aff_key)
         return resp
 
@@ -124,11 +103,9 @@ class WebsiteSaleAff(WebsiteSale):
 
         method = getattr(super(), "payment", None)
         if not callable(method):
-            method = getattr(super(), "shop_payment", None)  # compat versiones
+            method = getattr(super(), "shop_payment", None)  # compatibilidad
 
-        params = dict(request.params)
-        resp = method(**params) if callable(method) else request.redirect("/shop/cart")
-
+        resp = method(**post) if callable(method) else request.redirect("/shop/cart")
         self._maybe_set_cookie(resp, aff_key)
         return resp
 
@@ -145,7 +122,7 @@ class WebsiteSaleAff(WebsiteSale):
             self._maybe_set_cookie(resp, aff_key)
             return resp
 
-        # Fallback seguro sin 500
+        # Fallback seguro sin 500 cuando la edición/remoción del método en core rompe
         order = request.website.sale_get_order(force_create=False)
         resp = request.redirect("/shop/payment" if order else "/shop/cart")
         self._maybe_set_cookie(resp, aff_key)
