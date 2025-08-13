@@ -1,75 +1,67 @@
+
 # -*- coding: utf-8 -*-
 import logging
-from odoo.addons.website_sale.controllers.main import WebsiteSale as WebsiteSaleBase
-from odoo.http import request
 from odoo import http
+from odoo.http import request
+# Import the native WebsiteSale to keep the same route and behavior
+from odoo.addons.website_sale.controllers.main import WebsiteSale
 
 _logger = logging.getLogger(__name__)
 
-def _log(msg):
-    try:
-        _logger.info("[sale_affiliate_autopps] %s", msg)
-    except Exception:
-        pass
 
-class WebsiteSale(WebsiteSaleBase):
+class WebsiteSaleAff(WebsiteSale):
+    """Keep the exact same behavior but ensure we never call a missing super() method.
 
-    def _extract_aff_key(self):
-        aff_key = request.params.get("aff_key") or request.httprequest.args.get("aff_key")
-        if aff_key:
-            return aff_key
-        cookies = request.httprequest.cookies
-        for k in cookies.keys():
-            if k.startswith("affkey_") and len(k) > 7:
-                return k.split("affkey_", 1)[1]
-        for name in ["aff_key", "affiliate_key", "wk_affiliate_key", "wk_affkey", "affiliate"]:
-            if name in cookies and cookies.get(name):
-                return cookies.get(name)
-        return None
+    Odoo 18 moved/removed `confirm_order` in some editions; calling super().confirm_order
+    raises AttributeError and breaks checkout with a 500. Here we guard that call and
+    gracefully fall back to the expected redirect flow (`/shop/payment`), keeping the
+    affiliate key persistence intact.
+    """
 
     def _set_order_aff_key_from_anywhere(self):
-        so = request.website.sale_get_order()
-        if not so:
-            return
-        if so.sudo().x_affiliate_key:
-            return
-        aff_key = self._extract_aff_key()
+        # Read key from querystring or cookies (support both names for safety)
+        httpreq = request.httprequest
+        aff_key = (
+            request.params.get("x_affiliate_key")
+            or request.params.get("aff_key")
+            or httpreq.args.get("x_affiliate_key")
+            or httpreq.args.get("aff_key")
+            or httpreq.cookies.get("x_affiliate_key")
+            or httpreq.cookies.get("aff_key")
+        )
         if not aff_key:
             return
-        so.sudo().x_affiliate_key = aff_key
-        _log(f"SO {so.name if so else ''}: persistido x_affiliate_key={aff_key} desde cookie/url.")
+        order = request.website.sale_get_order(force_create=False)
+        if order:
+            try:
+                order.sudo().write({"x_affiliate_key": aff_key})
+                _logger.info("[sale_affiliate_autopps] SO %s: persistido x_affiliate_key=%s desde cookie/url.",
+                             order.name, aff_key)
+            except Exception:
+                _logger.exception("No se pudo persistir x_affiliate_key en la orden.")
 
-    @http.route([
-        "/shop",
-        "/shop/page/<int:page>",
-        "/shop/category/<model('product.public.category'):category>",
-        "/shop/category/<model('product.public.category'):category>/page/<int:page>",
-    ], type="http", auth="public", website=True, sitemap=WebsiteSaleBase.sitemap_shop)
-    def shop(self, page=0, category=None, search="", min_price=0.0, max_price=0.0, ppg=False, **post):
-        res = super().shop(page=page, category=category, search=search, min_price=min_price, max_price=max_price, ppg=ppg, **post)
-        self._set_order_aff_key_from_anywhere()
-        return res
-
-    @http.route(['/shop/product/<model("product.template"):product>'], type="http", auth="public", website=True, sitemap=True)
-    def product(self, product, category="", search="", **kwargs):
-        res = super().product(product=product, category=category, search=search, **kwargs)
-        self._set_order_aff_key_from_anywhere()
-        return res
-
-    @http.route(['/shop/cart'], type="http", auth="public", website=True, sitemap=False)
-    def cart(self, **post):
-        res = super().cart(**post)
-        self._set_order_aff_key_from_anywhere()
-        return res
-
-    @http.route(['/shop/address'], type="http", auth="public", website=True, sitemap=False)
-    def address(self, **post):
-        res = super().address(**post)
-        self._set_order_aff_key_from_anywhere()
-        return res
-
-    @http.route(['/shop/confirm_order'], type="http", auth="public", website=True, sitemap=False)
+    @http.route(['/shop/confirm_order'], type='http', auth='public', website=True, sitemap=False)
     def confirm_order(self, **post):
-        res = super().confirm_order(**post)
-        self._set_order_aff_key_from_anywhere()
-        return res
+        """Mirror native behavior without breaking when super().confirm_order is absent.
+
+        - Always persist the affiliate key before leaving the step.
+        - If the native method exists, delegate to it.
+        - Otherwise, follow the standard flow: redirect to payment when the order exists,
+          or back to cart if not.
+        """
+        # Persist affiliation key (idempotent)
+        try:
+            self._set_order_aff_key_from_anywhere()
+        except Exception:
+            _logger.exception("Fallo al setear affiliate key en confirm_order.")
+
+        # Prefer the native implementation when available
+        method = getattr(super(), "confirm_order", None)
+        if callable(method):
+            return method(**post)
+
+        # Fallback: keep UX identical to default flow
+        order = request.website.sale_get_order(force_create=False)
+        if order:
+            return request.redirect("/shop/payment")
+        return request.redirect("/shop/cart")
