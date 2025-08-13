@@ -97,28 +97,22 @@ class WebsiteSaleAff(WebsiteSale):
     @http.route(['/shop/checkout'], type='http', auth='public', website=True, sitemap=False)
     def checkout(self, **post):
         """
-        Asegura que los params de querystring (p.ej. express=1) lleguen al core.
-        Si el core redirige al carrito teniendo express y orden válida, forzamos /shop/payment.
+        NO forzar salto al pago. Dejamos que el core decida los pasos (dirección, envío, etc.).
+        Removemos 'express' para evitar que se saltee el método de envío cuando corresponde.
         """
         aff_key = self._capture_aff_key()
         self._persist_aff_on_order(aff_key)
 
         method = getattr(super(), "checkout", None)
-        params = dict(request.params)  # incluye 'express', etc.
+        params = dict(request.params)
+        params.pop("express", None)  # clave: no saltar el paso de envío
 
         if callable(method):
             resp = method(**params)
-            # Si el nativo manda al carrito pero es express y hay orden, vamos a pago.
-            try:
-                is_redirect = getattr(resp, "status_code", None) in (301, 302, 303, 307, 308)
-                to_cart = "/shop/cart" in (resp.headers.get("Location", "") if hasattr(resp, "headers") else "")
-                if params.get("express") and is_redirect and to_cart and request.website.sale_get_order(False):
-                    resp = request.redirect("/shop/payment")
-            except Exception:
-                _logger.debug("No se pudo ajustar la redirección de checkout(express).")
         else:
+            # Fallback conservador
             order = request.website.sale_get_order(force_create=False)
-            resp = request.redirect("/shop/payment" if order else "/shop/cart")
+            resp = request.redirect("/shop/cart" if not order else "/shop/checkout")
 
         self._maybe_set_cookie(resp, aff_key)
         return resp
@@ -130,7 +124,7 @@ class WebsiteSaleAff(WebsiteSale):
 
         method = getattr(super(), "payment", None)
         if not callable(method):
-            method = getattr(super(), "shop_payment", None)  # compatibilidad versiones
+            method = getattr(super(), "shop_payment", None)  # compat versiones
 
         params = dict(request.params)
         resp = method(**params) if callable(method) else request.redirect("/shop/cart")
