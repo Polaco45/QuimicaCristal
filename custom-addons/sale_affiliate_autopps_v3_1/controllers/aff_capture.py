@@ -11,15 +11,18 @@ _logger = logging.getLogger(__name__)
 
 class WebsiteSaleAff(WebsiteSale):
     """
-    Mantiene el flujo original del checkout, captura y persiste x_affiliate_key
-    en la orden en todos los pasos relevantes.
+    Captura y persiste x_affiliate_key sin interferir con el flujo nativo
+    de checkout (dirección/envío/pago). No sobreescribimos /shop/checkout
+    para evitar bucles de redirección.
     """
 
-    # ---- helpers ----
+    # ---------------- helpers ----------------
 
     def _capture_aff_key(self):
-        """Try to read the affiliate key from params, cookies or Referer URL."""
+        """Lee la affiliate key desde params, cookies o el Referer."""
         httpreq = request.httprequest
+
+        # 1) params directos (GET/POST)
         aff_key = (
             request.params.get("x_affiliate_key")
             or request.params.get("aff_key")
@@ -27,6 +30,7 @@ class WebsiteSaleAff(WebsiteSale):
             or httpreq.args.get("aff_key")
         )
 
+        # 2) cookies (varios nombres por compatibilidad)
         if not aff_key:
             aff_key = (
                 httpreq.cookies.get("x_affiliate_key")
@@ -35,6 +39,7 @@ class WebsiteSaleAff(WebsiteSale):
                 or httpreq.cookies.get("affiliate")
             )
 
+        # 3) Referer (por si el param vino en la página anterior)
         if not aff_key:
             ref = httpreq.headers.get("Referer")
             if ref:
@@ -46,66 +51,93 @@ class WebsiteSaleAff(WebsiteSale):
                         or (q.get("affiliate") or [None])[0]
                     )
                 except Exception:
-                    _logger.exception("Error al parsear Referer para aff_key.")
+                    _logger.exception("No se pudo parsear Referer para aff_key")
 
         return aff_key
 
     def _persist_aff_on_order(self, aff_key):
-        """Write x_affiliate_key on current website order (idempotent)."""
+        """Escribe x_affiliate_key en la orden actual del website (idempotente)."""
         if not aff_key:
             return False
         order = request.website.sale_get_order(force_create=False)
         if not order:
             return False
         try:
-            if hasattr(order, 'x_affiliate_key') and (not order.x_affiliate_key or order.x_affiliate_key != aff_key):
+            if not getattr(order, "x_affiliate_key", None) or order.x_affiliate_key != aff_key:
                 order.sudo().write({"x_affiliate_key": aff_key})
-                _logger.info("[sale_affiliate_autopps] Orden de venta %s: persistida x_affiliate_key=%s desde cookie/url/referrer.",
-                             order.name, aff_key)
+                _logger.info(
+                    "[sale_affiliate_autopps] SO %s: persistido x_affiliate_key=%s desde cookie/url/referrer.",
+                    order.name, aff_key
+                )
             return True
         except Exception:
-            _logger.exception("Error al persistir x_affiliate_key en la orden.")
+            _logger.exception("No se pudo persistir x_affiliate_key en la orden.")
             return False
 
     def _maybe_set_cookie(self, response, aff_key):
-        """Set cookie to keep the key across steps."""
-        if not aff_key:
+        """Guarda cookie para mantener la key entre pasos."""
+        if not aff_key or response is None:
             return
         try:
+            # 30 días
             response.set_cookie("x_affiliate_key", aff_key, max_age=60 * 60 * 24 * 30, path="/", samesite="Lax")
         except Exception:
-            _logger.exception("Error al setear cookie x_affiliate_key.")
+            _logger.debug("No se pudo setear cookie x_affiliate_key.")
 
-    # ---- routes (cart / checkout / payment / confirm) ----
+    # --------------- routes ------------------
+    # OJO: no sobreescribimos /shop/checkout
+
+    @http.route(['/shop/cart/update_json'], type='json', auth='public', website=True)
+    def cart_update_json(self, **kw):
+        """
+        Cuando se agrega/modifica el carrito (AJAX), persistimos la key en la orden
+        para garantizar que esté al confirmar y se cree la PPS.
+        """
+        try:
+            aff_key = self._capture_aff_key()
+            self._persist_aff_on_order(aff_key)
+        except Exception:
+            _logger.exception("Fallo al persistir affiliate key en cart_update_json.")
+
+        method = getattr(super(), "cart_update_json", None)
+        return method(**kw) if callable(method) else {}
 
     @http.route(['/shop/cart'], type='http', auth='public', website=True, sitemap=False)
     def cart(self, **post):
         aff_key = self._capture_aff_key()
+        self._persist_aff_on_order(aff_key)
         resp = super().cart(**post)
-        self._persist_aff_on_order(aff_key)
-        self._maybe_set_cookie(resp, aff_key)
-        return resp
-
-    @http.route(['/shop/checkout'], type='http', auth='public', website=True, sitemap=False)
-    def checkout(self, **post):
-        aff_key = self._capture_aff_key()
-        resp = super().checkout(**post)
-        self._persist_aff_on_order(aff_key)
         self._maybe_set_cookie(resp, aff_key)
         return resp
 
     @http.route(['/shop/payment'], type='http', auth='public', website=True, sitemap=False)
     def payment(self, **post):
         aff_key = self._capture_aff_key()
-        resp = super().payment(**post)
         self._persist_aff_on_order(aff_key)
+
+        method = getattr(super(), "payment", None)
+        if not callable(method):
+            method = getattr(super(), "shop_payment", None)  # compatibilidad
+
+        resp = method(**post) if callable(method) else request.redirect("/shop/cart")
         self._maybe_set_cookie(resp, aff_key)
         return resp
 
     @http.route(['/shop/confirm_order'], type='http', auth='public', website=True, sitemap=False)
     def confirm_order(self, **post):
+        # Persistimos por las dudas también aquí
         aff_key = self._capture_aff_key()
-        resp = super().confirm_order(**post)
         self._persist_aff_on_order(aff_key)
+
+        # Si existe la implementación nativa, la usamos
+        method = getattr(super(), "confirm_order", None)
+        if callable(method):
+            resp = method(**post)
+            self._maybe_set_cookie(resp, aff_key)
+            return resp
+
+        # Fallback seguro sin 500 cuando la edición/remoción del método en core rompe
+        order = request.website.sale_get_order(force_create=False)
+        resp = request.redirect("/shop/payment" if order else "/shop/cart")
         self._maybe_set_cookie(resp, aff_key)
         return resp
