@@ -27,9 +27,20 @@ class ChatbotProcessor:
         self.plain_text = clean_html(record.body or "").strip()
 
     def _is_b2c(self):
-        """Verifica si el partner es un cliente B2C (Consumidor Final)."""
-        b2c_tag_name = "Tipo de Cliente / Consumidor Final"
-        return self.partner.category_id and any(tag.name == b2c_tag_name for tag in self.partner.category_id)
+        """
+        --- CORREGIDO ---
+        Verifica si el partner es un cliente B2C (Consumidor Final)
+        buscando la etiqueta correcta y su padre.
+        """
+        parent_category_name = "Tipo de Cliente"
+        b2c_tag_name = "Consumidor Final"
+        
+        for tag in self.partner.category_id:
+            if (tag.name == b2c_tag_name and 
+                tag.parent_id and 
+                tag.parent_id.name == parent_category_name):
+                return True
+        return False
 
     def process_message(self):
         """
@@ -65,12 +76,22 @@ class ChatbotProcessor:
 
         _logger.info(f"👤 Intent B2C detectado: {intent} para {self.partner.name}")
 
+        # --- LÓGICA CORREGIDA PARA URLs ---
         website_urls = {
-            "Tipo de Cliente / Consumidor Final": "https://www.quimicacristal.com.ar",
-            "Tipo de Cliente / EMPRESA": "https://www.cristalempresas.com.ar",
-            "Tipo de Cliente / Mayorista": "https://www.cristalmayorista.com.ar"
+            "Consumidor Final": "https://www.quimicacristal.com.ar",
+            "EMPRESA": "https://www.cristalempresas.com.ar",
+            "Mayorista": "https://www.cristalmayorista.com.ar"
         }
-        partner_category_name = self.partner.category_id[0].name if self.partner.category_id else None
+        
+        customer_type_tag = None
+        parent_category_name = "Tipo de Cliente"
+        if self.partner.category_id:
+            # Filtra para encontrar la etiqueta que es hija de "Tipo de Cliente"
+            customer_type_tag = self.partner.category_id.filtered(
+                lambda t: t.parent_id and t.parent_id.name == parent_category_name
+            )
+        
+        partner_category_name = customer_type_tag[0].name if customer_type_tag else None
         web_url = website_urls.get(partner_category_name, "https://www.quimicacristal.com.ar")
 
         if intent == "consulta_producto":
@@ -713,4 +734,5 @@ class ChatbotProcessor:
             self.memory.write({'flow_state': 'esperando_confirmacion_pedido'})
             return self._send_text(response)
         except ValueError:
+
             return self._send_text(messages_config['invalid_input_for_deletion'])
