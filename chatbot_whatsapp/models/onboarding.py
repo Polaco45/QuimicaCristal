@@ -1,4 +1,3 @@
-# onboarding.py
 from odoo import models, api
 import re
 import logging
@@ -23,11 +22,14 @@ class WhatsAppOnboardingHandler(models.AbstractModel):
         return re.match(pattern, email)
 
     def _parse_cliente_tag(self, texto_usuario):
-        """Convierte la respuesta del usuario a una etiqueta de partner."""
+        """
+        --- CORREGIDO ---
+        Convierte la respuesta del usuario al nombre corto de la etiqueta.
+        """
         OPCIONES = {
-            '1': "Tipo de Cliente / Consumidor Final", 'consumidor final': "Tipo de Cliente / Consumidor Final",
-            '2': "Tipo de Cliente / EMPRESA", 'institucion': "Tipo de Cliente / EMPRESA", 'empresa': "Tipo de Cliente / EMPRESA",
-            '3': "Tipo de Cliente / Mayorista", 'mayorista': "Tipo de Cliente / Mayorista",
+            '1': "Consumidor Final", 'consumidor final': "Consumidor Final",
+            '2': "EMPRESA", 'institucion': "EMPRESA", 'empresa': "EMPRESA",
+            '3': "Mayorista", 'mayorista': "Mayorista",
         }
         return OPCIONES.get(texto_usuario.strip().lower())
 
@@ -38,7 +40,10 @@ class WhatsAppOnboardingHandler(models.AbstractModel):
             missing.append('nombre')
         if not partner or not partner.email:
             missing.append('email')
-        if not partner or not partner.category_id:
+        # Buscamos si tiene alguna etiqueta hija de "Tipo de Cliente"
+        customer_type_parent = self.env.ref('__export__.res_partner_category_10', raise_if_not_found=False) or \
+                               self.env['res.partner.category'].sudo().search([('name', '=', 'Tipo de Cliente')], limit=1)
+        if not partner or not any(cat.parent_id == customer_type_parent for cat in partner.category_id):
             missing.append('tag')
         return missing
 
@@ -73,9 +78,37 @@ class WhatsAppOnboardingHandler(models.AbstractModel):
                 if not tag_name:
                     return True, "Opción no válida. Por favor, responde con 1, 2 o 3."
                 
-                tag = env['res.partner.category'].sudo().search([('name', '=', tag_name)], limit=1) or \
-                      env['res.partner.category'].sudo().create({'name': tag_name})
-                partner.write({'category_id': [(6, 0, [tag.id])]})
+                # --- LÓGICA CORREGIDA PARA BUSCAR/CREAR ETIQUETAS ---
+                
+                # 1. Define el nombre de la categoría padre
+                parent_category_name = "Tipo de Cliente"
+                
+                # 2. Busca la categoría padre o la crea si no existe
+                parent_category = env['res.partner.category'].sudo().search(
+                    [('name', '=', parent_category_name), ('parent_id', '=', False)], limit=1)
+                if not parent_category:
+                    parent_category = env['res.partner.category'].sudo().create({'name': parent_category_name})
+
+                # 3. Busca la etiqueta hija específica dentro de la categoría padre
+                tag = env['res.partner.category'].sudo().search(
+                    [('name', '=', tag_name), ('parent_id', '=', parent_category.id)], limit=1)
+                
+                # 4. Si no existe, la crea como hija de la categoría padre
+                if not tag:
+                    tag = env['res.partner.category'].sudo().create({
+                        'name': tag_name,
+                        'parent_id': parent_category.id
+                    })
+
+                # 5. Prepara la lista de etiquetas finales para el partner
+                #    Esto asegura que no tenga múltiples "Tipos de Cliente" y no borra otras etiquetas.
+                all_customer_type_tags = env['res.partner.category'].sudo().search([('parent_id', '=', parent_category.id)])
+                other_tags = partner.category_id.filtered(lambda r: r.id not in all_customer_type_tags.ids)
+                
+                final_tags = other_tags + tag
+                partner.write({'category_id': [(6, 0, final_tags.ids)]})
+                
+                # --- FIN DE LA LÓGICA CORREGIDA ---
                 
                 if "Consumidor Final" not in tag_name:
                     self._create_crm_lead(env, partner)
@@ -103,9 +136,6 @@ class WhatsAppOnboardingHandler(models.AbstractModel):
                     "3 - Mayorista"
                 )
         
-        # --- LÍNEA CORREGIDA ---
-        # Ahora, solo se borra la memoria y se da el mensaje de "gracias" si
-        # el flujo que acaba de terminar ESTÁ en la lista de flujos de onboarding.
         if not missing_data and memory.id and memory.read(['flow_state'])[0]['flow_state'] in ONBOARDING_FLOWS:
             memory.unlink()
             return True, "¡Ahora sí, gracias! Ya tenemos todos tus datos. ¿En qué te puedo ayudar?"
@@ -138,4 +168,5 @@ class WhatsAppOnboardingHandler(models.AbstractModel):
                 'note': f'Contactar al cliente {partner.name} para cotizarlo.',
                 'user_id': partner.user_id.id or env.user.id,
             })
+
         _logger.info(f"✨ Creada oportunidad '{lead.name}' para el partner '{partner.name}'.")
