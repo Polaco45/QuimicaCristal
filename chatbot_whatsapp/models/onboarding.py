@@ -148,15 +148,27 @@ class WhatsAppOnboardingHandler(models.AbstractModel):
             _logger.info(f"El partner '{partner.name}' ya tiene una oportunidad en el CRM.")
             return
 
-        salesperson_id = partner.user_id.id or False
-
+        # --- LÓGICA DE ASIGNACIÓN DE VENDEDOR MEJORADA ---
+        # 1. Prioridad: el vendedor asignado al contacto.
+        salesperson_id = partner.user_id.id
+        
+        # 2. Si no tiene, buscar a "Luca de Química Cristal" como vendedor por defecto.
+        if not salesperson_id:
+            default_user = env['res.users'].sudo().search([('name', '=', 'Luca de Química Cristal')], limit=1)
+            if default_user:
+                salesperson_id = default_user.id
+            else:
+                # 3. Si no se encuentra a "Luca", usar al Administrador como último recurso.
+                _logger.warning("El vendedor por defecto 'Luca de Química Cristal' no fue encontrado. El lead se asignará al Administrador.")
+                salesperson_id = env.ref('base.user_admin').id
+                
         lead_vals = {
             'name': f"Nuevo cliente WhatsApp: {partner.name}",
             'partner_id': partner.id,
             'contact_name': partner.name,
             'email_from': partner.email,
             'phone': partner.phone,
-            'user_id': salesperson_id  # AÑADIDO: Asignar vendedor al lead
+            'user_id': salesperson_id  # Asignar el vendedor determinado
         }
         if partner.category_id:
             tag_name = partner.category_id[0].name
@@ -174,7 +186,7 @@ class WhatsAppOnboardingHandler(models.AbstractModel):
                 'activity_type_id': activity_type.id,
                 'summary': 'Seguimiento nuevo contacto WhatsApp',
                 'note': f'Contactar al cliente {partner.name} para cotizarlo.',
-                # CORREGIDO: La actividad se asigna al mismo vendedor del lead.
+                # La actividad siempre se asigna al vendedor del lead, que ahora está garantizado.
                 'user_id': lead.user_id.id,
             })
         _logger.info(f"✨ Creada oportunidad '{lead.name}' para el partner '{partner.name}'.")

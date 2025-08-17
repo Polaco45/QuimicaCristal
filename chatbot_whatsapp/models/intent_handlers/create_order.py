@@ -101,7 +101,19 @@ def create_sale_order(env, partner_id, order_lines, partner_shipping_id=None):
     order = env['sale.order'].with_context(pricelist=pricelist.id).sudo().create(order_vals)
     _logger.info(f"✅ Orden creada: {order.name} para la dirección ID: {order.partner_shipping_id.id}")
 
-    salesperson_id = partner.user_id.id or False
+    # --- LÓGICA DE ASIGNACIÓN DE VENDEDOR MEJORADA ---
+    # 1. Prioridad: el vendedor asignado al contacto.
+    salesperson_id = partner.user_id.id
+    
+    # 2. Si no tiene, buscar a "Luca de Química Cristal" como vendedor por defecto.
+    if not salesperson_id:
+        default_user = env['res.users'].sudo().search([('name', '=', 'Luca de Química Cristal')], limit=1)
+        if default_user:
+            salesperson_id = default_user.id
+        else:
+            # 3. Si no se encuentra a "Luca", usar al Administrador como último recurso.
+            _logger.warning("El vendedor por defecto 'Luca de Química Cristal' no fue encontrado. El lead se asignará al Administrador.")
+            salesperson_id = env.ref('base.user_admin').id
 
     lead_vals = {
         'name': f"Pedido WhatsApp: {partner.name or 'Cliente sin nombre'}",
