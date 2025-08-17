@@ -148,9 +148,15 @@ class WhatsAppOnboardingHandler(models.AbstractModel):
             _logger.info(f"El partner '{partner.name}' ya tiene una oportunidad en el CRM.")
             return
 
+        salesperson_id = partner.user_id.id or False
+
         lead_vals = {
-            'name': f"Nuevo cliente WhatsApp: {partner.name}", 'partner_id': partner.id,
-            'contact_name': partner.name, 'email_from': partner.email, 'phone': partner.phone,
+            'name': f"Nuevo cliente WhatsApp: {partner.name}",
+            'partner_id': partner.id,
+            'contact_name': partner.name,
+            'email_from': partner.email,
+            'phone': partner.phone,
+            'user_id': salesperson_id  # AÑADIDO: Asignar vendedor al lead
         }
         if partner.category_id:
             tag_name = partner.category_id[0].name
@@ -163,10 +169,12 @@ class WhatsAppOnboardingHandler(models.AbstractModel):
         activity_type = env['mail.activity.type'].sudo().search([('name', 'ilike', 'Iniciativa de Venta')], limit=1)
         if activity_type:
             env['mail.activity'].sudo().create({
-                'res_model_id': env.ref('crm.model_crm_lead').id, 'res_id': lead.id,
-                'activity_type_id': activity_type.id, 'summary': 'Seguimiento nuevo contacto WhatsApp',
+                'res_model_id': env.ref('crm.model_crm_lead').id,
+                'res_id': lead.id,
+                'activity_type_id': activity_type.id,
+                'summary': 'Seguimiento nuevo contacto WhatsApp',
                 'note': f'Contactar al cliente {partner.name} para cotizarlo.',
-                'user_id': partner.user_id.id or env.user.id,
+                # CORREGIDO: La actividad se asigna al mismo vendedor del lead.
+                'user_id': lead.user_id.id,
             })
-
         _logger.info(f"✨ Creada oportunidad '{lead.name}' para el partner '{partner.name}'.")

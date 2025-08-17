@@ -96,12 +96,12 @@ def create_sale_order(env, partner_id, order_lines, partner_shipping_id=None):
         'pricelist_id': pricelist.id,
         'order_line': order_line_vals
     }
-    
     if partner_shipping_id:
         order_vals['partner_shipping_id'] = partner_shipping_id
-
     order = env['sale.order'].with_context(pricelist=pricelist.id).sudo().create(order_vals)
     _logger.info(f"✅ Orden creada: {order.name} para la dirección ID: {order.partner_shipping_id.id}")
+
+    salesperson_id = partner.user_id.id or False
 
     lead_vals = {
         'name': f"Pedido WhatsApp: {partner.name or 'Cliente sin nombre'}",
@@ -112,6 +112,7 @@ def create_sale_order(env, partner_id, order_lines, partner_shipping_id=None):
         'phone': partner.phone,
         'description': "Se generó un pedido desde WhatsApp con los siguientes items:\n" + "\n".join(description_lines),
         'expected_revenue': order.amount_total,
+        'user_id': salesperson_id,
     }
     
     if partner.category_id:
@@ -136,7 +137,7 @@ def create_sale_order(env, partner_id, order_lines, partner_shipping_id=None):
             'activity_type_id': activity_type_id.id,
             'summary': 'Seguimiento pedido desde WhatsApp',
             'note': f"Revisar el pedido {order.name} para contacto con el cliente.",
-            'user_id': partner.user_id.id or env.user.id,
+            'user_id': lead.user_id.id,
         })
     return order
 
