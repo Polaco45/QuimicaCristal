@@ -105,8 +105,19 @@ class WhatsAppMessage(models.Model):
                 _send_text(record, response_msg)
                 continue
 
-            b2c_tag_name = "Tipo de Cliente / Consumidor Final"
-            is_b2c = partner.category_id and any(tag.name == b2c_tag_name for tag in partner.category_id)
+            # --- LÓGICA CORREGIDA PARA DETECTAR B2C ---
+            def _partner_is_b2c(partner_record):
+                """Helper para verificar si el partner es Consumidor Final."""
+                parent_category_name = "Tipo de Cliente"
+                b2c_tag_name = "Consumidor Final"
+                for tag in partner_record.category_id:
+                    if (tag.name == b2c_tag_name and
+                        tag.parent_id and
+                        tag.parent_id.name == parent_category_name):
+                        return True
+                return False
+
+            is_b2c = _partner_is_b2c(partner)
 
             if not is_b2c and not is_cotizado(partner):
                 if not memory.human_takeover:
