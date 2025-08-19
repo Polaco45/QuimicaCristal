@@ -159,8 +159,7 @@ class ChatbotProcessor:
     
     def _send_template(self, template_name_to_send, partner, invoice):
         """
-        Envía una plantilla de WhatsApp para una factura con el número dinámico,
-        armando el body manualmente según cómo lo envía el UI.
+        Envía una plantilla de WhatsApp para una factura con el número dinámico.
         """
         wa_account = self.record.wa_account_id
         if not wa_account:
@@ -168,7 +167,6 @@ class ChatbotProcessor:
             return
 
         try:
-            # Buscar plantilla
             wa_template = self.env['whatsapp.template'].sudo().search([
                 ('template_name', '=', template_name_to_send),
                 ('wa_account_id', '=', wa_account.id)
@@ -179,8 +177,7 @@ class ChatbotProcessor:
                 return
 
             # --- CORRECCIÓN CLAVE ---
-            # Construimos el JSON para rellenar las variables de la plantilla.
-            # Si tu plantilla usa {{1}}, la clave es 'free_text_1'.
+            # Pasamos el diccionario de Python directamente, sin json.dumps()
             free_text_data = {
                 'free_text_1': invoice.name
             }
@@ -197,8 +194,8 @@ class ChatbotProcessor:
                 'wa_template_id': wa_template.id,
                 'mail_message_id': mail_message.id,
                 'state': 'outgoing',
-                # Agregamos el JSON con el valor de la variable
-                'free_text_json': json.dumps(free_text_data),
+                # Eliminamos json.dumps() y pasamos el diccionario directamente
+                'free_text_json': free_text_data,
             }
 
             outgoing_msg = self.env['whatsapp.message'].sudo().create(vals)
