@@ -605,7 +605,7 @@ class ChatbotProcessor:
             self.memory.write({'flow_state': False, 'data_buffer': ''})
             return self._send_text(messages_config['invoice_selection_cancelled'])
 
-        template_name = "envio_factura_chatbot_copy_copy"
+        template_name = "envio_factura_bot"
         
         # Intenta interpretar la entrada como una selección de la lista (ej: "1", "2", etc.)
         if self.plain_text.isdigit():
@@ -657,7 +657,7 @@ class ChatbotProcessor:
             self.memory.write({'flow_state': False, 'data_buffer': ''})
             return self._send_text(messages_config['invoice_selection_cancelled'])
 
-        template_name = "envio_factura_chatbot_copy_copy"
+        template_name = "envio_factura_bot"
         invoice = find_invoice_by_number(self.env, self.partner, self.plain_text)
 
         if invoice:
@@ -686,7 +686,7 @@ class ChatbotProcessor:
                 invoice = find_invoice_by_number(self.env, self.partner, number_match.group())
                 if invoice:
                     self.memory.write({'flow_state': False, 'data_buffer': ''})
-                    return self._send_template("envio_factura_chatbot_copy_copy", self.partner, invoice)
+                    return self._send_template("envio_factura_bot", self.partner, invoice)
             response_data = handle_solicitar_factura(self.env, self.partner, self.plain_text)
             if response_data.get('flow_state'):
                 self.memory.write({'flow_state': response_data.get('flow_state'), 'data_buffer': json.dumps(response_data.get('data_buffer', {}))})
