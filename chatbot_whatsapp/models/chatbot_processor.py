@@ -178,12 +178,17 @@ class ChatbotProcessor:
                 _logger.error(f"No se encontró la plantilla: {template_name_to_send}")
                 return
 
-            invoice_number = invoice.name
-            
+            # --- CORRECCIÓN CLAVE ---
+            # Construimos el JSON para rellenar las variables de la plantilla.
+            # Si tu plantilla usa {{1}}, la clave es 'free_text_1'.
+            free_text_data = {
+                'free_text_1': invoice.name
+            }
+
             mail_message = self.env['mail.message'].sudo().create({
-            'model': 'account.move',  # Especifica el TIPO de documento
-            'res_id': invoice.id,      # Especifica QUÉ documento es
-            'body': wa_template.body,
+                'model': 'account.move',
+                'res_id': invoice.id,
+                'body': wa_template.body,
             })
 
             vals = {
@@ -192,6 +197,8 @@ class ChatbotProcessor:
                 'wa_template_id': wa_template.id,
                 'mail_message_id': mail_message.id,
                 'state': 'outgoing',
+                # Agregamos el JSON con el valor de la variable
+                'free_text_json': json.dumps(free_text_data),
             }
 
             outgoing_msg = self.env['whatsapp.message'].sudo().create(vals)
