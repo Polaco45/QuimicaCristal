@@ -129,5 +129,3 @@
 📝 Comprobar stock en la suma de los productos en el carrito
 
 📝 Handlear cuando el empleado se olvida de settear /on
-
-numero de edgar: +5493525481752 

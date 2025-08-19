@@ -691,9 +691,16 @@ class ChatbotProcessor:
                 if invoice:
                     self.memory.write({'flow_state': False, 'data_buffer': ''})
                     return self._send_template("envio_factura_bot", self.partner, invoice)
+            
             response_data = handle_solicitar_factura(self.env, self.partner, self.plain_text)
+            
             if response_data.get('flow_state'):
-                self.memory.write({'flow_state': response_data.get('flow_state'), 'data_buffer': json.dumps(response_data.get('data_buffer', {}))})
+                self.memory.write({
+                    'flow_state': response_data.get('flow_state'),
+                    # --- LÍNEA CORREGIDA ---
+                    # Eliminamos el json.dumps() de aquí
+                    'data_buffer': response_data.get('data_buffer', '{}')
+                })
             return self._send_response(response_data)
 
         if intent in ["saludo", "agradecimiento_cierre"]:
