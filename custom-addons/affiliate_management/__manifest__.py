@@ -17,7 +17,7 @@
   "name"                 :  "Odoo Affiliate Management",
   "summary"              :  """Affiliate extension for odoo E-commerce store. Keywords: Odoo Affiliate Extension | Affiliate Program for Odoo | Odoo E-commerce Affiliate | Affiliate Management in Odoo | Odoo Affiliate Tool | Affiliate Marketing with Odoo | Affiliate Extension for Odoo | Odoo Affiliate Tracking | Affiliate Solutions for Odoo | Manage Affiliates in Odoo""",
   "category"             :  "Marketing",
-  "version"              :  "1.0.5",
+  "version"              :  "1.0.6",
   "sequence"             :  1,
   "author"               :  "Webkul Software Pvt. Ltd.",
   "license"              :  "Other proprietary",
@@ -67,6 +67,7 @@
                              'views/affiliate_home_view.xml',
                              'views/statistics_portal_template.xml',
                              'views/program_commission_portal_template.xml',
+                             'views/sale_order_views.xml',
                              'data/default_affiliate_program_data.xml',
                             ],
   "assets"              :  {

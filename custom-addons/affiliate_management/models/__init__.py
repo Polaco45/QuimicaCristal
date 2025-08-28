@@ -24,3 +24,4 @@ from . import affiliate_request
 from . import affiliate_image
 from . import advance_commision
 from . import affiliate_product_pricelist_item
+from . import sale_order
