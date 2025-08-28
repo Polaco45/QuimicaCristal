@@ -195,36 +195,48 @@ class WebsiteSale(WebsiteSale):
         cookies = dict(request.httprequest.cookies)
         visit = request.env['affiliate.visit']
         arr=[]# contains cookies product_id
-        sale_order_id = sale_order_id.filtered(lambda s: s.state == 'sale')
+        aff_visit = None
+        confirmed_sale_order_id = sale_order_id and sale_order_id.filtered(lambda s: s.state == 'sale')
         txn = sale_order_id and sale_order_id.transaction_ids.filtered(lambda s: s.state == 'done') or False
         for k,v in cookies.items():
             if 'affkey_' in k:
                 arr.append(k.split('_')[1])
-        if arr and sale_order_id and txn:
+        if arr:
             partner_id = request.env['res.partner'].sudo().search([('res_affiliate_key','=',arr[0]),('is_affiliate','=',True)])
-            current_website = request.website
-            aff_program = request.env['affiliate.program'].sudo().search([('website_id', '=', current_website.id)], limit=1)
-            for s in sale_order_id.order_line:
-                if hasattr(s, 'is_delivery') and s.is_delivery:
-                    continue
-                if len(arr)>0 and partner_id:
-                    product_tmpl_id = s.product_id.product_tmpl_id.id
-                    aff_visit = visit.sudo().create({
-                        'affiliate_method':'pps',
-                        'affiliate_key':arr[0],
-                        'affiliate_partner_id':partner_id.id,
-                        'url':"",
-                        'ip_address':request.httprequest.environ['REMOTE_ADDR'],
-                        'type_id':product_tmpl_id,
-                        'affiliate_type': 'product',
-                        'type_name':s.product_id.id,
-                        'sales_order_line_id':s.id,
-                        'convert_date':fields.datetime.now(),
-                        'affiliate_program_id': aff_program.id,
-                        'website_id': current_website.id,
-                        'product_quantity' : s.product_uom_qty,
-                        'is_converted':True
+            aff_program = request.env['affiliate.program'].sudo().search([('website_id', '=', request.website.id)], limit=1)
+            if confirmed_sale_order_id and txn:
+                for s in sale_order_id.order_line:
+                    if hasattr(s, 'is_delivery') and s.is_delivery:
+                        continue
+                    if len(arr)>0 and partner_id:
+                        product_tmpl_id = s.product_id.product_tmpl_id.id
+                        aff_visit = visit.sudo().create({
+                            'affiliate_method':'pps',
+                            'affiliate_key':arr[0],
+                            'affiliate_partner_id':partner_id.id,
+                            'url':"",
+                            'ip_address':request.httprequest.environ['REMOTE_ADDR'],
+                            'type_id':product_tmpl_id,
+                            'affiliate_type': 'product',
+                            'type_name':s.product_id.id,
+                            'sales_order_line_id':s.id,
+                            'convert_date':fields.datetime.now(),
+                            'affiliate_program_id': aff_program.id,
+                            'website_id': request.website.id,
+                            'product_quantity' : s.product_uom_qty,
+                            'is_converted':True
+                        })
+                if aff_visit:
+                    confirmed_sale_order_id.write({
+                        'affiliate_partner_id': partner_id.id,
+                        'affiliate_program_id': aff_program.id
                     })
+            else:
+                sale_order_id.write({
+                    'affiliate_partner_id': partner_id.id,
+                    'affiliate_program_id': aff_program.id
+                })
+
             # delete cookie after first sale occur
             cookie_del_status=False
             for k,v in cookies.items():
@@ -246,3 +258,6 @@ class WebsiteSale(WebsiteSale):
             'months':cookie_expire*24*30,
         }
         return datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=time_dict[cookie_expire_period])
+
+
+

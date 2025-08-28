@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_order_form_inherit" model="ir.ui.view">
+        <field name="name">sale.order.form.view.inherit</field>
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="sale.view_order_form"/>
+        <field name="arch" type="xml">
+            
+            <xpath expr="//div[@name='button_box']" position="inside">
+                <button name="show_affiliate_visits" type="object" class="oe_stat_button" icon="fa-book" invisible="not affiliate_partner_id or not affiliate_program_id">
+                    Visits
+                </button>
+            </xpath>
+            <xpath expr="//page[@name='other_information']" position="inside">
+                <group>
+                    <group name="affiliate_details" string="Affiliate Details">
+                        <field name="affiliate_partner_id" />
+                        <field name="affiliate_program_id" />
+                    </group>
+                </group>
+            </xpath>
+        </field>
+    </record>
+</odoo>
