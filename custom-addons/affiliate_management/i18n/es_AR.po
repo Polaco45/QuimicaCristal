@@ -1,0 +1,173 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: Odoo Server 18.0\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2025-09-01 13:18+0000\n"
+"PO-Revision-Date: 2025-09-01 13:18+0000\n"
+"Last-Translator: \n"
+"Language: es_AR\n"
+"Language-Team: Spanish (Argentina)\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+# --- Landing / auth (los que ves en inglés al registrarse) ---
+#. module: affiliate_management
+#: model_terms:ir.ui.view,arch_db:affiliate_management.affiliate
+msgid "Welcome To Affiliate Program"
+msgstr "Te damos la bienvenida al Programa de Afiliados"
+
+#. module: affiliate_management
+#: model_terms:ir.ui.view,arch_db:affiliate_management.affiliate
+msgid "Generate Links &amp; Banners"
+msgstr "Generar enlaces y banners"
+
+#. module: affiliate_management
+#: model_terms:ir.ui.view,arch_db:affiliate_management.affiliate
+msgid "Root Traffic To \""
+msgstr "Dirigir tráfico a \""
+
+#. module: affiliate_management
+#: model_terms:ir.ui.view,arch_db:affiliate_management.affiliate
+msgid "Earn commission"
+msgstr "Ganar comisión"
+
+#. module: affiliate_management
+#: model_terms:ir.ui.view,arch_db:affiliate_management.affiliate
+msgid "Continue Shopping"
+msgstr "Seguir comprando"
+
+#. module: affiliate_management
+#: model_terms:ir.ui.view,arch_db:affiliate_management.affiliate
+msgid "JOIN NOW FOR FREE"
+msgstr "UNITE AHORA GRATIS"
+
+#. module: affiliate_management
+#: model_terms:ir.ui.view,arch_db:affiliate_management.affiliate
+msgid "View My Affiliate Account"
+msgstr "Ver mi cuenta de afiliado"
+
+#. module: affiliate_management
+#: model_terms:ir.ui.view,arch_db:affiliate_management.affiliate
+msgid "Your Request has been submitted sucessfully. Soon you will be notified by email."
+msgstr "Tu solicitud se envió correctamente. Pronto recibirás un correo electrónico."
+
+#. module: affiliate_management
+#: model_terms:ir.ui.view,arch_db:affiliate_management.affiliate
+msgid "Your application is currently being reviewed, soon you will receive an Approval confirmation mail and thereafter you will able to access your Affiliate account on our website."
+msgstr "Tu solicitud está siendo revisada; pronto recibirás un correo de confirmación de aprobación y, luego, podrás acceder a tu cuenta de afiliado en nuestro sitio web."
+
+#. module: affiliate_management
+#: model_terms:ir.ui.view,arch_db:affiliate_management.affiliate
+msgid "Sorry to say! your request to become an affiliate for us is rejected by Admin."
+msgstr "Lamentamos informarle que su solicitud para convertirse en afiliado fue rechazada por el administrador."
+
+# --- Formularios / login / registro ---
+#. module: affiliate_management
+#: model_terms:ir.ui.view,arch_db:affiliate_management.show_sign_in
+msgid "Home"
+msgstr "Inicio"
+
+#. module: affiliate_management
+#: model_terms:ir.ui.view,arch_db:affiliate_management.show_sign_in
+msgid "Shop"
+msgstr "Tienda"
+
+#. module: affiliate_management
+#: model_terms:ir.ui.view,arch_db:affiliate_management.affiliate
+msgid "Enter Your Email"
+msgstr "Ingrese su correo electrónico"
+
+#. module: affiliate_management
+#: model_terms:ir.ui.view,arch_db:affiliate_management.register
+msgid "Enter Your Password"
+msgstr "Ingrese su contraseña"
+
+#. module: affiliate_management
+#: model_terms:ir.ui.view,arch_db:affiliate_management.show_sign_in
+msgid "Email Id"
+msgstr "Correo electrónico"
+
+#. module: affiliate_management
+#: model_terms:ir.ui.view,arch_db:affiliate_management.show_sign_in
+msgid "Forgot Password?"
+msgstr "¿Olvidó su contraseña?"
+
+#. module: affiliate_management
+#: model_terms:ir.ui.view,arch_db:affiliate_management.register
+msgid "Confirm Password"
+msgstr "Confirmar contraseña"
+
+#. module: affiliate_management
+#: model_terms:ir.ui.view,arch_db:affiliate_management.register
+msgid "Register"
+msgstr "Registrarse"
+
+#. modules: affiliate_management
+#: model_terms:ir.ui.view,arch_db:affiliate_management.register
+msgid "Close"
+msgstr "Cerrar"
+
+#. module: affiliate_management
+#: model_terms:ir.ui.view,arch_db:affiliate_management.register
+msgid "I agree to all"
+msgstr "Acepto todas"
+
+#. module: affiliate_management
+#: model_terms:ir.ui.view,arch_db:affiliate_management.register
+msgid "terms and conditions for affiliate program"
+msgstr "términos y condiciones del programa de afiliados"
+
+#. module: affiliate_management
+#: model_terms:ir.ui.view,arch_db:affiliate_management.register
+msgid "Terms and Conditions"
+msgstr "Términos y Condiciones"
+
+# --- Secciones informativas del landing ---
+#. module: affiliate_management
+#: model_terms:ir.ui.view,arch_db:affiliate_management.affiliate
+msgid "About Our Affiliate Program"
+msgstr "Acerca de nuestro Programa de Afiliados"
+
+#. module: affiliate_management
+#: model_terms:ir.ui.view,arch_db:affiliate_management.about
+msgid "Stats Management"
+msgstr "Gestión de estadísticas"
+
+#. module: affiliate_management
+#: model_terms:ir.ui.view,arch_db:affiliate_management.about
+msgid "Affiliate Tool"
+msgstr "Herramienta de afiliados"
+
+#. module: affiliate_management
+#: model_terms:ir.ui.view,arch_db:affiliate_management.about
+msgid "View Your Stats"
+msgstr "Ver tus estadísticas"
+
+#. module: affiliate_management
+#: model_terms:ir.ui.view,arch_db:affiliate_management.about
+msgid "View Tools"
+msgstr "Ver herramientas"
+
+# --- Botones de herramientas ---
+#. module: affiliate_management
+#: model_terms:ir.ui.view,arch_db:affiliate_management.link_generator
+msgid "Generate"
+msgstr "Generar"
+
+#. module: affiliate_management
+#: model_terms:ir.ui.view,arch_db:affiliate_management.link_generator
+msgid "Copy"
+msgstr "Copiar"
+
+#. module: affiliate_management
+#: model_terms:ir.ui.view,arch_db:affiliate_management.product_inherit_template
+msgid "Generate Banner"
+msgstr "Generar banner"
+
+#. module: affiliate_management
+#: model_terms:ir.ui.view,arch_db:affiliate_management.tool
+msgid "Generate Product Link"
+msgstr "Generar enlace de producto"
+
