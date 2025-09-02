@@ -82,7 +82,7 @@ publicWidget.registry.AffiliateWebsite = publicWidget.Widget.extend({
                             <br/>\
                             <div id='aff_req_btn'>\
                               <center>\
-                                <a href='/shop' class='btn btn-success' style='width:180px;height:37px;' >Continue Shopping</a>\
+                                <a href='/shop' class='btn btn-success' style='min-width:180px;height:37px;display:inline-flex;align-items:center;justify-content:center;'>Seguir comprando</a>\
                               </center>\
                             </div>");
                       }
