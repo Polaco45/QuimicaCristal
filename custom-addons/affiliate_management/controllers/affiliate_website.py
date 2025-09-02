@@ -85,7 +85,7 @@ class website_affiliate(Home):
         if aff:
             if (not aff.signup_valid) and (not aff.user_id):
                 aff.regenerate_token()
-                msg = _('Thank you for registering with us, we have sent you the Signup mail at {}.').format(email)
+                msg = _('Tu solicitud se envió correctamente. Pronto recibirás un correo electrónico.')
 
             else:
                 website_name = aff.website_id.name 
