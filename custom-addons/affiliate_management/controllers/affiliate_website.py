@@ -101,7 +101,7 @@ class website_affiliate(Home):
 
         else:
             user = request.env['res.users'].sudo().search([('login','=',email)])
-            msg = _("Thank you for registering with us, we have sent you the Signup mail at "+email)
+            msg = _("Tu solicitud se envió correctamente. Pronto recibirás un correo electrónico."+email)
             current_website = request.website
             vals = {
                 'name':email,
