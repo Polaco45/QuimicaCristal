@@ -1,0 +1,18 @@
+<odoo>
+    <record id="view_payment_provider_form_delivery_filter" model="ir.ui.view">
+        <field name="name">payment.provider.form.delivery.filter</field>
+        <field name="model">payment.provider</field>
+        <field name="inherit_id" ref="payment.payment_provider_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//sheet" position="inside">
+                <group string="Restricción por métodos de entrega" colspan="2">
+                    <field name="restrict_delivery_carriers"/>
+                    <field name="delivery_carrier_ids"
+                           widget="many2many_tags"
+                           options="{'no_create': True}"
+                           invisible="not restrict_delivery_carriers"/>
+                </group>
+            </xpath>
+        </field>
+    </record>
+</odoo>
