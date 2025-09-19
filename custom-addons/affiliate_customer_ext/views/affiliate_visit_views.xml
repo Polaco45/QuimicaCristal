@@ -1,0 +1,43 @@
+<odoo>
+  <data>
+
+    <!-- FORM: insertar "Cliente" después de website_id -->
+    <record id="affiliate_visit_view_form_inherit_customer" model="ir.ui.view">
+      <field name="name">affiliate.visit.form.inherit.customer</field>
+      <field name="model">affiliate.visit</field>
+      <field name="inherit_id" ref="affiliate_management.affiliate_visit_view_form"/>
+      <field name="arch" type="xml">
+        <!-- Agrega el campo justo después de website_id para evitar seleccionar por @string -->
+        <xpath expr="//field[@name='website_id']" position="after">
+          <field name="customer_id" string="Cliente" readonly="1"/>
+        </xpath>
+      </field>
+    </record>
+
+    <!-- TREE: agregar columna Cliente -->
+    <record id="affiliate_visit_tree_inherit_customer" model="ir.ui.view">
+      <field name="name">affiliate.visit.tree.inherit.customer</field>
+      <field name="model">affiliate.visit</field>
+      <field name="inherit_id" ref="affiliate_management.affiliate_visit__view_tree"/>
+      <field name="arch" type="xml">
+        <xpath expr="//list/field[@name='affiliate_partner_id']" position="after">
+          <field name="customer_id"/>
+        </xpath>
+      </field>
+    </record>
+
+    <!-- SEARCH: buscar/agrup. por Cliente -->
+    <record id="affiliate_visit_search_inherit_customer" model="ir.ui.view">
+      <field name="name">affiliate.visit.search.inherit.customer</field>
+      <field name="model">affiliate.visit</field>
+      <field name="inherit_id" ref="affiliate_management.webkul_employees_view_search"/>
+      <field name="arch" type="xml">
+        <xpath expr="//search" position="inside">
+          <field name="customer_id"/>
+          <filter string="Customer" name="group_customer" context="{'group_by': 'customer_id'}"/>
+        </xpath>
+      </field>
+    </record>
+
+  </data>
+</odoo>
