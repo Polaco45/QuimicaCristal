@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #################################################################################
-# Author : Webkul Software Pvt. Ltd. (<https://webkul.com/>:wink:
+# Author : Webkul Software Pvt. Ltd. (<https://webkul.com/>)
 # Copyright(c): 2015-Present Webkul Software Pvt. Ltd.
 # All Rights Reserved.
 #
@@ -19,6 +19,7 @@ import logging
 _logger = logging.getLogger(__name__)
 from odoo.addons.website_sale.controllers.main  import WebsiteSale
 import datetime
+from werkzeug.urls import url_encode  # << agregado para componer QS
 
 
 class WebsiteSale(WebsiteSale):
@@ -95,21 +96,14 @@ class WebsiteSale(WebsiteSale):
         partner = request.env.user.partner_id
         partner_aff_program = request.env['affiliate.program'].sudo().search([('website_id', '=', request.website.id)], limit=1)
         if partner_aff_program and partner.is_affiliate and partner.res_affiliate_key :
-            db = request.session.get('db')
-            db = "db=%s" %(db)
             page_url = request.httprequest.url
             categories = request.env['product.public.category'].sudo().search([])
-            if page_url.find('?') == -1:
-                result.update({
-                    'referral_link': "%s?aff_key=%s&%s" %(page_url,partner.res_affiliate_key,db),
-                    'categories': categories,
-                    })
-            else:
-                result.update({
-                    'referral_link': "%s&aff_key=%s&%s#" %(page_url,partner.res_affiliate_key,db),
-                    'categories': categories,
-                    })
-
+            sep = '?' if '?' not in page_url else '&'
+            referral = page_url + sep + url_encode({'aff_key': partner.res_affiliate_key})
+            result.update({
+                'referral_link': referral,
+                'categories': categories,
+            })
         return result
     
 
@@ -122,18 +116,12 @@ class WebsiteSale(WebsiteSale):
         partner = request.env.user.partner_id
         partner_aff_program = request.env['affiliate.program'].sudo().search([('website_id', '=', request.website.id)], limit=1)
         if partner_aff_program and partner.is_affiliate and partner.res_affiliate_key :
-            db = request.session.get('db')
-            db = "db=%s" %(db)
             page_url = request.httprequest.url
-            affiliate_product_url = None
-            if page_url.find('?')==-1:
-                affiliate_product_url = page_url+ '?' + db + '&aff_key='+partner.res_affiliate_key
-            else:
-                affiliate_product_url =  page_url+ '&' + db + '&aff_key='+partner.res_affiliate_key
-
+            sep = '?' if '?' not in page_url else '&'
+            affiliate_product_url = page_url + sep + url_encode({'aff_key': partner.res_affiliate_key})
             result.update({
                 'affiliate_product_url': affiliate_product_url,
-                })
+            })
         return result
 
 
@@ -258,6 +246,3 @@ class WebsiteSale(WebsiteSale):
             'months':cookie_expire*24*30,
         }
         return datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=time_dict[cookie_expire_period])
-
-
-
