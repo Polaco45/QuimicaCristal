@@ -1,13 +1,14 @@
 <odoo>
   <data>
 
-    <!-- FORM: insertar "Cliente" en el bloque Order Details -->
+    <!-- FORM: insertar "Cliente" después de website_id -->
     <record id="affiliate_visit_view_form_inherit_customer" model="ir.ui.view">
       <field name="name">affiliate.visit.form.inherit.customer</field>
       <field name="model">affiliate.visit</field>
       <field name="inherit_id" ref="affiliate_management.affiliate_visit_view_form"/>
       <field name="arch" type="xml">
-        <xpath expr="//group[@string='Order Details']" position="inside">
+        <!-- Agrega el campo justo después de website_id para evitar seleccionar por @string -->
+        <xpath expr="//field[@name='website_id']" position="after">
           <field name="customer_id" string="Cliente" readonly="1"/>
         </xpath>
       </field>
@@ -25,7 +26,7 @@
       </field>
     </record>
 
-    <!-- SEARCH: permitir buscar/agrup. por Cliente -->
+    <!-- SEARCH: buscar/agrup. por Cliente -->
     <record id="affiliate_visit_search_inherit_customer" model="ir.ui.view">
       <field name="name">affiliate.visit.search.inherit.customer</field>
       <field name="model">affiliate.visit</field>
