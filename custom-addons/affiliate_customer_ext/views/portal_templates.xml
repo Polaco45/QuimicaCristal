@@ -1,0 +1,38 @@
+<odoo>
+  <template id="portal_affiliate_order_inherit_customer"
+            inherit_id="affiliate_management.affiliate_order"
+            name="Affiliate Order List - Customer Column">
+    <!-- Agregar encabezado -->
+    <xpath expr="//thead/tr" position="inside">
+      <th>Cliente</th>
+    </xpath>
+    <!-- Agregar valor por fila -->
+    <xpath expr="//t[@t-foreach='traffic']/tr/td[ last() ]" position="after">
+      <td><t t-esc="t.customer_id and t.customer_id.name or ''"/></td>
+    </xpath>
+  </template>
+
+  <template id="portal_affiliate_order_form_inherit_customer"
+            inherit_id="affiliate_management.order_form"
+            name="Affiliate Order Detail - Customer Row">
+    <xpath expr="//div[@class='mt16 mb-3']" position="inside">
+      <div class="mb8">
+        <strong>Cliente :</strong>
+        <t t-esc="order_visit_detail.customer_id and order_visit_detail.customer_id.name or ''"/>
+      </div>
+    </xpath>
+  </template>
+
+  <template id="portal_all_reports_inherit_customer"
+            inherit_id="affiliate_management.portal_my_affiliate_all_reports"
+            name="Affiliate All Reports - Customer Column">
+    <!-- Encabezado -->
+    <xpath expr="//thead/tr" position="inside">
+      <th>Cliente</th>
+    </xpath>
+    <!-- Celda -->
+    <xpath expr="//t[@t-foreach='commissions']/tr/td[last()]" position="after">
+      <td><t t-esc="t.customer_id and t.customer_id.name or ''"/></td>
+    </xpath>
+  </template>
+</odoo>
