@@ -83,7 +83,7 @@ class website_affiliate(Home):
         if aff:
             if (not aff.signup_valid) and (not aff.user_id):
                 aff.regenerate_token()
-                msg = _('Tu solicitud se envió correctamente. Pronto recibirás un correo electrónico a')
+                msg = _('Tu solicitud se envió correctamente. Pronto recibirás un correo electrónico para completar tu registro a')
             else:
                 website_name = aff.website_id.name
                 if aff.state == 'aproove':
@@ -97,7 +97,7 @@ class website_affiliate(Home):
                         msg = _("We have already sent you a joining e-mail from website  %s.", website_name)
         else:
             user = request.env['res.users'].sudo().search([('login', '=', email)])
-            msg = _("Tu solicitud se envió correctamente. Pronto recibirás un correo electrónico a " + email)
+            msg = _("Tu solicitud se envió correctamente. Pronto recibirás un correo electrónico para completar tu registro a " + email)
             current_website = request.website
             vals = {
                 'name': email,
