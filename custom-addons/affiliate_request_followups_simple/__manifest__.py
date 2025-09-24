@@ -13,6 +13,7 @@
     "data": [
         "security/ir.model.access.csv",
         "data/cron.xml",
+        "views/request_followup_status.xml",
     ],
     "installable": True,
     "application": False,

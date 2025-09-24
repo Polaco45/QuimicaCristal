@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+  <data>
+
+    <!-- Cambiá el ref de inherit_id por el XML ID real de la vista form
+         de affiliate.request en tu DB (modo desarrollador > Depurar > Ver Metadatos).
+         Suele ser algo como affiliate_management.affiliate_request_view_form -->
+    <record id="view_affreq_followup_status_inherit" model="ir.ui.view">
+      <field name="name">affiliate.request.form.followup.status</field>
+      <field name="model">affiliate.request</field>
+      <field name="inherit_id" ref="affiliate_management.affiliate_request_view_form"/>
+      <field name="arch" type="xml">
+        <xpath expr="//sheet" position="inside">
+          <group string="Seguimiento de recordatorios" name="grp_followup_status">
+            <!-- Barra tipo pasos -->
+            <field name="followup_progress"
+                   widget="statusbar"
+                   statusbar_visible="none,h12,h24,h48"
+                   readonly="1"/>
+
+            <!-- Fechas informativas -->
+            <field name="create_date" readonly="1"/>
+            <field name="last_followup_date" readonly="1"/>
+          </group>
+        </xpath>
+      </field>
+    </record>
+
+  </data>
+</odoo>
