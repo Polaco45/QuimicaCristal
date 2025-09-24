@@ -1,3 +1,3 @@
 from . import followup_log
 from . import followup_service
-from . import request_followup_status   # <-- NUEVO
+from . import request_followup_status
