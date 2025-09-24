@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+  <data noupdate="1">
+    <record id="ir_cron_affiliate_followups" model="ir.cron">
+      <field name="name">Afiliados: Recordatorios 12/24/48h</field>
+      <field name="model_id" ref="affiliate_request_followups_simple.model_affiliate_request_followup_service"/>
+      <field name="state">code</field>
+      <field name="code">model.cron_send_followups()</field>
+      <field name="interval_type">minutes</field>
+      <field name="interval_number">15</field>
+      <field name="numbercall">-1</field>
+      <field name="active">True</field>
+      <field name="user_id" ref="base.user_admin"/>
+    </record>
+  </data>
+</odoo>
