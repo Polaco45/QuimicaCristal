@@ -8,7 +8,6 @@
       <field name="code">model.cron_send_followups()</field>
       <field name="interval_type">minutes</field>
       <field name="interval_number">15</field>
-      <field name="numbercall">-1</field>
       <field name="active">True</field>
       <field name="user_id" ref="base.user_admin"/>
     </record>
