@@ -7,14 +7,18 @@
     "license": "LGPL-3",
     "depends": [
         "mail",
-        # Ajusta esto al módulo que provee `affiliate.request` en tu instancia:
-        "affiliate_management",
+        "affiliate_management",  # módulo que define affiliate.request
     ],
     "data": [
         "security/ir.model.access.csv",
         "data/cron.xml",
         "views/request_followup_status.xml",
     ],
+    "assets": {
+        "web.assets_backend": [
+            "affiliate_request_followups_simple/static/src/scss/statusbar.scss",
+        ],
+    },
     "installable": True,
     "application": False,
 }
