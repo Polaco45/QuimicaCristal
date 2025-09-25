@@ -105,7 +105,6 @@ class AffiliateRequestFollowupService(models.AbstractModel):
             self.env.cr.execute("SET LOCAL statement_timeout TO '90s'")
             self.env.cr.execute("SET LOCAL idle_in_transaction_session_timeout TO '180s'")
         except Exception:
-            # Si el motor no soporta alguno, seguimos igual.
             _logger.debug("affiliate_followups: no se pudieron fijar timeouts locales", exc_info=True)
 
         try:
@@ -132,22 +131,34 @@ class AffiliateRequestFollowupService(models.AbstractModel):
                 ]
 
             now = fields.Datetime.now()
-            Request = self.env["affiliate.request"].sudo()
-
-            # Candidatos: >=12h, no terminales, y con algún email para acelerar
-            domain = [("create_date", "<=", now - relativedelta(hours=12))]
-            if terminal_states:
-                domain.append(("state", "not in", terminal_states))
-            domain = ["&"] + domain + ["|", ("email", "!=", False), ("partner_id.email", "!=", False)]
-
             # Límite por batch + commits frecuentes
             batch_limit = int(ICP.get_param("affiliate.followup_max_batch", "1000") or 1000)
             commit_every = int(ICP.get_param("affiliate.followup_commit_every", "50") or 50)
 
-            recs = Request.search(domain, order="create_date desc", limit=batch_limit)
-            if not recs:
+            # ---------------------------
+            # Candidatos por SQL directo
+            # ---------------------------
+            params = [fields.Datetime.to_string(now - relativedelta(hours=12))]
+            where_sql = "create_date <= %s"
+            if terminal_states:
+                where_sql += " AND COALESCE(state,'') NOT IN %s"
+                params.append(tuple(terminal_states))
+
+            self.env.cr.execute(f"""
+                SELECT id
+                FROM affiliate_request
+                WHERE {where_sql}
+                ORDER BY create_date DESC
+                LIMIT %s
+            """, tuple(params + [batch_limit]))
+            ids = [r[0] for r in self.env.cr.fetchall()]
+
+            if not ids:
                 _logger.info("affiliate_followups: no hay candidatos.")
                 return True
+
+            Request = self.env["affiliate.request"].sudo()
+            recs = Request.browse(ids)
 
             candidates = self._dedup_by_email(recs)
             if not candidates:
@@ -167,7 +178,7 @@ class AffiliateRequestFollowupService(models.AbstractModel):
             for idx, r in enumerate(candidates, start=1):
                 stage = _stage_for(r)
 
-                # Savepoint + timeouts locales muy cortos sólo para esta sección
+                # Savepoint + timeouts locales cortos sólo para esta sección
                 with self.env.cr.savepoint():
                     try:
                         self.env.cr.execute("SET LOCAL lock_timeout TO '5s'")
