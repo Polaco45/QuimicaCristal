@@ -1,0 +1,12 @@
+/* Affiliate Request Followups – igualar ancho de pasos del statusbar
+   (aplica SOLO al statusbar al que le pongamos la clase ar-fup-bar) */
+
+.o_form_view .o_field_widget.o_field_statusbar.ar-fup-bar .o_statusbar_status {
+  display: flex;              /* nos aseguramos de que use flex */
+}
+
+.o_form_view .o_field_widget.o_field_statusbar.ar-fup-bar .o_statusbar_status > * {
+  flex: 1 1 0;                /* cada hijo ocupa la misma porción */
+  min-width: 0;               /* evita que el texto fuerce el ancho */
+  text-align: center;         /* centra los rótulos */
+}

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+  <record id="affiliate_request_followup_status_view" model="ir.ui.view">
+    <field name="name">affiliate.request.followup.status.view</field>
+    <field name="model">affiliate.request</field>
+    <!-- esta es la vista base correcta -->
+    <field name="inherit_id" ref="affiliate_management.affiliate_request_view_form"/>
+    <field name="priority" eval="90"/>
+    <field name="arch" type="xml">
+      <!-- insertamos el bloque dentro del sheet -->
+      <xpath expr="//sheet" position="inside">
+        <group name="followup_block" string="SEGUIMIENTO" col="4">
+          <!-- Barra de estado (con clase para igualar anchos) -->
+          <field name="followup_stage"
+                 widget="statusbar"
+                 class="ar-fup-bar"
+                 statusbar_visible="new,12h,24h,48h"
+                 readonly="1"/>
+
+          <!-- Fechas de ejecución -->
+          <group col="2">
+            <field name="create_date" string="Creado el"
+                   widget="datetime" readonly="1"
+                   options="{'no_open': True}"/>
+            <field name="followup_12h_at" string="Seguimiento 12h"
+                   widget="datetime" readonly="1"/>
+            <field name="followup_24h_at" string="Seguimiento 24h"
+                   widget="datetime" readonly="1"/>
+            <field name="followup_48h_at" string="Seguimiento 48h"
+                   widget="datetime" readonly="1"/>
+          </group>
+        </group>
+      </xpath>
+    </field>
+  </record>
+</odoo>
