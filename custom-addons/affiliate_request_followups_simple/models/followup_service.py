@@ -93,6 +93,13 @@ class AffiliateRequestFollowupService(models.AbstractModel):
                 return "24"
             return "12"
 
+        # Mapeo de etapa -> campo fecha a marcar en affiliate.request
+        stage_field_map = {
+            "12": "followup_12h_at",
+            "24": "followup_24h_at",
+            "48": "followup_48h_at",
+        }
+
         enviados = 0
 
         for r in candidates:
@@ -113,6 +120,15 @@ class AffiliateRequestFollowupService(models.AbstractModel):
                 try:
                     tmpl.send_mail(r.id, force_send=True, raise_exception=False)
                     enviados += 1
+
+                    # ---- NUEVO: marcar timestamp de la etapa en el registro ----
+                    field_name = stage_field_map.get(stage)
+                    if field_name and field_name in Request._fields:
+                        r.sudo().write({field_name: now})
+                    else:
+                        _logger.warning("affiliate_followups: campo de etapa no encontrado para stage=%s", stage)
+                    # ------------------------------------------------------------
+
                 except Exception:
                     _logger.exception("affiliate_followups: error enviando mail para request %s", r.id)
                     # Si quisieras reintentar, podrías borrar el log insertado aquí.
