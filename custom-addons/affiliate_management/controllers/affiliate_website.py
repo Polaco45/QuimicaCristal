@@ -145,7 +145,10 @@ class website_affiliate(Home):
         user = request.env['affiliate.request'].sudo().search([('signup_token', '=', token)])
         term_condition = request.env['res.config.settings'].sudo().website_constant(request.website).get('term_condition')
         values = {}
-        if user.signup_valid and user.state == 'draft':
+        if user and user.state == 'draft':
+            if not user.signup_valid:
+                user.regenerate_token()
+                token = user.signup_token
             user_name = None
             if user.partner_id:
                 user_name = user.partner_id.name
