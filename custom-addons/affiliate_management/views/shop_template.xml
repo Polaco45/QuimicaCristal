@@ -4,71 +4,87 @@
 		<!-- =============== SHOP /shop ================= -->
 		<template id="shop_inherit_template" name="Shop Inherit Template" inherit_id="website_sale.products">
 
-            <!-- ⬅️ Botón flotante (no deforma el layout) -->
-            <xpath expr="//div[@id='products_grid']" position="before">
-                <t t-nocache="Affiliate Quick Copy">
-                    <t t-if="env.user.partner_id.is_affiliate and env.user.partner_id.res_affiliate_key and referral_link">
-                        <div id="cr-aff-float"
-                             style="position:fixed; right:12px; top:88px; z-index:1100;">
-                            <button type="button"
-                                    id="cr-copy-shop-ref"
-                                    class="btn btn-primary btn-sm shadow"
-                                    t-att-data-url="referral_link">
-                                Copiar enlace listo para vender
-                            </button>
-                            <div id="cr-copy-shop-ref-msg"
-                                 class="alert alert-success py-1 px-2 mt-2"
-                                 style="display:none; font-size:.85rem;">
-                                ¡enlace copiado, a vender!
-                            </div>
-                        </div>
+<!-- ⬅️ Sustituí tu bloque flotante por este -->
+<xpath expr="//div[@id='products_grid']" position="before">
+    <t t-nocache="Affiliate Quick Copy v2">
+        <t t-if="env.user.partner_id.is_affiliate and env.user.partner_id.res_affiliate_key and referral_link">
+            <div id="cr-aff-float" style="position:fixed; z-index:1100; right:16px; bottom:20px;">
+                <button type="button"
+                        id="cr-copy-shop-ref"
+                        class="btn btn-primary cr-pill cr-pulse shadow"
+                        t-att-data-url="referral_link"
+                        aria-label="Copiar mi link de venta">
+                    <i class="fa fa-link" aria-hidden="true"></i>
+                    <span>Copiar mi link de venta</span>
+                </button>
+                <div id="cr-copy-shop-ref-msg"
+                     class="alert alert-success py-1 px-2 mt-2"
+                     style="display:none; font-size:.85rem;">
+                    ¡enlace copiado, a vender!
+                </div>
+            </div>
 
-                        <style>
-                        /* Ajuste de posición en mobile */
-                        @media (max-width: 768px){
-                            #cr-aff-float { top: 120px; right: 12px; }
-                        }
-                        </style>
+            <style>
+            /* Botón tipo pill y animación */
+            .cr-pill{
+                display:inline-flex; align-items:center; gap:.5rem;
+                padding:.75rem 1rem; border-radius:9999px; font-weight:600;
+            }
+            .cr-pill i{ font-size:1rem; }
 
-                        <script type="text/javascript"><![CDATA[
-                        (function(){
-                            function showMsg(){
-                                var m = document.getElementById('cr-copy-shop-ref-msg');
-                                if(m){
-                                    m.style.display = 'block';
-                                    setTimeout(function(){ m.style.display = 'none'; }, 2000);
-                                }
-                            }
-                            function boot(){
-                                var btn = document.getElementById('cr-copy-shop-ref');
-                                if(!btn) return;
-                                var url = btn.getAttribute('data-url') || '';
-                                btn.addEventListener('click', function(){
-                                    function done(){ showMsg(); }
-                                    try{
-                                        if(navigator.clipboard && navigator.clipboard.writeText){
-                                            navigator.clipboard.writeText(url).then(done, done);
-                                        }else{
-                                            var ta = document.createElement('textarea');
-                                            ta.value = url; document.body.appendChild(ta); ta.select();
-                                            try{ document.execCommand('copy'); }catch(e){}
-                                            document.body.removeChild(ta);
-                                            done();
-                                        }
-                                    }catch(e){ done(); }
-                                });
-                            }
-                            if(document.readyState === 'loading'){
-                                document.addEventListener('DOMContentLoaded', boot);
+            /* Pulso suave para llamar la atención */
+            @keyframes cr-pulse {
+                0% { box-shadow: 0 0 0 0 rgba(13,110,253,.45); }
+                60%{ box-shadow: 0 0 0 14px rgba(13,110,253,0); }
+                100%{ box-shadow: 0 0 0 0 rgba(13,110,253,0); }
+            }
+            .cr-pulse{ animation: cr-pulse 2.2s infinite; }
+
+            /* Posición en desktop: arriba a la derecha si preferís */
+            @media (min-width: 992px){
+                #cr-aff-float{ top: 100px; right: 16px; bottom: auto; }
+            }
+            </style>
+
+            <script type="text/javascript"><![CDATA[
+            (function(){
+                function showMsg(){
+                    var m = document.getElementById('cr-copy-shop-ref-msg');
+                    if(m){
+                        m.style.display = 'block';
+                        setTimeout(function(){ m.style.display = 'none'; }, 2000);
+                    }
+                }
+                function boot(){
+                    var btn = document.getElementById('cr-copy-shop-ref');
+                    if(!btn) return;
+                    var url = btn.getAttribute('data-url') || '';
+                    btn.addEventListener('click', function(){
+                        function done(){ showMsg(); }
+                        try{
+                            if(navigator.clipboard && navigator.clipboard.writeText){
+                                navigator.clipboard.writeText(url).then(done, done);
                             }else{
-                                boot();
+                                var ta = document.createElement('textarea');
+                                ta.value = url; document.body.appendChild(ta); ta.select();
+                                try{ document.execCommand('copy'); }catch(e){}
+                                document.body.removeChild(ta);
+                                done();
                             }
-                        })();
-                        ]]></script>
-                    </t>
-                </t>
-            </xpath>
-            <!-- /Botón flotante -->
+                        }catch(e){ done(); }
+                    });
+                }
+                if(document.readyState === 'loading'){
+                    document.addEventListener('DOMContentLoaded', boot);
+                }else{
+                    boot();
+                }
+            })();
+            ]]></script>
+        </t>
+    </t>
+</xpath>
+
 
             <!-- BLOQUE ORIGINAL SIN CAMBIOS -->
             <xpath expr="//div[@id='products_grid']" position="inside">
