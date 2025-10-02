@@ -3,27 +3,47 @@
 
 		<!-- =============== SHOP /shop ================= -->
 		<template id="shop_inherit_template" name="Shop Inherit Template" inherit_id="website_sale.products">
-<!-- =============== boton ================= -->
+<!-- ⬅️ Sustituí tu bloque flotante por este -->
 <xpath expr="//div[@id='products_grid']" position="before">
-    <t t-nocache="Affiliate Quick Copy - Inline">
+    <t t-nocache="Affiliate Quick Copy v2">
         <t t-if="env.user.partner_id.is_affiliate and env.user.partner_id.res_affiliate_key and referral_link">
-            <div id="cr-aff-inline" class="container my-3">
-                <div class="d-flex justify-content-center">
-                    <button type="button"
-                            id="cr-copy-shop-ref"
-                            class="btn btn-primary btn-lg rounded-pill px-4"
-                            t-att-data-url="referral_link"
-                            aria-label="Copiar mi link de venta">
-                        <i class="fa fa-link me-2" aria-hidden="true"/>
-                        <span>Copiar mi link de venta</span>
-                    </button>
-                </div>
+            <div id="cr-aff-float" style="position:fixed; z-index:1100; right:16px; bottom:20px;">
+                <button type="button"
+                        id="cr-copy-shop-ref"
+                        class="btn btn-primary cr-pill cr-pulse shadow"
+                        t-att-data-url="referral_link"
+                        aria-label="Copiar mi link de venta">
+                    <i class="fa fa-link" aria-hidden="true"></i>
+                    <span>Copiar mi link de venta</span>
+                </button>
                 <div id="cr-copy-shop-ref-msg"
-                     class="alert alert-success py-2 px-3 mt-2 text-center"
-                     style="display:none;">
+                     class="alert alert-success py-1 px-2 mt-2"
+                     style="display:none; font-size:.85rem;">
                     ¡enlace copiado, a vender!
                 </div>
             </div>
+
+            <style>
+            /* Botón tipo pill y animación */
+            .cr-pill{
+                display:inline-flex; align-items:center; gap:.5rem;
+                padding:.75rem 1rem; border-radius:9999px; font-weight:600;
+            }
+            .cr-pill i{ font-size:1rem; }
+
+            /* Pulso suave para llamar la atención */
+            @keyframes cr-pulse {
+                0% { box-shadow: 0 0 0 0 rgba(13,110,253,.45); }
+                60%{ box-shadow: 0 0 0 14px rgba(13,110,253,0); }
+                100%{ box-shadow: 0 0 0 0 rgba(13,110,253,0); }
+            }
+            .cr-pulse{ animation: cr-pulse 2.2s infinite; }
+
+            /* Posición en desktop: arriba a la derecha si preferís */
+            @media (min-width: 992px){
+                #cr-aff-float{ top: 100px; right: 16px; bottom: auto; }
+            }
+            </style>
 
             <script type="text/javascript"><![CDATA[
             (function(){
@@ -63,8 +83,6 @@
         </t>
     </t>
 </xpath>
-
-
 
             <!-- BLOQUE ORIGINAL SIN CAMBIOS -->
             <xpath expr="//div[@id='products_grid']" position="inside">
