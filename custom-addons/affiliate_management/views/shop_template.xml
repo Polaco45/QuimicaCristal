@@ -4,8 +4,8 @@
 		<!-- =============== SHOP /shop ================= -->
 		<template id="shop_inherit_template" name="Shop Inherit Template" inherit_id="website_sale.products">
 
-            <!-- ⬅️ NUEVO: botón simple arriba de la grilla -->
-            <xpath expr="//div[@id='products_grid_before']" position="inside">
+            <!-- ⬅️ NUEVO: botón simple ANTES de la grilla -->
+            <xpath expr="//div[@id='products_grid']" position="before">
                 <t t-nocache="Affiliate Quick Copy">
                     <t t-if="env.user.partner_id.is_affiliate and env.user.partner_id.res_affiliate_key and referral_link">
                         <div class="o_wsale_aff_simple_copy" style="display:flex;align-items:center;gap:.5rem;margin:12px 8px;">
@@ -60,7 +60,7 @@
             </xpath>
             <!-- /NUEVO -->
 
-            <!-- Tu bloque original (sin cambios) -->
+            <!-- Tu bloque original (SIN CAMBIOS) -->
             <xpath expr="//div[@id='products_grid']" position="inside">
                 <t t-nocache="Affiliate Link Popup">
                     <t t-if="env.user.partner_id.is_affiliate and env.user.partner_id.res_affiliate_key and referral_link">
