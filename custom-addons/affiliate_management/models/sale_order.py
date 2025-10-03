@@ -96,8 +96,13 @@ class SaleOrderInherit(models.Model):
     def action_cancel(self):
         res = super().action_cancel()
         if res:
-            all_visits = self.env['affiliate.visit'].sudo().search([])
-            all_visits.filtered(lambda v: v.sales_order_line_id.id in self.order_line.ids and v.state != 'cancel')
-            all_visits.write({'state':'cancel'})
-
+            # FIX: cancelar solo las visitas vinculadas a las líneas del/los pedidos en self
+            order_line_ids = self.mapped('order_line').ids
+            if order_line_ids:
+                visits_to_cancel = self.env['affiliate.visit'].sudo().search([
+                    ('sales_order_line_id', 'in', order_line_ids),
+                    ('state', '!=', 'cancel'),
+                ])
+                if visits_to_cancel:
+                    visits_to_cancel.write({'state': 'cancel'})
         return res
