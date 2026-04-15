@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_move_form_external_commission" model="ir.ui.view">
+        <field name="name">account.move.form.external.commission</field>
+        <field name="model">account.move</field>
+        <field name="inherit_id" ref="account.view_move_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//sheet/notebook" position="inside">
+                <page string="Comisión vendedor externo">
+                    <group>
+                        <group>
+                            <field name="commission_applicable"/>
+                            <field name="commission_rate"/>
+                            <field name="commission_owner_id"/>
+                            <field name="commission_manual_review"/>
+                        </group>
+                        <group>
+                            <field name="commission_base_amount"/>
+                            <field name="commission_amount"/>
+                            <field name="commission_settled"/>
+                            <field name="commission_settlement_id"/>
+                        </group>
+                    </group>
+                    <group>
+                        <group>
+                            <field name="commission_cycle_start_date"/>
+                            <field name="commission_cycle_end_date"/>
+                            <field name="commission_settlement_date"/>
+                        </group>
+                        <group>
+                            <field name="commission_source_move_id" options="{'no_create': True}"/>
+                        </group>
+                    </group>
+                    <group>
+                        <button name="action_recompute_commission"
+                                type="object"
+                                string="Recalcular comisión"
+                                class="btn-secondary"
+                                groups="account.group_account_manager"/>
+                    </group>
+                </page>
+            </xpath>
+        </field>
+    </record>
+</odoo>
