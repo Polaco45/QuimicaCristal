@@ -96,7 +96,7 @@ class AccountMove(models.Model):
         commission_partner = self._get_commission_partner()
 
         domain = [
-            ('partner_id.commercial_partner_id', '=', commission_partner.id),
+            ('partner_id', 'child_of', commission_partner.id),
             ('company_id', '=', self.company_id.id),
             ('state', '=', 'posted'),
             ('move_type', '=', 'out_invoice'),
@@ -109,6 +109,7 @@ class AccountMove(models.Model):
 
     def _build_invoice_commission_values(self):
         self.ensure_one()
+
         invoice_date = self._get_effective_invoice_date()
         previous_invoice = self._get_previous_positive_invoice()
         salesperson = self._get_effective_salesperson()
@@ -116,11 +117,12 @@ class AccountMove(models.Model):
 
         new_cycle = False
 
-        # Caso 1: nunca compró la empresa madre
+        # 1) Nunca compró antes => nuevo ciclo al 20%
         if not previous_invoice:
             new_cycle = True
+
+        # 2) Reactivación real => 6 meses o más sin compras
         else:
-            # Caso 2: reactivación luego de 6 meses o más sin compras
             previous_date = previous_invoice._get_effective_invoice_date()
             reactivation_date = previous_date + relativedelta(months=6)
             if invoice_date >= reactivation_date:
@@ -132,32 +134,42 @@ class AccountMove(models.Model):
             owner = salesperson
             first_move_id = self.id
             rate = 20.0
+
         else:
-            cycle_start = (
+            # Buscamos metadata de ciclo ya existente
+            known_cycle_start = (
                 commission_partner.commission_cycle_start_date
                 or previous_invoice.commission_cycle_start_date
-                or previous_invoice._get_effective_invoice_date()
             )
-            cycle_end = (
+            known_cycle_end = (
                 commission_partner.commission_cycle_end_date
                 or previous_invoice.commission_cycle_end_date
-                or (cycle_start + timedelta(days=29))
             )
+
             owner = (
                 commission_partner.commission_owner_id
                 or previous_invoice.commission_owner_id
                 or previous_invoice.invoice_user_id
                 or salesperson
             )
+
             first_move_id = (
                 commission_partner.commission_first_move_id.id
                 or previous_invoice.id
             )
 
-            # Solo 20% si está dentro de la ventana activa ya abierta
-            if invoice_date <= cycle_end:
-                rate = 20.0
+            # Si existe un ciclo ya abierto, respetarlo
+            if known_cycle_start and known_cycle_end:
+                cycle_start = known_cycle_start
+                cycle_end = known_cycle_end
+                rate = 20.0 if invoice_date <= cycle_end else 5.0
+
             else:
+                # Cliente histórico / legacy:
+                # ya venía comprando antes del módulo y NO corresponde abrir un 20%.
+                # Lo tratamos como recurrente al 5%.
+                cycle_start = False
+                cycle_end = False
                 rate = 5.0
 
         base_amount = abs(self.amount_untaxed_signed)
@@ -216,24 +228,48 @@ class AccountMove(models.Model):
     def _update_partner_commission_cache(self, values):
         self.ensure_one()
         partner = self._get_commission_partner()
+        invoice_date = self._get_effective_invoice_date()
 
         vals = {
-            'commission_owner_id': values.get('commission_owner_id') or False,
-            'commission_cycle_start_date': values.get('commission_cycle_start_date') or False,
-            'commission_cycle_end_date': values.get('commission_cycle_end_date') or False,
-            'last_positive_invoice_date': self._get_effective_invoice_date(),
-            'commission_cycle_state': (
-                'new'
-                if self._get_effective_invoice_date() <= (
-                    values.get('commission_cycle_end_date') or self._get_effective_invoice_date()
-                )
-                else 'recurrent'
-            ),
+            'last_positive_invoice_date': invoice_date,
         }
 
-        first_move_id = values.get('__partner_first_move_id')
-        if first_move_id:
-            vals['commission_first_move_id'] = first_move_id
+        if values.get('commission_owner_id'):
+            vals['commission_owner_id'] = values.get('commission_owner_id')
+
+        # Si abrió un ciclo nuevo, sí o sí actualizamos cache completa
+        if values.get('__new_cycle'):
+            vals.update({
+                'commission_cycle_start_date': values.get('commission_cycle_start_date') or False,
+                'commission_cycle_end_date': values.get('commission_cycle_end_date') or False,
+                'commission_cycle_state': 'new',
+            })
+            first_move_id = values.get('__partner_first_move_id')
+            if first_move_id:
+                vals['commission_first_move_id'] = first_move_id
+
+        else:
+            # Si existe metadata de ciclo conocida, la respetamos
+            if values.get('commission_cycle_start_date') and values.get('commission_cycle_end_date'):
+                vals.update({
+                    'commission_cycle_start_date': values.get('commission_cycle_start_date'),
+                    'commission_cycle_end_date': values.get('commission_cycle_end_date'),
+                    'commission_cycle_state': (
+                        'new'
+                        if invoice_date <= values.get('commission_cycle_end_date')
+                        else 'recurrent'
+                    ),
+                })
+                first_move_id = values.get('__partner_first_move_id')
+                if first_move_id:
+                    vals['commission_first_move_id'] = first_move_id
+            else:
+                # Cliente histórico / recurrente sin ciclo 20 activo
+                vals.update({
+                    'commission_cycle_start_date': False,
+                    'commission_cycle_end_date': False,
+                    'commission_cycle_state': 'recurrent',
+                })
 
         partner.write(vals)
 
