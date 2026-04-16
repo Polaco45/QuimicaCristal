@@ -5,9 +5,8 @@
     'category': 'Accounting/Accounting',
     'author': 'OpenAI',
     'license': 'LGPL-3',
-    'depends': ['account'],
+    'depends': ['account', 'sale_management'],
     'data': [
-        'security/commission_security.xml',
         'security/ir.model.access.csv',
         'data/commission_sequence.xml',
         'views/res_partner_views.xml',
