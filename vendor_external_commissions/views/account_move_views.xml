@@ -21,6 +21,7 @@
                             <field name="commission_settlement_id" readonly="1"/>
                         </group>
                     </group>
+
                     <group>
                         <group>
                             <field name="commission_cycle_start_date" readonly="1"/>
@@ -30,6 +31,13 @@
                         <group>
                             <field name="commission_source_move_id" readonly="1" options="{'no_create': True}"/>
                         </group>
+                    </group>
+
+                    <group groups="account.group_account_manager">
+                        <button name="action_recompute_commission"
+                                type="object"
+                                string="Recalcular comisión"
+                                class="btn-primary"/>
                     </group>
                 </page>
             </xpath>
