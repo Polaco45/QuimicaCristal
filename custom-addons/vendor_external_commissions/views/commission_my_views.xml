@@ -6,12 +6,19 @@
         <field name="model">account.move</field>
         <field name="arch" type="xml">
             <list string="Mis comisiones" create="0" edit="0" delete="0" default_order="invoice_date asc, id asc">
+                <field name="company_currency_id" column_invisible="1"/>
                 <field name="invoice_date"/>
                 <field name="name"/>
                 <field name="partner_id"/>
                 <field name="commission_rate"/>
-                <field name="commission_base_amount" sum="Base"/>
-                <field name="commission_amount" sum="Comisión"/>
+                <field name="commission_base_amount"
+                       widget="monetary"
+                       options="{'currency_field': 'company_currency_id'}"
+                       sum="Total base"/>
+                <field name="commission_amount"
+                       widget="monetary"
+                       options="{'currency_field': 'company_currency_id'}"
+                       sum="Total comisión"/>
                 <field name="commission_settled"/>
                 <field name="commission_settlement_date"/>
             </list>
