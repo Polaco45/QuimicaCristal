@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_commission_settlement_list" model="ir.ui.view">
+        <field name="name">commission.settlement.list</field>
+        <field name="model">commission.settlement</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="name"/>
+                <field name="user_id"/>
+                <field name="company_id"/>
+                <field name="cutoff_date"/>
+                <field name="move_count"/>
+                <field name="total_base_amount" sum="Base total"/>
+                <field name="total_commission_amount" sum="Comisión total"/>
+                <field name="state"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_commission_settlement_search" model="ir.ui.view">
+        <field name="name">commission.settlement.search</field>
+        <field name="model">commission.settlement</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="name"/>
+                <field name="user_id"/>
+                <field name="cutoff_date"/>
+                <filter name="draft" string="Borrador" domain="[('state', '=', 'draft')]"/>
+                <filter name="confirmed" string="Confirmada" domain="[('state', '=', 'confirmed')]"/>
+                <group expand="0" string="Agrupar por">
+                    <filter name="group_user" string="Vendedor" context="{'group_by': 'user_id'}"/>
+                    <filter name="group_state" string="Estado" context="{'group_by': 'state'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="view_commission_settlement_form" model="ir.ui.view">
+        <field name="name">commission.settlement.form</field>
+        <field name="model">commission.settlement</field>
+        <field name="arch" type="xml">
+            <form>
+                <header>
+                    <button name="action_load_pending_moves"
+                            type="object"
+                            string="Cargar pendientes"
+                            class="btn-secondary"
+                            invisible="state != 'draft'"/>
+                    <button name="action_confirm"
+                            type="object"
+                            string="Confirmar liquidación"
+                            class="btn-primary"
+                            invisible="state != 'draft'"/>
+                    <button name="action_reset_to_draft"
+                            type="object"
+                            string="Volver a borrador"
+                            class="btn-secondary"
+                            invisible="state != 'confirmed'"/>
+                    <button name="action_cancel"
+                            type="object"
+                            string="Cancelar"
+                            class="btn-secondary"
+                            invisible="state != 'draft'"/>
+                    <field name="state" widget="statusbar" statusbar_visible="draft,confirmed,cancelled"/>
+                </header>
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_view_moves" type="object" class="oe_stat_button" icon="fa-file-text-o">
+                            <field name="move_count" widget="statinfo" string="Comprobantes"/>
+                        </button>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="name" readonly="1"/>
+                            <field name="user_id" readonly="state != 'draft'"/>
+                            <field name="company_id" readonly="state != 'draft'"/>
+                        </group>
+                        <group>
+                            <field name="cutoff_date" readonly="state != 'draft'"/>
+                            <field name="total_base_amount" readonly="1"/>
+                            <field name="total_commission_amount" readonly="1"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Líneas">
+                            <field name="line_ids" readonly="state != 'draft'">
+                                <list delete="false" create="false" edit="false">
+                                    <field name="move_id"/>
+                                    <field name="partner_id"/>
+                                    <field name="invoice_date"/>
+                                    <field name="rate"/>
+                                    <field name="base_amount" sum="Base"/>
+                                    <field name="commission_amount" sum="Comisión"/>
+                                </list>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_commission_settlement" model="ir.actions.act_window">
+        <field name="name">Liquidaciones de comisiones</field>
+        <field name="res_model">commission.settlement</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_commission_settlement_search"/>
+        <field name="context">{'search_default_draft': 1}</field>
+    </record>
+
+    <menuitem id="menu_commission_settlement_root"
+              name="Comisiones externas"
+              parent="account.menu_finance_receivables"
+              action="action_commission_settlement"
+              sequence="95"
+              groups="account.group_account_manager"/>
+</odoo>

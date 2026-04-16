@@ -1,0 +1,18 @@
+{
+    'name': 'Vendor External Commissions',
+    'summary': 'Comisiones automáticas para vendedor externo por primer mes, recurrentes y reactivaciones.',
+    'version': '18.0.1.0.0',
+    'category': 'Accounting/Accounting',
+    'author': 'OpenAI',
+    'license': 'LGPL-3',
+    'depends': ['account'],
+    'data': [
+        'security/ir.model.access.csv',
+        'data/commission_sequence.xml',
+        'views/res_partner_views.xml',
+        'views/account_move_views.xml',
+        'views/commission_settlement_views.xml',
+    ],
+    'installable': True,
+    'application': False,
+}

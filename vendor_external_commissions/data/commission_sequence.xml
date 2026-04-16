@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="seq_commission_settlement" model="ir.sequence">
+        <field name="name">Liquidación de comisiones</field>
+        <field name="code">commission.settlement</field>
+        <field name="prefix">COM/%(year)s/</field>
+        <field name="padding">4</field>
+        <field name="company_id" eval="False"/>
+    </record>
+</odoo>

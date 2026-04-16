@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="product_template_form_view_vendor_bom_cost" model="ir.ui.view">
+        <field name="name">product.template.form.vendor.cost</field>
+        <field name="model">product.template</field>
+        <field name="inherit_id" ref="product.product_template_only_form_view"/>
+        <field name="priority">90</field>
+        <field name="arch" type="xml">
+            <xpath expr="//button[@name='button_bom_cost']" position="after">
+                <button name="button_vendor_bom_cost"
+                        type="object"
+                        string="Costo desde proveedor"
+                        class="btn-secondary"
+                        invisible="product_variant_count != 1"/>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="product_product_normal_form_view_vendor_bom_cost" model="ir.ui.view">
+        <field name="name">product.product.form.vendor.cost</field>
+        <field name="model">product.product</field>
+        <field name="inherit_id" ref="product.product_normal_form_view"/>
+        <field name="priority">90</field>
+        <field name="arch" type="xml">
+            <xpath expr="//button[@name='button_bom_cost']" position="after">
+                <button name="button_vendor_bom_cost"
+                        type="object"
+                        string="Costo desde proveedor"
+                        class="btn-secondary"/>
+            </xpath>
+        </field>
+    </record>
+
+</odoo>
