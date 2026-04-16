@@ -7,11 +7,13 @@
     'license': 'LGPL-3',
     'depends': ['account'],
     'data': [
+        'security/commission_security.xml',
         'security/ir.model.access.csv',
         'data/commission_sequence.xml',
         'views/res_partner_views.xml',
         'views/account_move_views.xml',
         'views/commission_settlement_views.xml',
+        'views/commission_my_views.xml',
     ],
     'installable': True,
     'application': False,

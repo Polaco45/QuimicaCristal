@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="group_external_commission_user" model="res.groups">
+        <field name="name">External Commission User</field>
+    </record>
+
+    <record id="rule_account_move_external_commission_user" model="ir.rule">
+        <field name="name">Own external commissions only</field>
+        <field name="model_id" ref="account.model_account_move"/>
+        <field name="groups" eval="[(4, ref('vendor_external_commissions.group_external_commission_user'))]"/>
+        <field name="domain_force">
+            [
+                ('move_type', 'in', ['out_invoice', 'out_refund']),
+                ('state', '=', 'posted'),
+                ('commission_applicable', '=', True),
+                ('commission_owner_id', '=', user.id)
+            ]
+        </field>
+        <field name="perm_read" eval="True"/>
+        <field name="perm_write" eval="False"/>
+        <field name="perm_create" eval="False"/>
+        <field name="perm_unlink" eval="False"/>
+    </record>
+</odoo>
