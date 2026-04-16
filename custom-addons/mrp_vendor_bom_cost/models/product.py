@@ -8,15 +8,15 @@ class ProductTemplate(models.Model):
     def button_vendor_bom_cost(self):
         self.ensure_one()
 
-        if self.product_variant_count != 1 or not self.bom_count:
+        if self.product_variant_count != 1:
             raise UserError(
-                _("El producto debe tener una única variante y al menos una lista de materiales.")
+                _("El producto debe tener una única variante para actualizar el costo desde el proveedor.")
             )
 
         return self.product_variant_id.button_vendor_bom_cost()
 
     def action_vendor_bom_cost(self):
-        templates = self.filtered(lambda t: t.product_variant_count == 1 and t.bom_count > 0)
+        templates = self.filtered(lambda t: t.product_variant_count == 1)
         skipped = len(self - templates)
 
         if not templates:
@@ -30,26 +30,18 @@ class ProductProduct(models.Model):
 
     def button_vendor_bom_cost(self):
         self.ensure_one()
-        updated = 1 if self._set_price_from_vendor_bom() else 0
-        return self._vendor_bom_cost_notification(updated=updated, skipped=0)
+        updated = 1 if self._set_price_from_first_vendor() else 0
+        return self._vendor_supplier_cost_notification(updated=updated, skipped=0)
 
     def action_vendor_bom_cost(self, skipped=0):
-        boms_to_recompute = self.env["mrp.bom"].search([
-            "|",
-            ("product_id", "in", self.ids),
-            "&",
-            ("product_id", "=", False),
-            ("product_tmpl_id", "in", self.mapped("product_tmpl_id").ids),
-        ])
-
         updated = 0
         for product in self:
-            if product._set_price_from_vendor_bom(boms_to_recompute=boms_to_recompute):
+            if product._set_price_from_first_vendor():
                 updated += 1
 
-        return self._vendor_bom_cost_notification(updated=updated, skipped=skipped)
+        return self._vendor_supplier_cost_notification(updated=updated, skipped=skipped)
 
-    def _vendor_bom_cost_notification(self, updated=0, skipped=0):
+    def _vendor_supplier_cost_notification(self, updated=0, skipped=0):
         message = _("%s producto(s) actualizado(s).") % updated
         if skipped:
             message += " " + _("%s producto(s) omitido(s).") % skipped
@@ -58,63 +50,20 @@ class ProductProduct(models.Model):
             "type": "ir.actions.client",
             "tag": "display_notification",
             "params": {
-                "title": _("Costo proveedor desde LdM"),
+                "title": _("Costo desde proveedor"),
                 "message": message,
                 "type": "success" if updated else "warning",
                 "sticky": False,
             },
         }
 
-    def _set_price_from_vendor_bom(self, boms_to_recompute=False):
+    def _set_price_from_first_vendor(self):
         self.ensure_one()
 
-        bom = self.env["mrp.bom"]._bom_find(self)[self]
-        if not bom:
-            return False
-
-        self.standard_price = self._compute_vendor_bom_price(
-            bom,
-            boms_to_recompute=boms_to_recompute,
-        )
-        return True
-
-    def _compute_vendor_bom_price(self, bom, boms_to_recompute=False):
-        self.ensure_one()
-
-        if not bom:
-            return 0.0
-
-        if not boms_to_recompute:
-            boms_to_recompute = self.env["mrp.bom"]
-
-        total = 0.0
-
-        for line in bom.bom_line_ids:
-            if line._skip_bom_line(self):
-                continue
-
-            if line.child_bom_id and line.child_bom_id in boms_to_recompute:
-                component_unit_cost = line.product_id._compute_vendor_bom_price(
-                    line.child_bom_id,
-                    boms_to_recompute=boms_to_recompute,
-                )
-            else:
-                component_unit_cost = line.product_id._get_first_vendor_discounted_cost()
-
-            total += line.product_id.uom_id._compute_price(
-                component_unit_cost,
-                line.product_uom_id,
-            ) * line.product_qty
-
-        return bom.product_uom_id._compute_price(total / bom.product_qty, self.uom_id)
-
-    def _get_first_vendor_discounted_cost(self):
-        self.ensure_one()
-
-        supplierinfo = self._get_first_valid_supplierinfo_for_bom_cost()
+        supplierinfo = self._get_first_valid_supplierinfo_for_cost()
         if not supplierinfo:
             raise UserError(
-                _("El componente '%s' no tiene un proveedor válido cargado en la pestaña Compra.")
+                _("El producto '%s' no tiene un proveedor válido cargado en la pestaña Compra.")
                 % self.display_name
             )
 
@@ -129,9 +78,15 @@ class ProductProduct(models.Model):
         )
 
         vendor_uom = supplierinfo.product_uom or self.product_tmpl_id.uom_po_id or self.uom_id
-        return vendor_uom._compute_price(discounted_price_company_currency, self.uom_id)
+        cost_in_product_uom = vendor_uom._compute_price(
+            discounted_price_company_currency,
+            self.uom_id,
+        )
 
-    def _get_first_valid_supplierinfo_for_bom_cost(self):
+        self.standard_price = cost_in_product_uom
+        return True
+
+    def _get_first_valid_supplierinfo_for_cost(self):
         self.ensure_one()
         today = fields.Date.context_today(self)
 
