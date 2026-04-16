@@ -87,8 +87,8 @@ class AccountMove(models.Model):
 
     def _get_effective_salesperson(self):
         self.ensure_one()
-        commission_partner = self._get_commission_partner()
-        return self.invoice_user_id or commission_partner.commission_owner_id or self.env.user
+        # La comisión SIEMPRE sigue al vendedor de ESTA factura
+        return self.invoice_user_id or self.env.user
 
     def _get_previous_positive_invoice(self):
         self.ensure_one()
@@ -131,12 +131,12 @@ class AccountMove(models.Model):
         if new_cycle:
             cycle_start = invoice_date
             cycle_end = invoice_date + timedelta(days=29)
-            owner = salesperson
-            first_move_id = self.id
             rate = 20.0
+            first_move_id = self.id
 
         else:
-            # Buscamos metadata de ciclo ya existente
+            # Solo usamos la metadata del ciclo para definir la tasa.
+            # NO usamos más el vendedor guardado en el partner para definir comisión.
             known_cycle_start = (
                 commission_partner.commission_cycle_start_date
                 or previous_invoice.commission_cycle_start_date
@@ -146,31 +146,21 @@ class AccountMove(models.Model):
                 or previous_invoice.commission_cycle_end_date
             )
 
-            owner = (
-                commission_partner.commission_owner_id
-                or previous_invoice.commission_owner_id
-                or previous_invoice.invoice_user_id
-                or salesperson
-            )
-
-            first_move_id = (
-                commission_partner.commission_first_move_id.id
-                or previous_invoice.id
-            )
-
-            # Si existe un ciclo ya abierto, respetarlo
+            # Si existe un ciclo ya abierto, lo respetamos
             if known_cycle_start and known_cycle_end:
                 cycle_start = known_cycle_start
                 cycle_end = known_cycle_end
                 rate = 20.0 if invoice_date <= cycle_end else 5.0
-
+                first_move_id = (
+                    commission_partner.commission_first_move_id.id
+                    or previous_invoice.id
+                )
             else:
-                # Cliente histórico / legacy:
-                # ya venía comprando antes del módulo y NO corresponde abrir un 20%.
-                # Lo tratamos como recurrente al 5%.
+                # Cliente histórico/recurrente sin ciclo activo
                 cycle_start = False
                 cycle_end = False
                 rate = 5.0
+                first_move_id = False
 
         base_amount = abs(self.amount_untaxed_signed)
         commission_amount = self._company_round(base_amount * (rate / 100.0))
@@ -180,7 +170,7 @@ class AccountMove(models.Model):
             'commission_rate': rate,
             'commission_base_amount': base_amount,
             'commission_amount': commission_amount,
-            'commission_owner_id': owner.id if owner else False,
+            'commission_owner_id': salesperson.id if salesperson else False,
             'commission_cycle_start_date': cycle_start,
             'commission_cycle_end_date': cycle_end,
             'commission_source_move_id': False,
@@ -232,12 +222,10 @@ class AccountMove(models.Model):
 
         vals = {
             'last_positive_invoice_date': invoice_date,
+            # Informativo: dejamos en el partner el último vendedor que está manejando ese cliente
+            'commission_owner_id': values.get('commission_owner_id') or False,
         }
 
-        if values.get('commission_owner_id'):
-            vals['commission_owner_id'] = values.get('commission_owner_id')
-
-        # Si abrió un ciclo nuevo, sí o sí actualizamos cache completa
         if values.get('__new_cycle'):
             vals.update({
                 'commission_cycle_start_date': values.get('commission_cycle_start_date') or False,
@@ -249,7 +237,6 @@ class AccountMove(models.Model):
                 vals['commission_first_move_id'] = first_move_id
 
         else:
-            # Si existe metadata de ciclo conocida, la respetamos
             if values.get('commission_cycle_start_date') and values.get('commission_cycle_end_date'):
                 vals.update({
                     'commission_cycle_start_date': values.get('commission_cycle_start_date'),
@@ -264,7 +251,6 @@ class AccountMove(models.Model):
                 if first_move_id:
                     vals['commission_first_move_id'] = first_move_id
             else:
-                # Cliente histórico / recurrente sin ciclo 20 activo
                 vals.update({
                     'commission_cycle_start_date': False,
                     'commission_cycle_end_date': False,
