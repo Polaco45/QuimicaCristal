@@ -44,7 +44,6 @@ class CommissionSettlement(models.Model):
         ],
         default='draft',
         required=True,
-        tracking=False,
     )
     line_ids = fields.One2many(
         'commission.settlement.line',
