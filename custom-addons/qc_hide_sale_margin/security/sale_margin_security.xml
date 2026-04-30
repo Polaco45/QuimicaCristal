@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="0">
+
+    <!-- Users in this group CAN see margins and purchase cost in sales.
+         Do NOT add normal salespeople to this group. -->
+    <record id="group_view_sale_margin" model="res.groups">
+        <field name="name">View Sale Margin</field>
+        <field name="comment">Allows viewing sale margins, margin percentages and purchase price fields in sales.</field>
+    </record>
+
+    <!-- Settings administrators keep access automatically. -->
+    <record id="base.group_system" model="res.groups">
+        <field name="implied_ids" eval="[(4, ref('qc_hide_sale_margin.group_view_sale_margin'))]"/>
+    </record>
+
+</odoo>
