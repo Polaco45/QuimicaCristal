@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Product Variant Form View -->
+    <record id="product_normal_form_view" model="ir.ui.view">
+        <field name="name">product.product.view.form.inherited.hide.cost.price</field>
+        <field name="model">product.product</field>
+        <field name="inherit_id" ref="product.product_normal_form_view"/>
+        <field name="arch" type="xml">
+            <xpath expr="//label[@for='standard_price']" position="attributes">
+                <attribute name="groups">fv_hide_cost_price.groups_view_cost_price</attribute>
+            </xpath>
+            <xpath expr="//div[@name='standard_price_uom']" position="attributes">
+                <attribute name="groups">fv_hide_cost_price.groups_view_cost_price</attribute>
+            </xpath>
+        </field>
+    </record>
+    <!-- Product Variant Tree View -->
+    <record id="product_product_tree_view" model="ir.ui.view">
+        <field name="name">product.product.view.tree.inherited.hide.cost.price</field>
+        <field name="model">product.product</field>
+        <field name="inherit_id" ref="product.product_product_tree_view"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='standard_price']" position="attributes">
+                <attribute name="groups">fv_hide_cost_price.groups_view_cost_price</attribute>
+            </xpath>
+        </field>
+    </record>
+    <record id="product_variant_easy_edit_view" model="ir.ui.view">
+        <field name="name">product.product.view.tree.inherited.hide.cost.price</field>
+        <field name="model">product.product</field>
+        <field name="inherit_id" ref="product.product_variant_easy_edit_view"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='standard_price']" position="attributes">
+                <attribute name="groups">fv_hide_cost_price.groups_view_cost_price</attribute>
+            </xpath>
+        </field>
+    </record>
+    <!-- Stock Account Product Tree View - Hide cost columns -->
+    <record id="product_product_stock_tree_inherit_hide_cost" model="ir.ui.view">
+        <field name="name">product.product.stock.tree.inherit.hide.cost.price</field>
+        <field name="model">product.product</field>
+        <field name="inherit_id" ref="stock_account.product_product_stock_tree_inherit_stock_account"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='cost_method']" position="attributes">
+                <attribute name="groups">fv_hide_cost_price.groups_view_cost_price</attribute>
+            </xpath>
+            <xpath expr="//field[@name='avg_cost']" position="attributes">
+                <attribute name="groups">fv_hide_cost_price.groups_view_cost_price</attribute>
+            </xpath>
+            <xpath expr="//field[@name='total_value']" position="attributes">
+                <attribute name="groups">fv_hide_cost_price.groups_view_cost_price</attribute>
+            </xpath>
+        </field>
+    </record>
+    <!-- Stock Valuation Layer Tree View - Hide cost columns -->
+    <record id="stock_valuation_layer_tree_inherit_hide_cost" model="ir.ui.view">
+        <field name="name">stock.valuation.layer.tree.inherit.hide.cost.price</field>
+        <field name="model">stock.valuation.layer</field>
+        <field name="inherit_id" ref="stock_account.stock_valuation_layer_tree"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='unit_cost']" position="attributes">
+                <attribute name="groups">fv_hide_cost_price.groups_view_cost_price</attribute>
+            </xpath>
+            <xpath expr="//field[@name='value']" position="attributes">
+                <attribute name="groups">fv_hide_cost_price.groups_view_cost_price</attribute>
+            </xpath>
+            <xpath expr="//field[@name='remaining_value']" position="attributes">
+                <attribute name="groups">fv_hide_cost_price.groups_view_cost_price</attribute>
+            </xpath>
+        </field>
+    </record>
+</odoo>
