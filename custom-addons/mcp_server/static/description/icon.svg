@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <rect width="100" height="100" rx="15" fill="#714B67"/>
+  <text x="50" y="38" text-anchor="middle" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="white">MCP</text>
+  <text x="50" y="55" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#e0d4dc">SERVER</text>
+  <circle cx="30" cy="72" r="6" fill="none" stroke="#FF9C00" stroke-width="2"/>
+  <circle cx="50" cy="72" r="6" fill="none" stroke="#FF9C00" stroke-width="2"/>
+  <circle cx="70" cy="72" r="6" fill="none" stroke="#FF9C00" stroke-width="2"/>
+  <line x1="36" y1="72" x2="44" y2="72" stroke="#FF9C00" stroke-width="2"/>
+  <line x1="56" y1="72" x2="64" y2="72" stroke="#FF9C00" stroke-width="2"/>
+</svg>

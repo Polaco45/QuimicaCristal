@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Model Access Form View -->
+    <record id="mcp_model_access_form" model="ir.ui.view">
+        <field name="name">mcp.model.access.form</field>
+        <field name="model">mcp.model.access</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <group>
+                        <group string="Modelo">
+                            <field name="model_id"/>
+                            <field name="model_name"/>
+                            <field name="active"/>
+                        </group>
+                        <group string="Permisos">
+                            <field name="perm_read"/>
+                            <field name="perm_create"/>
+                            <field name="perm_write"/>
+                            <field name="perm_unlink"/>
+                        </group>
+                    </group>
+                    <group>
+                        <group>
+                            <field name="max_records"/>
+                        </group>
+                    </group>
+                    <group string="Campos permitidos">
+                        <field name="field_whitelist" nolabel="1"
+                               placeholder="Dejá vacío para todos los campos, o escribí: name,email,phone,street"/>
+                    </group>
+                    <group string="Notas">
+                        <field name="notes" nolabel="1"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Model Access List View -->
+    <record id="mcp_model_access_list" model="ir.ui.view">
+        <field name="name">mcp.model.access.list</field>
+        <field name="model">mcp.model.access</field>
+        <field name="arch" type="xml">
+            <list editable="bottom">
+                <field name="model_id"/>
+                <field name="model_name" optional="show"/>
+                <field name="perm_read"/>
+                <field name="perm_create"/>
+                <field name="perm_write"/>
+                <field name="perm_unlink"/>
+                <field name="max_records" optional="hide"/>
+                <field name="active"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Action -->
+    <record id="action_mcp_model_access" model="ir.actions.act_window">
+        <field name="name">Modelos Habilitados</field>
+        <field name="res_model">mcp.model.access</field>
+        <field name="view_mode">list,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Habilitá modelos para MCP
+            </p>
+            <p>
+                Seleccioná qué modelos de Odoo pueden ser accedidos por
+                asistentes de IA a través del protocolo MCP.
+            </p>
+        </field>
+    </record>
+
+    <!-- Menu -->
+    <menuitem id="menu_mcp_model_access"
+              name="Modelos Habilitados"
+              parent="menu_mcp_config"
+              action="action_mcp_model_access"
+              sequence="20"/>
+</odoo>

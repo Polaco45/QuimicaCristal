@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="mcp_settings_form" model="ir.ui.view">
+        <field name="name">MCP Server Settings</field>
+        <field name="model">res.config.settings</field>
+        <field name="priority">90</field>
+        <field name="inherit_id" ref="base.res_config_settings_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//form" position="inside">
+                <app string="MCP Server" name="mcp_server" groups="base.group_system">
+                    <block title="Configuración General" name="mcp_general">
+                        <setting string="Servidor MCP" help="Habilitar/deshabilitar el servidor MCP globalmente">
+                            <field name="mcp_server_enabled"/>
+                        </setting>
+                        <setting string="Límite global de registros" help="Máximo de registros por consulta">
+                            <field name="mcp_max_records_global"/>
+                        </setting>
+                        <setting string="Log de solicitudes" help="Registrar solicitudes MCP en los logs">
+                            <field name="mcp_log_requests"/>
+                        </setting>
+                    </block>
+                    <block title="Accesos Rápidos" name="mcp_links">
+                        <setting string="Gestionar API Keys">
+                            <div>
+                                <button name="%(mcp_server.action_mcp_api_key)d"
+                                        string="→ API Keys"
+                                        type="action" class="btn-link"/>
+                            </div>
+                        </setting>
+                        <setting string="Gestionar Modelos">
+                            <div>
+                                <button name="%(mcp_server.action_mcp_model_access)d"
+                                        string="→ Modelos Habilitados"
+                                        type="action" class="btn-link"/>
+                            </div>
+                        </setting>
+                    </block>
+                </app>
+            </xpath>
+        </field>
+    </record>
+</odoo>

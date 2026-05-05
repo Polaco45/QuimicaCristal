@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <!-- Default MCP Model Access: Contactos -->
+        <record id="access_res_partner" model="mcp.model.access">
+            <field name="model_id" ref="base.model_res_partner"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_create" eval="True"/>
+            <field name="perm_write" eval="True"/>
+            <field name="perm_unlink" eval="False"/>
+            <field name="max_records">100</field>
+        </record>
+
+        <!-- Productos -->
+        <record id="access_product_template" model="mcp.model.access">
+            <field name="model_id" ref="product.model_product_template"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_create" eval="True"/>
+            <field name="perm_write" eval="True"/>
+            <field name="perm_unlink" eval="False"/>
+            <field name="max_records">100</field>
+        </record>
+
+        <!-- Variantes de producto -->
+        <record id="access_product_product" model="mcp.model.access">
+            <field name="model_id" ref="product.model_product_product"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_create" eval="False"/>
+            <field name="perm_write" eval="True"/>
+            <field name="perm_unlink" eval="False"/>
+            <field name="max_records">100</field>
+        </record>
+
+        <!-- Categorías de producto -->
+        <record id="access_product_category" model="mcp.model.access">
+            <field name="model_id" ref="product.model_product_category"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_create" eval="True"/>
+            <field name="perm_write" eval="True"/>
+            <field name="perm_unlink" eval="False"/>
+            <field name="max_records">50</field>
+        </record>
+
+        <!-- Pedidos de venta -->
+        <record id="access_sale_order" model="mcp.model.access">
+            <field name="model_id" ref="sale.model_sale_order"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_create" eval="True"/>
+            <field name="perm_write" eval="True"/>
+            <field name="perm_unlink" eval="False"/>
+            <field name="max_records">100</field>
+        </record>
+
+        <!-- Líneas de pedido -->
+        <record id="access_sale_order_line" model="mcp.model.access">
+            <field name="model_id" ref="sale.model_sale_order_line"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_create" eval="True"/>
+            <field name="perm_write" eval="True"/>
+            <field name="perm_unlink" eval="True"/>
+            <field name="max_records">200</field>
+        </record>
+
+        <!-- CRM Leads/Oportunidades -->
+        <record id="access_crm_lead" model="mcp.model.access">
+            <field name="model_id" ref="crm.model_crm_lead"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_create" eval="True"/>
+            <field name="perm_write" eval="True"/>
+            <field name="perm_unlink" eval="False"/>
+            <field name="max_records">100</field>
+        </record>
+
+        <!-- Facturas -->
+        <record id="access_account_move" model="mcp.model.access">
+            <field name="model_id" ref="account.model_account_move"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_create" eval="False"/>
+            <field name="perm_write" eval="False"/>
+            <field name="perm_unlink" eval="False"/>
+            <field name="max_records">100</field>
+        </record>
+
+        <!-- Stock (inventario) -->
+        <record id="access_stock_quant" model="mcp.model.access">
+            <field name="model_id" ref="stock.model_stock_quant"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_create" eval="False"/>
+            <field name="perm_write" eval="False"/>
+            <field name="perm_unlink" eval="False"/>
+            <field name="max_records">200</field>
+        </record>
+
+        <!-- Listas de precios -->
+        <record id="access_product_pricelist" model="mcp.model.access">
+            <field name="model_id" ref="product.model_product_pricelist"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_create" eval="False"/>
+            <field name="perm_write" eval="False"/>
+            <field name="perm_unlink" eval="False"/>
+            <field name="max_records">20</field>
+        </record>
+
+        <!-- Usuarios -->
+        <record id="access_res_users" model="mcp.model.access">
+            <field name="model_id" ref="base.model_res_users"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_create" eval="False"/>
+            <field name="perm_write" eval="False"/>
+            <field name="perm_unlink" eval="False"/>
+            <field name="max_records">50</field>
+        </record>
+
+        <!-- Países -->
+        <record id="access_res_country" model="mcp.model.access">
+            <field name="model_id" ref="base.model_res_country"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_create" eval="False"/>
+            <field name="perm_write" eval="False"/>
+            <field name="perm_unlink" eval="False"/>
+            <field name="max_records">300</field>
+        </record>
+
+        <!-- Provincias/Estados -->
+        <record id="access_res_country_state" model="mcp.model.access">
+            <field name="model_id" ref="base.model_res_country_state"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_create" eval="False"/>
+            <field name="perm_write" eval="False"/>
+            <field name="perm_unlink" eval="False"/>
+            <field name="max_records">300</field>
+        </record>
+    </data>
+</odoo>

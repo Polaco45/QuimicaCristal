@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- API Key Form View -->
+    <record id="mcp_api_key_form" model="ir.ui.view">
+        <field name="name">mcp.api.key.form</field>
+        <field name="model">mcp.api.key</field>
+        <field name="arch" type="xml">
+            <form>
+                <header>
+                    <button name="action_regenerate_key" string="Regenerar Key"
+                            type="object" class="btn-warning"
+                            confirm="¿Seguro? La key anterior dejará de funcionar."/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1><field name="name" placeholder="Nombre de la API Key"/></h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="key" widget="CopyClipboardChar"/>
+                            <field name="user_id"/>
+                            <field name="active"/>
+                        </group>
+                        <group>
+                            <field name="last_used"/>
+                            <field name="request_count"/>
+                        </group>
+                    </group>
+                    <group string="Notas">
+                        <field name="notes" nolabel="1" placeholder="Notas opcionales..."/>
+                    </group>
+                    <div class="alert alert-info" role="alert">
+                        <strong>URL para Claude.ai:</strong>
+                        <code>https://quimicacristal.odoo.com/mcp/<field name="key" readonly="1"/></code>
+                        <br/>
+                        Copiá esta URL y pegala en Claude.ai → Settings → Connectors → Add custom connector
+                    </div>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- API Key List View -->
+    <record id="mcp_api_key_list" model="ir.ui.view">
+        <field name="name">mcp.api.key.list</field>
+        <field name="model">mcp.api.key</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="name"/>
+                <field name="user_id"/>
+                <field name="active"/>
+                <field name="last_used"/>
+                <field name="request_count"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Action -->
+    <record id="action_mcp_api_key" model="ir.actions.act_window">
+        <field name="name">API Keys MCP</field>
+        <field name="res_model">mcp.api.key</field>
+        <field name="view_mode">list,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Creá tu primera API Key
+            </p>
+            <p>
+                Las API Keys permiten a asistentes de IA como Claude conectarse
+                a tu Odoo de forma segura.
+            </p>
+        </field>
+    </record>
+
+    <!-- Menu Items -->
+    <menuitem id="menu_mcp_root"
+              name="MCP Server"
+              web_icon="mcp_server,static/description/icon.png"
+              sequence="100"
+              groups="mcp_server.group_mcp_admin,base.group_system"/>
+
+    <menuitem id="menu_mcp_config"
+              name="Configuración"
+              parent="menu_mcp_root"
+              sequence="10"/>
+
+    <menuitem id="menu_mcp_api_keys"
+              name="API Keys"
+              parent="menu_mcp_config"
+              action="action_mcp_api_key"
+              sequence="10"/>
+</odoo>
