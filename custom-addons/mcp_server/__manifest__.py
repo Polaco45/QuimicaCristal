@@ -10,8 +10,7 @@
 
         v1.1 — Reportes en PDF (generate_report), cola de mensajes pendientes
         de WhatsApp (get_unanswered_messages), y modelos adicionales habilitados
-        (ir.attachment, ir.model, mail.activity.type, discuss.channel.member,
-        product.tag, etc).
+        automáticamente vía upsert (no rompe configuración manual previa).
     """,
     'author': 'Química Cristal',
     'website': 'https://quimicacristal.odoo.com',
@@ -30,7 +29,6 @@
         'security/security.xml',
         'security/ir.model.access.csv',
         'data/data.xml',
-        'data/report_access_data.xml',
         'data/cron_data.xml',
         'views/mcp_api_key_views.xml',
         'views/mcp_model_access_views.xml',
@@ -38,6 +36,7 @@
         'views/mcp_pending_message_views.xml',
         'views/res_config_settings_views.xml',
     ],
+    'post_init_hook': 'post_init_hook',
     'installable': True,
     'application': True,
     'license': 'LGPL-3',
