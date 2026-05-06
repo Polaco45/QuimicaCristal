@@ -282,6 +282,18 @@ class MCPPendingMessage(models.Model):
         """Determina si un pending es 'ruido' (no notificar) o consulta real.
 
         Devuelve (is_noise: bool, reason: str|None).
+
+        Reglas (en orden):
+        1. Si el cuerpo arranca con un autorespond típico del cliente
+           (bot de WhatsApp Business del otro lado) → ruido.
+        2. Si tiene "?" o "¿" → NUNCA es ruido (consulta explícita).
+        3. Si es largo (>30 chars sin emojis) → no ruido (contenido sustantivo).
+        4. Si NO matchea patrón de cierre/agradecimiento → no ruido.
+        5. Si nuestro último outbound tenía "?" y la respuesta es afirmativa
+           corta → confirmación legítima, NO ruido.
+        6. Si nuestro último outbound (template O texto libre) fue hace <24hs
+           y la respuesta es cierre corto sin pregunta → ruido.
+        7. Si no hay outbound previo cercano → no ruido (mejor avisar).
         """
         import re
 
@@ -298,8 +310,7 @@ class MCPPendingMessage(models.Model):
         body_clean = emoji_re.sub('', body).strip()
         body_lower = body_clean.lower()
 
-        # Caso especial: autorespond del propio cliente
-        # (cuando el WhatsApp Business del cliente nos manda un saludo automático)
+        # 1. Autorespond del propio cliente (bot del otro lado)
         autorespond_starters = (
             'gracias por comunicarte', 'muchas gracias por comunicarte',
             'gracias por contactar', 'gracias por escribirnos',
@@ -312,15 +323,15 @@ class MCPPendingMessage(models.Model):
             if starter in body_lower:
                 return (True, 'autorespond_del_cliente')
 
-        # Si tiene signo de pregunta, NUNCA es ruido
+        # 2. Tiene signo de pregunta → nunca ruido
         if '?' in body or '¿' in body:
             return (False, None)
 
-        # Si es largo (>30 chars sin emojis), probablemente tiene contenido sustantivo
+        # 3. Mensaje largo → contenido sustantivo, no ruido
         if len(body_clean) > 30:
             return (False, None)
 
-        # Patrón de cierre/agradecimiento puro
+        # 4. Patrón de cierre/agradecimiento (sin esto, no es ruido)
         closing_re = re.compile(
             r'^(gracias|graci[ai]s?|muchas\s+gracias|mil\s+gracias|'
             r'ok|oki|okey|oka|dale|dali|perfecto|listo|s[ií]|si|'
@@ -333,42 +344,51 @@ class MCPPendingMessage(models.Model):
             return (False, None)  # No matchea cierre típico, mejor avisar
 
         # En este punto: cuerpo corto + sin pregunta + matchea cierre.
-        # Pero todavía puede ser una respuesta válida de un cliente real
-        # (ej: cliente que responde "ok" a una pregunta nuestra de seguimiento).
-        # Solo lo descartamos si el último outbound nuestro fue un TEMPLATE
-        # (notificación automática) en las últimas 24hs.
+        # Para clasificar como ruido, queremos confirmar que la conversación
+        # ya estaba activa (hubo outbound nuestro reciente) Y que ese outbound
+        # NO era una pregunta esperando respuesta del cliente.
         WhatsappMessage = self.env['whatsapp.message'].sudo()
         MailMessage = self.env['mail.message'].sudo()
 
-        # Buscar el último outbound nuestro en este canal antes del inbound
         last_inbound_at = pending.last_inbound_at
         if not last_inbound_at:
             return (False, None)
 
-        prior_outbound_msg = MailMessage.search([
+        # Buscar el último outbound nuestro en este canal en las últimas 24hs
+        last_outbound_msg = MailMessage.search([
             ('model', '=', 'discuss.channel'),
             ('res_id', '=', pending.channel_id.id),
             ('message_type', '=', 'whatsapp_message'),
             ('create_date', '<', last_inbound_at),
             ('create_date', '>=', last_inbound_at - timedelta(hours=24)),
-        ], order='create_date desc', limit=5)
+        ], order='create_date desc', limit=1)
 
-        if not prior_outbound_msg:
-            return (False, None)  # No hay outbound previo, no podemos saber
+        if not last_outbound_msg:
+            # No hay outbound previo cercano → quizá conversación nueva
+            # arrancada con cierre corto extraño. Mejor avisar.
+            return (False, None)
 
-        # ¿Alguno de los outbounds previos era un template (notificación auto)?
-        wa_msgs = WhatsappMessage.search([
-            ('mail_message_id', 'in', prior_outbound_msg.ids),
+        # ¿Ese último outbound era nuestro (whatsapp_message outbound)?
+        last_outbound_wa = WhatsappMessage.search([
+            ('mail_message_id', '=', last_outbound_msg.id),
             ('message_type', '=', 'outbound'),
-            ('wa_template_id', '!=', False),
         ], limit=1)
+        if not last_outbound_wa:
+            return (False, None)
 
-        if wa_msgs:
-            return (True, 'respuesta_corta_a_notificacion_automatica')
+        # 5. Si nuestro último mensaje era una pregunta, el cierre corto
+        # del cliente puede ser una confirmación legítima → NO ruido.
+        outbound_body_text = self._strip_html(last_outbound_msg.body or '')
+        if '?' in outbound_body_text or '¿' in outbound_body_text:
+            return (False, 'pregunta_pendiente_respondida')
+            # Devuelvo False (no ruido) pero con razón informativa para
+            # que se pueda auditar después.
 
-        # Tenía outbound previo pero era un mensaje libre nuestro,
-        # un "ok" en respuesta puede ser legítimo. Avisar.
-        return (False, None)
+        # 6. Outbound nuestro reciente sin pregunta + cierre corto → ruido.
+        # Cubre tanto templates automáticos como respuestas manuales nuestras.
+        if last_outbound_wa.wa_template_id:
+            return (True, 'cierre_a_template_automatico')
+        return (True, 'cierre_a_respuesta_manual')
 
     @api.model
     def _format_notification_text(self, pendings):

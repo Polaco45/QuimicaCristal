@@ -12,7 +12,7 @@ _logger = logging.getLogger(__name__)
 
 PROTOCOL_VERSION = "2025-03-26"
 SERVER_NAME = "odoo-mcp-server"
-SERVER_VERSION = "1.1.0"
+SERVER_VERSION = "1.3.0"
 
 # ============================================================
 # Tool Definitions (MCP schema)
@@ -306,6 +306,36 @@ TOOLS = [
             "required": ["channel_id"],
         },
     },
+    {
+        "name": "view_attachment",
+        "description": (
+            "Recupera el contenido binario de un ir.attachment (imagen, PDF, etc.) "
+            "y lo devuelve como content block nativo, permitiendo procesarlo "
+            "multimodalmente. Útil para que un asistente IA con capacidad visual "
+            "pueda 'ver' fotos que un cliente mandó por WhatsApp.\n"
+            "Para imágenes (image/jpeg, image/png, image/webp, image/gif): "
+            "devuelve un bloque type='image' visualizable.\n"
+            "Para PDFs y otros formatos: devuelve metadata + URL de descarga."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "attachment_id": {
+                    "type": "integer",
+                    "description": "ID del ir.attachment a visualizar",
+                },
+                "max_size_kb": {
+                    "type": "integer",
+                    "description": (
+                        "Tamaño máximo en KB para devolver el contenido completo. "
+                        "Default: 5000 (5 MB). Si excede, devuelve solo metadata."
+                    ),
+                    "default": 5000,
+                },
+            },
+            "required": ["attachment_id"],
+        },
+    },
 ]
 
 
@@ -424,10 +454,25 @@ class MCPController(http.Controller):
         return Response(json.dumps(data, default=str, ensure_ascii=False),
                         status=status, headers=headers)
 
-    def _tool_result(self, msg_id, content_text, is_error=False):
-        """Build a tools/call result"""
+    def _tool_result(self, msg_id, content, is_error=False):
+        """Build a tools/call result.
+
+        `content` puede ser:
+        - str: se trata como un único bloque de texto (legacy/compatible)
+        - list: lista de content blocks ya armados (cada uno con su 'type')
+          Permite mezclar texto con imágenes, ej:
+          [{"type": "text", "text": "..."},
+           {"type": "image", "data": "<base64>", "mimeType": "image/jpeg"}]
+        """
+        if isinstance(content, str):
+            blocks = [{"type": "text", "text": content}]
+        elif isinstance(content, list):
+            blocks = content
+        else:
+            blocks = [{"type": "text", "text": str(content)}]
+
         return self._json_rpc_response(msg_id, {
-            "content": [{"type": "text", "text": content_text}],
+            "content": blocks,
             "isError": is_error,
         })
 
@@ -619,6 +664,8 @@ class MCPController(http.Controller):
             'generate_report': self._tool_generate_report,
             'get_unanswered_messages': self._tool_get_unanswered_messages,
             'mark_message_handled': self._tool_mark_message_handled,
+            # New v1.3 tools
+            'view_attachment': self._tool_view_attachment,
         }
 
         handler = handler_map.get(tool_name)
@@ -1163,4 +1210,88 @@ class MCPController(http.Controller):
         return (
             f"Canal {channel_id} marcado como '{state}'. "
             f"Pending entry ID: {pending.id}."
+        )
+
+    # NOTA: este tool no devuelve string sino una lista de content blocks
+    # cuando el attachment es una imagen visualizable. Por eso el wrapper
+    # _handle_tools_call ya soporta ambos casos (str o list) en _tool_result.
+    def _tool_view_attachment(self, args, user_env):
+        """View an attachment's content as a multimodal block when possible."""
+        env = request.env(user=SUPERUSER_ID)
+        attachment_id = args.get('attachment_id')
+        max_size_kb = args.get('max_size_kb', 5000)
+
+        if not attachment_id:
+            return "Error: 'attachment_id' es requerido."
+
+        attachment = env['ir.attachment'].browse(int(attachment_id))
+        if not attachment.exists():
+            return f"Error: ir.attachment con ID {attachment_id} no existe."
+
+        # Metadata básica
+        name = attachment.name or 'sin_nombre'
+        mimetype = attachment.mimetype or 'application/octet-stream'
+        res_model = attachment.res_model or 'sin_modelo'
+        res_id = attachment.res_id or 0
+        description = attachment.description or ''
+
+        # Determinar tamaño
+        size_bytes = 0
+        if attachment.datas:
+            # datas viene como base64 (str). Tamaño real binario ≈ len(b64) * 3/4
+            size_bytes = int(len(attachment.datas) * 3 / 4)
+        size_kb = size_bytes / 1024.0
+
+        meta_text = (
+            f"Attachment ID {attachment_id}:\n"
+            f"  Nombre: {name}\n"
+            f"  MIME type: {mimetype}\n"
+            f"  Tamaño: {size_kb:.1f} KB\n"
+            f"  Vinculado a: {res_model}/{res_id}\n"
+        )
+        if description:
+            meta_text += f"  Descripción: {description}\n"
+
+        # Si excede el límite, devuelvo solo metadata
+        if size_kb > max_size_kb:
+            return (
+                meta_text +
+                f"\n⚠️ El archivo excede el límite de {max_size_kb} KB. "
+                f"Solo se devuelve metadata. Aumentá max_size_kb si necesitás "
+                f"el contenido."
+            )
+
+        # ¿Es una imagen visualizable?
+        viewable_image_mimetypes = (
+            'image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif',
+        )
+        if mimetype.lower() in viewable_image_mimetypes:
+            if not attachment.datas:
+                return meta_text + "\n⚠️ Imagen sin datos binarios cargados."
+
+            # Devolver como content blocks: texto descriptivo + imagen visualizable
+            datas_str = attachment.datas
+            if isinstance(datas_str, bytes):
+                datas_str = datas_str.decode('ascii')
+
+            return [
+                {"type": "text", "text": meta_text},
+                {
+                    "type": "image",
+                    "data": datas_str,
+                    "mimeType": mimetype.lower().replace('image/jpg', 'image/jpeg'),
+                },
+            ]
+
+        # Para PDFs y otros, devolvemos metadata + URL si tiene
+        url_hint = ''
+        if attachment.url:
+            url_hint = f"  URL: {attachment.url}\n"
+
+        return (
+            meta_text + url_hint +
+            f"\nFormato '{mimetype}' no es imagen visualizable. "
+            f"Para PDFs y documentos: pedile al usuario humano (Joaco) que lo "
+            f"abra desde Odoo o reenvíelo. Solo imagenes (jpeg/png/webp/gif) "
+            f"se pueden procesar nativamente con este tool."
         )

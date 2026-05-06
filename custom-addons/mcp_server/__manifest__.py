@@ -1,6 +1,6 @@
 {
     'name': 'MCP Server',
-    'version': '18.0.1.2.1',
+    'version': '18.0.1.3.0',
     'category': 'Technical',
     'summary': 'Model Context Protocol Server - Connect AI assistants to Odoo',
     'description': """
@@ -8,8 +8,17 @@
         Allows AI assistants like Claude to securely interact with your Odoo instance
         through natural language, performing CRUD operations on configured models.
 
-        v1.2 — Cron de notificación: avisa por WhatsApp a Joaco cuando hay mensajes
-        pendientes sin contestar (con filtro inteligente de ruido y antispam).
+        v1.3 — Tool view_attachment para procesar imágenes nativamente.
+        Bugfix en filtro de ruido: ahora cubre respuestas manuales de Joaco
+        (no solo templates). Heurística de "pregunta pendiente": si el último
+        outbound nuestro contenía un signo de interrogación, la respuesta
+        corta del cliente se considera CONFIRMACIÓN, no ruido.
+
+        v1.2.1 — Bugfix: el cron de notificación ahora encuentra correctamente
+        el canal vía whatsapp.message (antes filtraba por un campo inexistente).
+
+        v1.2 — Cron de notificación: avisa por WhatsApp a Joaco cuando hay
+        mensajes pendientes sin contestar (con filtro inteligente y antispam).
 
         v1.1 — Reportes en PDF (generate_report), cola de mensajes pendientes
         de WhatsApp (get_unanswered_messages), y modelos adicionales habilitados
