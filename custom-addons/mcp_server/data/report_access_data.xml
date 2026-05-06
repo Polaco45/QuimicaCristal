@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <!-- Reporte: Lista de precios (genera PDF de precios por pricelist) -->
+        <record id="report_access_pricelist" model="mcp.report.access">
+            <field name="name">Lista de precios</field>
+            <field name="report_id" ref="product.action_report_pricelist"/>
+            <field name="active" eval="True"/>
+            <field name="description">
+Genera el PDF de lista de precios para los productos seleccionados, usando una pricelist específica.
+
+Parámetros típicos a pasar en `data`:
+- pricelist_id: ID de la pricelist a usar (ej: 6 = Lista Mayorista, 19 = L.C 1)
+- quantities: lista de cantidades a mostrar (ej: [1] para precio por unidad)
+
+Ejemplo de uso:
+generate_report(
+  report_xml_id='product.action_report_pricelist',
+  record_ids=[123, 456, 789],  # IDs de product.template
+  data={'pricelist_id': 6, 'quantities': [1]}
+)
+            </field>
+        </record>
+
+        <!-- Reporte: Presupuesto / Pedido de venta (PDF de cotización) -->
+        <record id="report_access_sale_order" model="mcp.report.access">
+            <field name="name">Presupuesto de venta</field>
+            <field name="report_id" ref="sale.action_report_saleorder"/>
+            <field name="active" eval="True"/>
+            <field name="description">
+Genera el PDF de presupuesto/pedido de venta. Útil para enviar cotizaciones a clientes.
+
+Ejemplo:
+generate_report(
+  report_xml_id='sale.action_report_saleorder',
+  record_ids=[2796]  # ID de sale.order
+)
+            </field>
+        </record>
+
+        <!-- Reporte: Factura (PDF) -->
+        <record id="report_access_invoice" model="mcp.report.access">
+            <field name="name">Factura</field>
+            <field name="report_id" ref="account.account_invoices"/>
+            <field name="active" eval="True"/>
+            <field name="description">
+Genera el PDF de factura. Para enviar comprobantes a clientes.
+            </field>
+        </record>
+    </data>
+</odoo>

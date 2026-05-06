@@ -1,9 +1,10 @@
 import json
+import base64
 import uuid
 import logging
 from datetime import datetime
 
-from odoo import http, SUPERUSER_ID
+from odoo import http, fields, SUPERUSER_ID
 from odoo.http import request, Response
 from odoo.exceptions import AccessError, ValidationError, UserError, MissingError
 
@@ -11,7 +12,7 @@ _logger = logging.getLogger(__name__)
 
 PROTOCOL_VERSION = "2025-03-26"
 SERVER_NAME = "odoo-mcp-server"
-SERVER_VERSION = "1.0.0"
+SERVER_VERSION = "1.1.0"
 
 # ============================================================
 # Tool Definitions (MCP schema)
@@ -205,6 +206,104 @@ TOOLS = [
                 },
             },
             "required": ["model"],
+        },
+    },
+    # ----------------------------------------------------------
+    # NUEVAS TOOLS (v1.1)
+    # ----------------------------------------------------------
+    {
+        "name": "list_reports",
+        "description": (
+            "Lista los reportes de Odoo permitidos para ser ejecutados via MCP. "
+            "Cada reporte tiene un xml_id que se usa con generate_report."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+    {
+        "name": "generate_report",
+        "description": (
+            "Genera un PDF de un reporte de Odoo y lo guarda como ir.attachment. "
+            "Devuelve el attachment_id que luego se puede vincular a un mensaje "
+            "(via attachment_ids del mail.message) o adjuntar a un registro. "
+            "Solo se pueden ejecutar reportes registrados en mcp.report.access. "
+            "Usá list_reports para ver los disponibles."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "report_xml_id": {
+                    "type": "string",
+                    "description": "XML ID del reporte (ej: 'product.action_report_pricelist')",
+                },
+                "record_ids": {
+                    "type": "array",
+                    "items": {"type": "integer"},
+                    "description": "IDs de los registros sobre los que generar el reporte",
+                },
+                "data": {
+                    "type": "object",
+                    "description": (
+                        "Diccionario opcional con parámetros para el reporte. "
+                        "Ej para lista de precios: {\"pricelist_id\": 6, \"quantities\": [1]}"
+                    ),
+                },
+                "filename": {
+                    "type": "string",
+                    "description": "Nombre del archivo resultante. Default: usa el nombre del reporte.",
+                },
+            },
+            "required": ["report_xml_id", "record_ids"],
+        },
+    },
+    {
+        "name": "get_unanswered_messages",
+        "description": (
+            "Devuelve los canales de WhatsApp con mensajes entrantes pendientes de respuesta. "
+            "Lee de la cola mantenida por el cron MCP (mcp.pending.message). "
+            "Cada entrada incluye: canal, último mensaje, autor, fecha, y resumen del cuerpo. "
+            "Usá esto para arrancar una sesión de atención: '¿qué tengo sin contestar?'"
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "integer",
+                    "description": "Máx entradas a devolver. Default: 20",
+                    "default": 20,
+                },
+                "include_in_progress": {
+                    "type": "boolean",
+                    "description": "Incluir conversaciones marcadas 'en atención'. Default: false",
+                    "default": False,
+                },
+            },
+        },
+    },
+    {
+        "name": "mark_message_handled",
+        "description": (
+            "Marca un canal como atendido en la cola de mensajes pendientes. "
+            "Uso típico: después de responder a un cliente, llamar mark_message_handled "
+            "con el channel_id para sacarlo de la cola activa."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "channel_id": {
+                    "type": "integer",
+                    "description": "ID del discuss.channel a marcar como atendido",
+                },
+                "state": {
+                    "type": "string",
+                    "enum": ["done", "ignored", "in_progress", "pending"],
+                    "description": "Estado destino. Default: 'done'",
+                    "default": "done",
+                },
+            },
+            "required": ["channel_id"],
         },
     },
 ]
@@ -487,8 +586,10 @@ class MCPController(http.Controller):
             "instructions": (
                 "Este servidor MCP conecta con Odoo ERP (Química Cristal). "
                 "Podés buscar, crear, editar y eliminar registros en los modelos habilitados. "
+                "Además podés generar reportes en PDF (generate_report) y consultar "
+                "la cola de mensajes pendientes de WhatsApp (get_unanswered_messages). "
                 "Usá 'list_models' para ver qué modelos están disponibles. "
-                "Usá 'get_model_fields' para ver los campos de un modelo antes de crear/editar. "
+                "Usá 'list_reports' para ver qué reportes podés generar. "
                 "Los dominios de búsqueda usan formato Odoo: [[\"campo\", \"op\", valor]]. "
                 "Para many2one, usá el ID numérico del registro relacionado. "
                 "Siempre confirmá con el usuario antes de crear, editar o eliminar registros."
@@ -513,6 +614,11 @@ class MCPController(http.Controller):
             'update_record': self._tool_update_record,
             'delete_record': self._tool_delete_record,
             'count_records': self._tool_count_records,
+            # New v1.1 tools
+            'list_reports': self._tool_list_reports,
+            'generate_report': self._tool_generate_report,
+            'get_unanswered_messages': self._tool_get_unanswered_messages,
+            'mark_message_handled': self._tool_mark_message_handled,
         }
 
         handler = handler_map.get(tool_name)
@@ -863,3 +969,198 @@ class MCPController(http.Controller):
 
         count = model_obj.search_count(domain or [])
         return f"Total de registros en '{model_name}' con el filtro dado: {count}"
+
+    # ----------------------------------------------------------
+    # NEW v1.1 Tools
+    # ----------------------------------------------------------
+
+    def _tool_list_reports(self, args, user_env):
+        """List all enabled Odoo reports"""
+        env = request.env(user=SUPERUSER_ID)
+        all_reports = env['mcp.report.access'].get_all_enabled_reports()
+        if not all_reports:
+            return (
+                "No hay reportes habilitados para MCP. "
+                "Configurá reportes en Ajustes > MCP Server > Reportes habilitados."
+            )
+
+        lines = ["Reportes habilitados para MCP:\n"]
+        for r in all_reports:
+            xml_id = r.report_xml_id or '(sin xml_id)'
+            model = r.model_name or '(sin modelo)'
+            lines.append(f"  • {r.name}")
+            lines.append(f"      xml_id: {xml_id}")
+            lines.append(f"      modelo destino: {model}")
+            if r.description:
+                desc = r.description.strip()[:200]
+                lines.append(f"      descripción: {desc}")
+            lines.append("")
+
+        return "\n".join(lines)
+
+    def _tool_generate_report(self, args, user_env):
+        """Generate a PDF report and store it as ir.attachment"""
+        env = request.env(user=SUPERUSER_ID)
+        report_xml_id = args.get('report_xml_id', '')
+        record_ids = args.get('record_ids', [])
+        data = args.get('data') or {}
+        filename = args.get('filename')
+
+        if not report_xml_id:
+            return "Error: 'report_xml_id' es requerido."
+        if not record_ids:
+            return "Error: 'record_ids' es requerido y no puede estar vacío."
+        if not isinstance(record_ids, list):
+            return "Error: 'record_ids' debe ser una lista de IDs."
+
+        # Validar que el reporte esté en la whitelist
+        access = env['mcp.report.access'].get_access_for_xml_id(report_xml_id)
+        if not access:
+            return (
+                f"Error: el reporte '{report_xml_id}' no está habilitado para MCP. "
+                f"Usá 'list_reports' para ver los reportes disponibles."
+            )
+
+        # Aplicar default_data del access si no vino en la llamada
+        if access.default_data and not data:
+            try:
+                data = json.loads(access.default_data)
+            except (json.JSONDecodeError, TypeError):
+                _logger.warning("MCP: default_data inválido en reporte %s", report_xml_id)
+
+        # Resolver el reporte
+        try:
+            report = env.ref(report_xml_id)
+        except ValueError:
+            return f"Error: no se encontró el reporte con xml_id '{report_xml_id}'."
+
+        if report._name != 'ir.actions.report':
+            return f"Error: '{report_xml_id}' no es un reporte (es {report._name})."
+
+        # Generar el PDF
+        try:
+            # Odoo 17/18: _render_qweb_pdf devuelve (bytes, content_type)
+            pdf_content, content_type = report._render_qweb_pdf(
+                report_xml_id, res_ids=record_ids, data=data
+            )
+        except Exception as e:
+            _logger.exception("MCP: error generando reporte %s", report_xml_id)
+            return f"Error generando el reporte: {e}"
+
+        # Crear ir.attachment
+        if not filename:
+            safe_name = (report.name or 'reporte').replace('/', '_').replace(' ', '_')
+            ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f"{safe_name}_{ts}.pdf"
+        elif not filename.lower().endswith('.pdf'):
+            filename = f"{filename}.pdf"
+
+        attachment_vals = {
+            'name': filename,
+            'datas': base64.b64encode(pdf_content),
+            'mimetype': 'application/pdf',
+            'type': 'binary',
+            'description': f"Generado via MCP — Reporte: {report.name} — Records: {record_ids}",
+        }
+
+        attachment = env['ir.attachment'].create(attachment_vals)
+
+        size_kb = len(pdf_content) / 1024.0
+
+        return (
+            f"PDF generado exitosamente:\n"
+            f"  Reporte: {report.name}\n"
+            f"  Archivo: {filename}\n"
+            f"  Tamaño: {size_kb:.1f} KB\n"
+            f"  Attachment ID: {attachment.id}\n"
+            f"  Records incluidos: {len(record_ids)} ({record_ids})\n"
+            f"\n"
+            f"Para enviar este PDF como adjunto en un mensaje de WhatsApp, "
+            f"creá un mail.message con attachment_ids=[[4, {attachment.id}]] "
+            f"y luego un whatsapp.message vinculado a ese mail.message."
+        )
+
+    def _tool_get_unanswered_messages(self, args, user_env):
+        """Return WhatsApp channels with unanswered inbound messages"""
+        env = request.env(user=SUPERUSER_ID)
+        limit = args.get('limit', 20) or 20
+        include_in_progress = bool(args.get('include_in_progress', False))
+
+        states = ['pending']
+        if include_in_progress:
+            states.append('in_progress')
+
+        # Refrescar la cola antes de leer (por si el cron no corrió recién)
+        try:
+            env['mcp.pending.message']._refresh_queue()
+        except Exception:
+            _logger.exception("MCP: error refrescando cola antes de get_unanswered_messages")
+
+        pendings = env['mcp.pending.message'].search([
+            ('state', 'in', states),
+        ], order='last_inbound_at desc', limit=limit)
+
+        if not pendings:
+            return "No hay mensajes pendientes de respuesta."
+
+        lines = [
+            f"Mensajes pendientes de respuesta ({len(pendings)} canales):\n",
+        ]
+        for p in pendings:
+            partner_label = p.partner_id.display_name if p.partner_id else "(sin partner)"
+            channel_label = p.channel_id.name if p.channel_id else "(sin canal)"
+            account_label = p.wa_account_id.name if p.wa_account_id else "?"
+            mobile = p.mobile_number or "?"
+            received = (p.last_inbound_at.strftime('%Y-%m-%d %H:%M:%S')
+                        if p.last_inbound_at else "?")
+            summary = (p.summary or "").strip().replace('\n', ' ')[:200]
+            extra = ""
+            if p.inbound_count and p.inbound_count > 1:
+                extra = f" (+{p.inbound_count - 1} mensajes seguidos)"
+
+            lines.append(
+                f"  • [Pending #{p.id}] Canal {p.channel_id.id} ({channel_label})\n"
+                f"      Estado: {p.state}{extra}\n"
+                f"      Cuenta WA: {account_label}\n"
+                f"      Contacto: {partner_label} ({mobile})\n"
+                f"      Recibido: {received}\n"
+                f"      Mensaje: {summary}\n"
+                f"      Último mail.message ID: {p.last_inbound_message_id.id if p.last_inbound_message_id else '?'}\n"
+            )
+
+        lines.append(
+            "\nDespués de responder a un canal, llamá mark_message_handled "
+            "con el channel_id para sacarlo de la cola."
+        )
+        return "\n".join(lines)
+
+    def _tool_mark_message_handled(self, args, user_env):
+        """Mark a channel's pending entry as handled"""
+        env = request.env(user=SUPERUSER_ID)
+        channel_id = args.get('channel_id')
+        state = args.get('state', 'done')
+
+        if not channel_id:
+            return "Error: 'channel_id' es requerido."
+        if state not in ('done', 'ignored', 'in_progress', 'pending'):
+            return f"Error: estado '{state}' inválido. Usá done, ignored, in_progress o pending."
+
+        pending = env['mcp.pending.message'].search([
+            ('channel_id', '=', int(channel_id)),
+        ], limit=1)
+
+        if not pending:
+            return (
+                f"No hay entrada en la cola de mensajes pendientes para el canal {channel_id}. "
+                f"Esto puede pasar si nunca hubo un mensaje entrante en ese canal "
+                f"o si el cron todavía no lo registró."
+            )
+
+        pending.write({
+            'state': state,
+            'processed_at': fields.Datetime.now(),
+        })
+        return (
+            f"Canal {channel_id} marcado como '{state}'. "
+            f"Pending entry ID: {pending.id}."
+        )

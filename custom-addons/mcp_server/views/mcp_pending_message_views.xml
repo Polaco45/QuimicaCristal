@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <!-- Tree view -->
+        <record id="mcp_pending_message_tree_view" model="ir.ui.view">
+            <field name="name">mcp.pending.message.tree</field>
+            <field name="model">mcp.pending.message</field>
+            <field name="arch" type="xml">
+                <list string="Mensajes pendientes" decoration-warning="state == 'pending'"
+                      decoration-info="state == 'in_progress'"
+                      decoration-muted="state in ('done', 'ignored')">
+                    <field name="last_inbound_at"/>
+                    <field name="channel_id"/>
+                    <field name="partner_id"/>
+                    <field name="mobile_number"/>
+                    <field name="wa_account_id"/>
+                    <field name="summary"/>
+                    <field name="inbound_count"/>
+                    <field name="state" widget="badge"
+                           decoration-warning="state == 'pending'"
+                           decoration-info="state == 'in_progress'"
+                           decoration-success="state == 'done'"
+                           decoration-muted="state == 'ignored'"/>
+                </list>
+            </field>
+        </record>
+
+        <!-- Form view -->
+        <record id="mcp_pending_message_form_view" model="ir.ui.view">
+            <field name="name">mcp.pending.message.form</field>
+            <field name="model">mcp.pending.message</field>
+            <field name="arch" type="xml">
+                <form string="Mensaje pendiente">
+                    <header>
+                        <button name="action_mark_done" type="object"
+                                string="Marcar atendido" class="oe_highlight"
+                                invisible="state == 'done'"/>
+                        <button name="action_mark_ignored" type="object"
+                                string="Ignorar"
+                                invisible="state == 'ignored'"/>
+                        <button name="action_mark_pending" type="object"
+                                string="Reabrir"
+                                invisible="state == 'pending'"/>
+                        <field name="state" widget="statusbar"
+                               statusbar_visible="pending,in_progress,done"/>
+                    </header>
+                    <sheet>
+                        <group>
+                            <group>
+                                <field name="channel_id"/>
+                                <field name="partner_id"/>
+                                <field name="mobile_number"/>
+                            </group>
+                            <group>
+                                <field name="wa_account_id"/>
+                                <field name="last_inbound_at"/>
+                                <field name="processed_at"/>
+                                <field name="inbound_count"/>
+                            </group>
+                        </group>
+                        <group string="Último mensaje recibido">
+                            <field name="last_inbound_message_id"/>
+                            <field name="summary" nolabel="1" colspan="2"/>
+                        </group>
+                        <group string="Notas internas">
+                            <field name="notes" nolabel="1"/>
+                        </group>
+                    </sheet>
+                </form>
+            </field>
+        </record>
+
+        <!-- Search view -->
+        <record id="mcp_pending_message_search_view" model="ir.ui.view">
+            <field name="name">mcp.pending.message.search</field>
+            <field name="model">mcp.pending.message</field>
+            <field name="arch" type="xml">
+                <search string="Mensajes pendientes">
+                    <field name="channel_id"/>
+                    <field name="partner_id"/>
+                    <field name="mobile_number"/>
+                    <field name="summary"/>
+                    <separator/>
+                    <filter string="Pendientes" name="filter_pending"
+                            domain="[('state', '=', 'pending')]"/>
+                    <filter string="En atención" name="filter_in_progress"
+                            domain="[('state', '=', 'in_progress')]"/>
+                    <filter string="Atendidos" name="filter_done"
+                            domain="[('state', '=', 'done')]"/>
+                    <filter string="Ignorados" name="filter_ignored"
+                            domain="[('state', '=', 'ignored')]"/>
+                    <separator/>
+                    <filter string="Cuenta WA" name="group_by_account"
+                            context="{'group_by': 'wa_account_id'}"/>
+                    <filter string="Estado" name="group_by_state"
+                            context="{'group_by': 'state'}"/>
+                </search>
+            </field>
+        </record>
+
+        <!-- Action -->
+        <record id="action_mcp_pending_message" model="ir.actions.act_window">
+            <field name="name">Mensajes pendientes</field>
+            <field name="res_model">mcp.pending.message</field>
+            <field name="view_mode">list,form</field>
+            <field name="search_view_id" ref="mcp_pending_message_search_view"/>
+            <field name="context">{'search_default_filter_pending': 1}</field>
+            <field name="help" type="html">
+                <p class="o_view_nocontent_smiling_face">
+                    No hay mensajes pendientes
+                </p>
+                <p>
+                    Esta es la cola que mantiene actualizada el cron MCP. Lista los canales
+                    de WhatsApp con mensajes entrantes que todavía no fueron respondidos.
+                </p>
+            </field>
+        </record>
+
+        <!-- Menu item directo bajo MCP Server -->
+        <menuitem id="menu_mcp_pending_messages"
+                  name="Mensajes pendientes"
+                  parent="mcp_server.menu_mcp_root"
+                  action="action_mcp_pending_message"
+                  sequence="5"/>
+    </data>
+</odoo>

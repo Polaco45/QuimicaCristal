@@ -1,5 +1,10 @@
 id,name,model_id/id,group_id/id,perm_read,perm_write,perm_create,perm_unlink
 access_mcp_api_key_admin,mcp.api.key admin,model_mcp_api_key,mcp_server.group_mcp_admin,1,1,1,1
 access_mcp_model_access_admin,mcp.model.access admin,model_mcp_model_access,mcp_server.group_mcp_admin,1,1,1,1
+access_mcp_report_access_admin,mcp.report.access admin,model_mcp_report_access,mcp_server.group_mcp_admin,1,1,1,1
+access_mcp_pending_message_admin,mcp.pending.message admin,model_mcp_pending_message,mcp_server.group_mcp_admin,1,1,1,1
 access_mcp_api_key_system,mcp.api.key system,model_mcp_api_key,base.group_system,1,1,1,1
 access_mcp_model_access_system,mcp.model.access system,model_mcp_model_access,base.group_system,1,1,1,1
+access_mcp_report_access_system,mcp.report.access system,model_mcp_report_access,base.group_system,1,1,1,1
+access_mcp_pending_message_system,mcp.pending.message system,model_mcp_pending_message,base.group_system,1,1,1,1
+access_mcp_pending_message_user,mcp.pending.message user,model_mcp_pending_message,base.group_user,1,1,0,0

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <!-- Cron: Refrescar cola de mensajes pendientes de WhatsApp -->
+        <record id="cron_refresh_pending_messages" model="ir.cron">
+            <field name="name">MCP: Refrescar cola de mensajes pendientes</field>
+            <field name="model_id" ref="model_mcp_pending_message"/>
+            <field name="state">code</field>
+            <field name="code">model._refresh_queue()</field>
+            <field name="interval_number">2</field>
+            <field name="interval_type">minutes</field>
+            <field name="active" eval="True"/>
+            <field name="user_id" ref="base.user_root"/>
+        </record>
+
+        <!-- Parámetro: ventana de mensajes a considerar (días hacia atrás) -->
+        <record id="param_pending_lookback_days" model="ir.config_parameter">
+            <field name="key">mcp_server.pending_lookback_days</field>
+            <field name="value">30</field>
+        </record>
+    </data>
+</odoo>
