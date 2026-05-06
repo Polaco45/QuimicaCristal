@@ -77,6 +77,16 @@ class MCPPendingMessage(models.Model):
     processed_at = fields.Datetime('Procesado el')
     notes = fields.Text('Notas internas')
 
+    # Campos para tracking de notificación a Joaco
+    notified_at = fields.Datetime(
+        'Notificado a Joaco a las',
+        help='Fecha en la que se le notificó a Joaco que este mensaje estaba pendiente.',
+    )
+    notification_skipped_reason = fields.Char(
+        'Motivo de salto',
+        help='Si la notificación se saltó por considerarse ruido, razón concreta.',
+    )
+
     _sql_constraints = [
         ('channel_unique', 'UNIQUE(channel_id)',
          'Ya existe una entrada de cola para este canal.'),
@@ -216,3 +226,326 @@ class MCPPendingMessage(models.Model):
         text = re.sub(r'&gt;', '>', text)
         text = re.sub(r'&quot;', '"', text)
         return text.strip()
+
+    # ================================================================
+    # NOTIFICACIÓN A JOACO (Fase C - Estructura 2)
+    # ================================================================
+
+    @api.model
+    def _get_notification_config(self):
+        """Devuelve la configuración del cron de notificación.
+        Todos los valores son configurables via ir.config_parameter."""
+        ICP = self.env['ir.config_parameter'].sudo()
+        return {
+            'target_number': ICP.get_param(
+                'mcp_server.notify_target_number', '+5493585481191'),
+            'wa_account_id': int(ICP.get_param(
+                'mcp_server.notify_wa_account_id', '5')),
+            'author_partner_id': int(ICP.get_param(
+                'mcp_server.notify_author_partner_id', '80799')),
+            'start_hour': int(ICP.get_param(
+                'mcp_server.notify_start_hour', '8')),
+            'start_minute': int(ICP.get_param(
+                'mcp_server.notify_start_minute', '30')),
+            'end_hour': int(ICP.get_param(
+                'mcp_server.notify_end_hour', '21')),
+            'end_minute': int(ICP.get_param(
+                'mcp_server.notify_end_minute', '0')),
+            'antispam_minutes': int(ICP.get_param(
+                'mcp_server.notify_antispam_minutes', '30')),
+            'enabled': ICP.get_param(
+                'mcp_server.notify_enabled', 'True').lower() in ('true', '1', 'yes'),
+        }
+
+    @api.model
+    def _is_in_notification_window(self, config):
+        """¿Estamos en horario de notificación (Argentina time)?"""
+        try:
+            import pytz
+            tz_ar = pytz.timezone('America/Argentina/Buenos_Aires')
+            now_ar = datetime.now(tz_ar)
+        except Exception:
+            now_ar = datetime.utcnow()  # Fallback (UTC, no ideal pero no rompe)
+
+        h, m = now_ar.hour, now_ar.minute
+        start_h, start_m = config['start_hour'], config['start_minute']
+        end_h, end_m = config['end_hour'], config['end_minute']
+
+        if h < start_h or (h == start_h and m < start_m):
+            return False
+        if h > end_h or (h == end_h and m > end_m):
+            return False
+        return True
+
+    @api.model
+    def _classify_noise(self, pending):
+        """Determina si un pending es 'ruido' (no notificar) o consulta real.
+
+        Devuelve (is_noise: bool, reason: str|None).
+        """
+        import re
+
+        body = (pending.summary or '').strip()
+        if not body:
+            return (False, None)  # Mensaje vacío puede ser audio/imagen, mejor avisar
+
+        # Strip emojis para medir longitud real
+        emoji_re = re.compile(
+            r'[\U0001F600-\U0001F64F\U0001F300-\U0001F5FF\U0001F680-\U0001F6FF'
+            r'\U0001F1E0-\U0001F1FF\U00002702-\U000027B0\U000024C2-\U0001F251'
+            r'\u2600-\u27BF\u2700-\u27BF]+', flags=re.UNICODE,
+        )
+        body_clean = emoji_re.sub('', body).strip()
+        body_lower = body_clean.lower()
+
+        # Caso especial: autorespond del propio cliente
+        # (cuando el WhatsApp Business del cliente nos manda un saludo automático)
+        autorespond_starters = (
+            'gracias por comunicarte', 'muchas gracias por comunicarte',
+            'gracias por contactar', 'gracias por escribirnos',
+            'fuera del horario', 'estamos fuera del horario',
+            'te respondemos a la brevedad', 'te responderemos a la brevedad',
+            'recibimos tu mensaje', 'le respondemos a la brevedad',
+            '¿cómo podemos ayudarte', 'como podemos ayudarte',
+        )
+        for starter in autorespond_starters:
+            if starter in body_lower:
+                return (True, 'autorespond_del_cliente')
+
+        # Si tiene signo de pregunta, NUNCA es ruido
+        if '?' in body or '¿' in body:
+            return (False, None)
+
+        # Si es largo (>30 chars sin emojis), probablemente tiene contenido sustantivo
+        if len(body_clean) > 30:
+            return (False, None)
+
+        # Patrón de cierre/agradecimiento puro
+        closing_re = re.compile(
+            r'^(gracias|graci[ai]s?|muchas\s+gracias|mil\s+gracias|'
+            r'ok|oki|okey|oka|dale|dali|perfecto|listo|s[ií]|si|'
+            r'b[áa]rbaro|ya|claro|buen[íi]simo|excelente|genial|'
+            r'recibido|de\s*nada|tal\s*cual|pulgar|👍|🙏)'
+            r'[\s\.\!\,\:¡!]*$',
+            re.IGNORECASE,
+        )
+        if not closing_re.match(body_lower):
+            return (False, None)  # No matchea cierre típico, mejor avisar
+
+        # En este punto: cuerpo corto + sin pregunta + matchea cierre.
+        # Pero todavía puede ser una respuesta válida de un cliente real
+        # (ej: cliente que responde "ok" a una pregunta nuestra de seguimiento).
+        # Solo lo descartamos si el último outbound nuestro fue un TEMPLATE
+        # (notificación automática) en las últimas 24hs.
+        WhatsappMessage = self.env['whatsapp.message'].sudo()
+        MailMessage = self.env['mail.message'].sudo()
+
+        # Buscar el último outbound nuestro en este canal antes del inbound
+        last_inbound_at = pending.last_inbound_at
+        if not last_inbound_at:
+            return (False, None)
+
+        prior_outbound_msg = MailMessage.search([
+            ('model', '=', 'discuss.channel'),
+            ('res_id', '=', pending.channel_id.id),
+            ('message_type', '=', 'whatsapp_message'),
+            ('create_date', '<', last_inbound_at),
+            ('create_date', '>=', last_inbound_at - timedelta(hours=24)),
+        ], order='create_date desc', limit=5)
+
+        if not prior_outbound_msg:
+            return (False, None)  # No hay outbound previo, no podemos saber
+
+        # ¿Alguno de los outbounds previos era un template (notificación auto)?
+        wa_msgs = WhatsappMessage.search([
+            ('mail_message_id', 'in', prior_outbound_msg.ids),
+            ('message_type', '=', 'outbound'),
+            ('wa_template_id', '!=', False),
+        ], limit=1)
+
+        if wa_msgs:
+            return (True, 'respuesta_corta_a_notificacion_automatica')
+
+        # Tenía outbound previo pero era un mensaje libre nuestro,
+        # un "ok" en respuesta puede ser legítimo. Avisar.
+        return (False, None)
+
+    @api.model
+    def _format_notification_text(self, pendings):
+        """Arma el texto del WhatsApp que se le manda a Joaco."""
+        n = len(pendings)
+        if n == 0:
+            return None
+
+        plural = 's' if n > 1 else ''
+        lines = [
+            f"📨 Tenés {n} mensaje{plural} sin contestar en WhatsApp:",
+            "",
+        ]
+
+        # Mostrar hasta los 5 más recientes
+        for i, p in enumerate(pendings[:5]):
+            partner = (p.partner_id.name if p.partner_id and p.partner_id.name
+                       and p.partner_id.name != 'NADA' else 'Desconocido')
+            mobile = p.mobile_number or '?'
+            summary = (p.summary or '').strip().replace('\n', ' ')[:80]
+            multi = f" (+{p.inbound_count - 1})" if p.inbound_count > 1 else ''
+            lines.append(f"• {partner} ({mobile}){multi}")
+            if summary:
+                lines.append(f"  \"{summary}\"")
+
+        if n > 5:
+            lines.append("")
+            lines.append(f"...y {n - 5} más.")
+
+        lines.append("")
+        lines.append("Decile a Claude \"leé los nuevos\" cuando estés.")
+
+        return '\n'.join(lines)
+
+    @api.model
+    def _send_notification_to_joaco(self, body_text, config):
+        """Envía el WhatsApp de aviso a Joaco usando el patrón estándar."""
+        # Crear mail.message con el texto
+        # Buscar canal del número destino o crear uno
+        WhatsappMessage = self.env['whatsapp.message'].sudo()
+        MailMessage = self.env['mail.message'].sudo()
+        Channel = self.env['discuss.channel'].sudo()
+
+        # Normalizar número (quitar espacios y guiones)
+        target = config['target_number'].replace(' ', '').replace('-', '')
+        target_normalized = target.lstrip('+')
+
+        # Buscar canal existente con ese número en la cuenta de origen
+        # Los canales WA se llaman típicamente con el número formateado sin +
+        channel = Channel.search([
+            ('channel_type', '=', 'whatsapp'),
+            ('name', 'like', target_normalized),
+            ('whatsapp_account_id', '=', config['wa_account_id']),
+        ], limit=1, order='last_interest_dt desc')
+
+        if not channel:
+            _logger.warning(
+                "MCP notify: no se encontró canal WhatsApp para %s en cuenta %s. "
+                "Hay que iniciar conversación al menos una vez manualmente.",
+                target_normalized, config['wa_account_id']
+            )
+            return False
+
+        # Convertir texto plano a HTML respetando saltos de línea
+        body_html = '<p>' + body_text.replace('\n', '<br/>') + '</p>'
+
+        mail_msg = MailMessage.create({
+            'author_id': config['author_partner_id'],
+            'body': body_html,
+            'message_type': 'whatsapp_message',
+            'model': 'discuss.channel',
+            'res_id': channel.id,
+            'subtype_id': 1,
+        })
+
+        wa_msg = WhatsappMessage.create({
+            'mail_message_id': mail_msg.id,
+            'message_type': 'outbound',
+            'mobile_number': config['target_number'],
+            'state': 'outgoing',
+            'wa_account_id': config['wa_account_id'],
+        })
+
+        _logger.info(
+            "MCP notify: aviso enviado a %s. mail_msg=%s, wa_msg=%s",
+            config['target_number'], mail_msg.id, wa_msg.id,
+        )
+        return True
+
+    @api.model
+    def _run_notification_cron(self):
+        """Cron principal: revisa pendientes, filtra ruido, notifica a Joaco si corresponde.
+
+        Anti-spam: si en los últimos N minutos ya se notificó, no se vuelve
+        a notificar a menos que haya pendientes NUEVOS no notificados todavía.
+        """
+        config = self._get_notification_config()
+
+        if not config['enabled']:
+            return False
+
+        if not self._is_in_notification_window(config):
+            _logger.debug("MCP notify: fuera de horario, skip")
+            return False
+
+        # Refrescar cola primero
+        try:
+            self._refresh_queue()
+        except Exception:
+            _logger.exception("MCP notify: error refrescando cola antes de notificar")
+
+        # Buscar pendientes activos
+        pendings = self.search([('state', '=', 'pending')],
+                               order='last_inbound_at desc')
+
+        if not pendings:
+            _logger.debug("MCP notify: 0 pendientes")
+            return False
+
+        # Clasificar ruido vs real
+        real_pendings = self.env['mcp.pending.message']
+        for p in pendings:
+            try:
+                is_noise, reason = self._classify_noise(p)
+            except Exception:
+                _logger.exception("MCP notify: error clasificando pending %s", p.id)
+                is_noise, reason = False, None
+
+            if is_noise:
+                if not p.notification_skipped_reason:
+                    p.write({'notification_skipped_reason': reason})
+                continue
+            real_pendings |= p
+
+        if not real_pendings:
+            _logger.info("MCP notify: 0 pendientes después de filtrar ruido")
+            return False
+
+        # Filtrar los que no fueron notificados aún
+        not_yet_notified = real_pendings.filtered(lambda r: not r.notified_at)
+
+        # Anti-spam: ¿hace cuánto fue la última notificación?
+        last_notified = self.search([
+            ('notified_at', '!=', False),
+        ], order='notified_at desc', limit=1)
+
+        antispam_threshold = (datetime.now() -
+                              timedelta(minutes=config['antispam_minutes']))
+
+        if last_notified and last_notified.notified_at > antispam_threshold:
+            # Estamos dentro de la ventana de antispam
+            if not not_yet_notified:
+                _logger.debug(
+                    "MCP notify: skip por antispam (notificado hace <%d min)",
+                    config['antispam_minutes'])
+                return False
+            # Hay pendientes nuevos no notificados → notificar SOLO esos
+            to_notify = not_yet_notified
+        else:
+            # Fuera de la ventana antispam → notificar todos los pendientes reales
+            to_notify = real_pendings
+
+        # Armar el texto y enviar
+        body_text = self._format_notification_text(to_notify)
+        if not body_text:
+            return False
+
+        sent = self._send_notification_to_joaco(body_text, config)
+
+        if sent:
+            now = fields.Datetime.now()
+            to_notify.write({'notified_at': now})
+            _logger.info(
+                "MCP notify: avisé a Joaco sobre %d pendientes (%s)",
+                len(to_notify), to_notify.ids,
+            )
+            return True
+
+        return False
+

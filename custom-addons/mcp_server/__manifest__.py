@@ -1,12 +1,15 @@
 {
     'name': 'MCP Server',
-    'version': '18.0.1.1.0',
+    'version': '18.0.1.2.0',
     'category': 'Technical',
     'summary': 'Model Context Protocol Server - Connect AI assistants to Odoo',
     'description': """
         Exposes Odoo data and operations via the Model Context Protocol (MCP).
         Allows AI assistants like Claude to securely interact with your Odoo instance
         through natural language, performing CRUD operations on configured models.
+
+        v1.2 — Cron de notificación: avisa por WhatsApp a Joaco cuando hay mensajes
+        pendientes sin contestar (con filtro inteligente de ruido y antispam).
 
         v1.1 — Reportes en PDF (generate_report), cola de mensajes pendientes
         de WhatsApp (get_unanswered_messages), y modelos adicionales habilitados
