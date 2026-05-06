@@ -405,58 +405,96 @@ class MCPPendingMessage(models.Model):
 
     @api.model
     def _send_notification_to_joaco(self, body_text, config):
-        """Envía el WhatsApp de aviso a Joaco usando el patrón estándar."""
-        # Crear mail.message con el texto
-        # Buscar canal del número destino o crear uno
+        """Envía el WhatsApp de aviso a Joaco usando el patrón estándar.
+
+        Para encontrar el canal correcto en la cuenta WA destino, NO se puede
+        filtrar discuss.channel por la cuenta (no hay relación directa). Se
+        busca vía whatsapp.message: el último outbound o inbound desde/hacia
+        ese número en esa cuenta.
+        """
         WhatsappMessage = self.env['whatsapp.message'].sudo()
         MailMessage = self.env['mail.message'].sudo()
-        Channel = self.env['discuss.channel'].sudo()
 
-        # Normalizar número (quitar espacios y guiones)
-        target = config['target_number'].replace(' ', '').replace('-', '')
-        target_normalized = target.lstrip('+')
+        # Normalizar número para Meta: solo dígitos
+        target = config['target_number'].replace(' ', '').replace('-', '').replace('+', '')
 
-        # Buscar canal existente con ese número en la cuenta de origen
-        # Los canales WA se llaman típicamente con el número formateado sin +
-        channel = Channel.search([
-            ('channel_type', '=', 'whatsapp'),
-            ('name', 'like', target_normalized),
-            ('whatsapp_account_id', '=', config['wa_account_id']),
-        ], limit=1, order='last_interest_dt desc')
+        # Buscar el canal correcto vía último whatsapp.message en esta cuenta
+        channel = self._find_channel_for_notification(target, config['wa_account_id'])
 
         if not channel:
             _logger.warning(
                 "MCP notify: no se encontró canal WhatsApp para %s en cuenta %s. "
-                "Hay que iniciar conversación al menos una vez manualmente.",
-                target_normalized, config['wa_account_id']
+                "Hace falta una conversación previa con ese número en esa cuenta. "
+                "Mandale un mensaje manualmente al menos una vez para abrir el canal.",
+                target, config['wa_account_id']
             )
             return False
 
         # Convertir texto plano a HTML respetando saltos de línea
         body_html = '<p>' + body_text.replace('\n', '<br/>') + '</p>'
 
-        mail_msg = MailMessage.create({
-            'author_id': config['author_partner_id'],
-            'body': body_html,
-            'message_type': 'whatsapp_message',
-            'model': 'discuss.channel',
-            'res_id': channel.id,
-            'subtype_id': 1,
-        })
+        try:
+            mail_msg = MailMessage.create({
+                'author_id': config['author_partner_id'],
+                'body': body_html,
+                'message_type': 'whatsapp_message',
+                'model': 'discuss.channel',
+                'res_id': channel.id,
+                'subtype_id': 1,
+            })
 
-        wa_msg = WhatsappMessage.create({
-            'mail_message_id': mail_msg.id,
-            'message_type': 'outbound',
-            'mobile_number': config['target_number'],
-            'state': 'outgoing',
-            'wa_account_id': config['wa_account_id'],
-        })
+            wa_msg = WhatsappMessage.create({
+                'mail_message_id': mail_msg.id,
+                'message_type': 'outbound',
+                'mobile_number': config['target_number'],
+                'state': 'outgoing',
+                'wa_account_id': config['wa_account_id'],
+            })
 
-        _logger.info(
-            "MCP notify: aviso enviado a %s. mail_msg=%s, wa_msg=%s",
-            config['target_number'], mail_msg.id, wa_msg.id,
-        )
-        return True
+            _logger.info(
+                "MCP notify: aviso enviado a %s (canal=%s). mail_msg=%s, wa_msg=%s",
+                config['target_number'], channel.id, mail_msg.id, wa_msg.id,
+            )
+            return True
+        except Exception as e:
+            _logger.exception("MCP notify: error enviando WhatsApp: %s", e)
+            return False
+
+    @api.model
+    def _find_channel_for_notification(self, target_normalized, wa_account_id):
+        """Encuentra el canal de WhatsApp correcto para enviar una notificación.
+
+        Como discuss.channel no tiene campo wa_account_id directo, buscamos vía
+        el último whatsapp.message (outbound o inbound) entre nosotros y ese
+        número en esa cuenta — su mail_message_id apunta al canal correcto.
+        """
+        WhatsappMessage = self.env['whatsapp.message'].sudo()
+
+        # Intentar primero con el último outbound (más confiable)
+        last_outbound = WhatsappMessage.search([
+            ('wa_account_id', '=', wa_account_id),
+            ('message_type', '=', 'outbound'),
+            ('mobile_number_formatted', '=', target_normalized),
+        ], order='create_date desc', limit=1)
+
+        if last_outbound and last_outbound.mail_message_id:
+            mail_msg = last_outbound.mail_message_id
+            if mail_msg.model == 'discuss.channel' and mail_msg.res_id:
+                return self.env['discuss.channel'].browse(mail_msg.res_id).exists()
+
+        # Fallback: último inbound desde ese número en esa cuenta
+        last_inbound = WhatsappMessage.search([
+            ('wa_account_id', '=', wa_account_id),
+            ('message_type', '=', 'inbound'),
+            ('mobile_number_formatted', '=', target_normalized),
+        ], order='create_date desc', limit=1)
+
+        if last_inbound and last_inbound.mail_message_id:
+            mail_msg = last_inbound.mail_message_id
+            if mail_msg.model == 'discuss.channel' and mail_msg.res_id:
+                return self.env['discuss.channel'].browse(mail_msg.res_id).exists()
+
+        return None
 
     @api.model
     def _run_notification_cron(self):
@@ -464,7 +502,21 @@ class MCPPendingMessage(models.Model):
 
         Anti-spam: si en los últimos N minutos ya se notificó, no se vuelve
         a notificar a menos que haya pendientes NUEVOS no notificados todavía.
+
+        Wrapper externo con try/except para que un error nunca rompa el cron
+        en sí (que se desactivaría automáticamente en Odoo SH).
         """
+        try:
+            return self._run_notification_cron_inner()
+        except Exception as e:
+            _logger.exception(
+                "MCP notify cron: error no atrapado, ignorando para no desactivar cron: %s", e
+            )
+            return False
+
+    @api.model
+    def _run_notification_cron_inner(self):
+        """Lógica real del cron de notificación."""
         config = self._get_notification_config()
 
         if not config['enabled']:

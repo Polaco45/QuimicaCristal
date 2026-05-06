@@ -1,6 +1,6 @@
 {
     'name': 'MCP Server',
-    'version': '18.0.1.2.0',
+    'version': '18.0.1.2.1',
     'category': 'Technical',
     'summary': 'Model Context Protocol Server - Connect AI assistants to Odoo',
     'description': """
