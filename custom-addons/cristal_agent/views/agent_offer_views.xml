@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Form -->
+    <record id="view_cristal_agent_offer_form" model="ir.ui.view">
+        <field name="name">cristal.agent.offer.form</field>
+        <field name="model">cristal.agent.offer</field>
+        <field name="arch" type="xml">
+            <form string="Oferta">
+                <sheet>
+                    <widget name="web_ribbon" title="Inactiva" bg_color="bg-warning" invisible="active"/>
+                    <div class="oe_title">
+                        <h1><field name="name" placeholder="Nombre de la oferta"/></h1>
+                    </div>
+
+                    <group>
+                        <group>
+                            <field name="offer_type"/>
+                            <field name="discount_percent"/>
+                            <field name="discount_amount"/>
+                            <field name="active"/>
+                        </group>
+                        <group>
+                            <field name="valid_from"/>
+                            <field name="valid_until"/>
+                            <field name="frequency"/>
+                            <field name="priority"/>
+                            <field name="times_communicated"/>
+                        </group>
+                    </group>
+
+                    <group string="Aplica a">
+                        <field name="applies_to_levels"/>
+                        <field name="is_exclusive"/>
+                        <field name="is_proactive"/>
+                    </group>
+
+                    <separator string="Descripción para el bot (lo que el cliente ve)"/>
+                    <field name="description"/>
+
+                    <notebook>
+                        <page string="Productos">
+                            <field name="product_ids" widget="many2many_tags"/>
+                            <field name="category_ids" widget="many2many_tags"/>
+                        </page>
+                        <page string="Notas internas">
+                            <field name="notes"/>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- List -->
+    <record id="view_cristal_agent_offer_list" model="ir.ui.view">
+        <field name="name">cristal.agent.offer.list</field>
+        <field name="model">cristal.agent.offer</field>
+        <field name="arch" type="xml">
+            <list string="Ofertas">
+                <field name="name"/>
+                <field name="offer_type"/>
+                <field name="discount_percent"/>
+                <field name="applies_to_levels"/>
+                <field name="valid_from"/>
+                <field name="valid_until"/>
+                <field name="is_proactive" widget="boolean_toggle"/>
+                <field name="times_communicated"/>
+                <field name="active" widget="boolean_toggle"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Action -->
+    <record id="action_cristal_agent_offer" model="ir.actions.act_window">
+        <field name="name">Ofertas activas</field>
+        <field name="res_model">cristal.agent.offer</field>
+        <field name="view_mode">list,form</field>
+        <field name="context">{'search_default_active': 1}</field>
+    </record>
+
+</odoo>

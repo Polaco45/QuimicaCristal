@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Menú principal: 🤖 Cristal Agent -->
+    <menuitem id="menu_cristal_agent_root"
+              name="🤖 Cristal Agent"
+              sequence="10"
+              web_icon="cristal_agent,static/description/icon.png"/>
+
+    <!-- ───── Sección: Operativa diaria ───── -->
+    <menuitem id="menu_cristal_agent_operations"
+              name="Operativa"
+              parent="menu_cristal_agent_root"
+              sequence="10"/>
+
+    <menuitem id="menu_cristal_agent_dashboard"
+              name="📊 Dashboard"
+              parent="menu_cristal_agent_operations"
+              sequence="5"
+              action="action_cristal_agent_dashboard"/>
+
+    <menuitem id="menu_cristal_agent_runs"
+              name="📜 Ejecuciones"
+              parent="menu_cristal_agent_operations"
+              sequence="10"
+              action="action_cristal_agent_run"/>
+
+    <menuitem id="menu_cristal_agent_memories"
+              name="🧠 Memorias por cliente"
+              parent="menu_cristal_agent_operations"
+              sequence="20"
+              action="action_cristal_agent_memory"/>
+
+    <!-- ───── Sección: Conocimiento ───── -->
+    <menuitem id="menu_cristal_agent_knowledge_root"
+              name="Conocimiento"
+              parent="menu_cristal_agent_root"
+              sequence="20"/>
+
+    <menuitem id="menu_cristal_agent_knowledge"
+              name="📚 Base de conocimiento"
+              parent="menu_cristal_agent_knowledge_root"
+              sequence="10"
+              action="action_cristal_agent_knowledge"/>
+
+    <menuitem id="menu_cristal_agent_offers"
+              name="🎁 Ofertas activas"
+              parent="menu_cristal_agent_knowledge_root"
+              sequence="20"
+              action="action_cristal_agent_offer"/>
+
+    <menuitem id="menu_cristal_agent_mayorista_catalog"
+              name="📋 Catálogo Mayorista"
+              parent="menu_cristal_agent_knowledge_root"
+              sequence="30"
+              action="action_mayorista_catalog"/>
+
+    <menuitem id="menu_cristal_agent_cadences"
+              name="📅 Cadencias proactivas"
+              parent="menu_cristal_agent_knowledge_root"
+              sequence="40"
+              action="action_cristal_agent_cadence"/>
+
+    <!-- ───── Sección: Configuración ───── -->
+    <menuitem id="menu_cristal_agent_config_root"
+              name="Configuración"
+              parent="menu_cristal_agent_root"
+              sequence="100"
+              groups="base.group_system"/>
+
+    <menuitem id="menu_cristal_agent_config"
+              name="⚙️ Configuración"
+              parent="menu_cristal_agent_config_root"
+              sequence="10"
+              action="action_cristal_agent_config"/>
+
+</odoo>

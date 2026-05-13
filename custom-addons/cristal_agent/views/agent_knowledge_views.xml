@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Form -->
+    <record id="view_cristal_agent_knowledge_form" model="ir.ui.view">
+        <field name="name">cristal.agent.knowledge.form</field>
+        <field name="model">cristal.agent.knowledge</field>
+        <field name="arch" type="xml">
+            <form string="Conocimiento">
+                <sheet>
+                    <widget name="web_ribbon" title="Inactivo" bg_color="bg-warning" invisible="active"/>
+                    <div class="oe_title">
+                        <h1><field name="name" placeholder="Título"/></h1>
+                    </div>
+
+                    <group>
+                        <group>
+                            <field name="category"/>
+                            <field name="priority"/>
+                            <field name="active"/>
+                        </group>
+                        <group>
+                            <field name="source"/>
+                            <field name="times_used"/>
+                            <field name="tags"/>
+                        </group>
+                    </group>
+
+                    <group string="Vigencia">
+                        <field name="valid_from"/>
+                        <field name="valid_until"/>
+                    </group>
+
+                    <group string="Aplica a">
+                        <field name="applies_to"/>
+                        <field name="partner_ids" widget="many2many_tags"
+                               invisible="applies_to != 'specific_partners'"/>
+                    </group>
+
+                    <separator string="Contenido"/>
+                    <field name="content" placeholder="Lo que el bot va a leer y aplicar..."/>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- List -->
+    <record id="view_cristal_agent_knowledge_list" model="ir.ui.view">
+        <field name="name">cristal.agent.knowledge.list</field>
+        <field name="model">cristal.agent.knowledge</field>
+        <field name="arch" type="xml">
+            <list string="Base de conocimiento">
+                <field name="priority"/>
+                <field name="name"/>
+                <field name="category"/>
+                <field name="applies_to"/>
+                <field name="valid_until"/>
+                <field name="source"/>
+                <field name="times_used"/>
+                <field name="active" widget="boolean_toggle"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Kanban -->
+    <record id="view_cristal_agent_knowledge_kanban" model="ir.ui.view">
+        <field name="name">cristal.agent.knowledge.kanban</field>
+        <field name="model">cristal.agent.knowledge</field>
+        <field name="arch" type="xml">
+            <kanban default_group_by="category">
+                <field name="name"/>
+                <field name="content"/>
+                <field name="priority"/>
+                <field name="active"/>
+                <field name="times_used"/>
+                <templates>
+                    <t t-name="kanban-box">
+                        <div class="oe_kanban_card oe_kanban_global_click">
+                            <div class="o_kanban_record_top">
+                                <strong><field name="name"/></strong>
+                                <span class="float-end" t-if="record.priority.raw_value > 50">⭐</span>
+                            </div>
+                            <div class="o_kanban_record_body" style="font-size: 0.85em;">
+                                <t t-esc="record.content.value.length > 200 ? record.content.value.slice(0, 200) + '...' : record.content.value"/>
+                            </div>
+                            <div class="o_kanban_record_bottom">
+                                <small>Usado <field name="times_used"/> veces</small>
+                            </div>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
+    <!-- Search -->
+    <record id="view_cristal_agent_knowledge_search" model="ir.ui.view">
+        <field name="name">cristal.agent.knowledge.search</field>
+        <field name="model">cristal.agent.knowledge</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="name"/>
+                <field name="content"/>
+                <field name="tags"/>
+
+                <filter name="filter_active" string="Activos" domain="[('active', '=', True)]"/>
+                <filter name="filter_inactive" string="Inactivos" domain="[('active', '=', False)]"/>
+
+                <separator/>
+                <filter name="filter_precio" string="Precios" domain="[('category', '=', 'precio')]"/>
+                <filter name="filter_politica" string="Política" domain="[('category', '=', 'politica_comercial')]"/>
+                <filter name="filter_oferta" string="Ofertas" domain="[('category', '=', 'oferta_activa')]"/>
+                <filter name="filter_faq" string="FAQs" domain="[('category', '=', 'faq')]"/>
+
+                <group expand="0" string="Agrupar por">
+                    <filter name="group_category" string="Categoría" context="{'group_by':'category'}"/>
+                    <filter name="group_source" string="Origen" context="{'group_by':'source'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- Action -->
+    <record id="action_cristal_agent_knowledge" model="ir.actions.act_window">
+        <field name="name">Base de conocimiento</field>
+        <field name="res_model">cristal.agent.knowledge</field>
+        <field name="view_mode">kanban,list,form</field>
+        <field name="search_view_id" ref="view_cristal_agent_knowledge_search"/>
+        <field name="context">{'search_default_filter_active': 1}</field>
+    </record>
+
+</odoo>

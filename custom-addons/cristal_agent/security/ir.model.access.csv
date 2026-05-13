@@ -1,0 +1,13 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_cristal_agent_config_user,cristal.agent.config user,model_cristal_agent_config,base.group_user,1,0,0,0
+access_cristal_agent_config_manager,cristal.agent.config manager,model_cristal_agent_config,base.group_system,1,1,1,1
+access_cristal_agent_run_user,cristal.agent.run user,model_cristal_agent_run,base.group_user,1,0,0,0
+access_cristal_agent_run_manager,cristal.agent.run manager,model_cristal_agent_run,base.group_system,1,1,1,1
+access_cristal_agent_memory_user,cristal.agent.memory user,model_cristal_agent_memory,base.group_user,1,0,0,0
+access_cristal_agent_memory_manager,cristal.agent.memory manager,model_cristal_agent_memory,base.group_system,1,1,1,1
+access_cristal_agent_knowledge_user,cristal.agent.knowledge user,model_cristal_agent_knowledge,base.group_user,1,1,1,0
+access_cristal_agent_knowledge_manager,cristal.agent.knowledge manager,model_cristal_agent_knowledge,base.group_system,1,1,1,1
+access_cristal_agent_offer_user,cristal.agent.offer user,model_cristal_agent_offer,base.group_user,1,1,1,0
+access_cristal_agent_offer_manager,cristal.agent.offer manager,model_cristal_agent_offer,base.group_system,1,1,1,1
+access_cristal_agent_cadence_user,cristal.agent.cadence user,model_cristal_agent_cadence,base.group_user,1,1,1,0
+access_cristal_agent_cadence_manager,cristal.agent.cadence manager,model_cristal_agent_cadence,base.group_system,1,1,1,1

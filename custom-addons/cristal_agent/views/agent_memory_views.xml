@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Form -->
+    <record id="view_cristal_agent_memory_form" model="ir.ui.view">
+        <field name="name">cristal.agent.memory.form</field>
+        <field name="model">cristal.agent.memory</field>
+        <field name="arch" type="xml">
+            <form string="Memoria del agente">
+                <sheet>
+                    <div class="oe_title">
+                        <h1><field name="partner_id" readonly="1"/></h1>
+                    </div>
+
+                    <group>
+                        <group string="Estado">
+                            <field name="phone"/>
+                            <field name="flow_state"/>
+                            <field name="cadence_phase"/>
+                            <field name="last_interaction_at"/>
+                            <field name="lead_id"/>
+                        </group>
+                        <group string="Takeover humano">
+                            <field name="human_takeover"/>
+                            <field name="takeover_until"/>
+                            <field name="takeover_reason"/>
+                        </group>
+                    </group>
+
+                    <notebook>
+                        <page string="Buffer de calificación (Fase 1)">
+                            <group>
+                                <field name="qual_name"/>
+                                <field name="qual_email"/>
+                                <field name="qual_has_business"/>
+                                <field name="qual_products"/>
+                                <field name="qual_monthly_volume"/>
+                                <field name="qual_volume_amount"/>
+                                <field name="qual_zone"/>
+                                <field name="qual_qualified"/>
+                            </group>
+                        </page>
+                        <page string="Cadencias">
+                            <group>
+                                <field name="cadence_started_at"/>
+                                <field name="last_cadence_step_executed"/>
+                            </group>
+                        </page>
+                        <page string="Stats">
+                            <group>
+                                <field name="total_messages_received"/>
+                                <field name="total_messages_sent"/>
+                                <field name="total_escalations"/>
+                            </group>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- List -->
+    <record id="view_cristal_agent_memory_list" model="ir.ui.view">
+        <field name="name">cristal.agent.memory.list</field>
+        <field name="model">cristal.agent.memory</field>
+        <field name="arch" type="xml">
+            <list string="Memorias">
+                <field name="partner_id"/>
+                <field name="flow_state"/>
+                <field name="cadence_phase"/>
+                <field name="last_interaction_at"/>
+                <field name="human_takeover" widget="boolean_toggle"/>
+                <field name="total_messages_received"/>
+                <field name="total_messages_sent"/>
+                <field name="total_escalations"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Action -->
+    <record id="action_cristal_agent_memory" model="ir.actions.act_window">
+        <field name="name">Memorias por cliente</field>
+        <field name="res_model">cristal.agent.memory</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+</odoo>

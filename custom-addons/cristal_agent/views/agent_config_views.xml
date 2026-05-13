@@ -1,0 +1,193 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ====== Form ====== -->
+    <record id="view_cristal_agent_config_form" model="ir.ui.view">
+        <field name="name">cristal.agent.config.form</field>
+        <field name="model">cristal.agent.config</field>
+        <field name="arch" type="xml">
+            <form string="Configuración del Agente">
+                <header>
+                    <button name="action_test_connection"
+                            type="object"
+                            string="🔌 Test de conexión Anthropic"
+                            class="btn-primary"/>
+                </header>
+                <sheet>
+                    <widget name="web_ribbon" title="Inactiva" bg_color="bg-danger" invisible="active"/>
+
+                    <div class="oe_title">
+                        <h1>
+                            <field name="name" placeholder="Nombre de configuración"/>
+                        </h1>
+                    </div>
+
+                    <group>
+                        <group string="Estado">
+                            <field name="active"/>
+                            <field name="enabled" string="Agente habilitado"/>
+                            <field name="prompt_version"/>
+                            <field name="runs_today" readonly="1"/>
+                            <field name="runs_total" readonly="1"/>
+                        </group>
+                        <group string="Horario operativo">
+                            <field name="timezone"/>
+                            <field name="work_hours_start" widget="float_time"/>
+                            <field name="work_hours_end" widget="float_time"/>
+                        </group>
+                    </group>
+
+                    <notebook>
+                        <page string="🔑 API de Anthropic">
+                            <group>
+                                <field name="anthropic_api_key" password="True"/>
+                                <field name="anthropic_api_url"/>
+                                <field name="anthropic_model"/>
+                                <field name="anthropic_version"/>
+                            </group>
+                            <group string="Parámetros del modelo">
+                                <field name="max_tokens"/>
+                                <field name="max_iterations"/>
+                                <field name="temperature"/>
+                                <field name="enable_prompt_caching"/>
+                            </group>
+                            <div class="alert alert-info">
+                                <strong>Tip:</strong> después de pegar la API key, hacé click en
+                                "🔌 Test de conexión Anthropic" arriba para verificar que funciona.
+                            </div>
+                        </page>
+
+                        <page string="🧠 System prompt">
+                            <field name="system_prompt"
+                                  
+                                   options="{'resizable': true}"
+                                   nolabel="1"/>
+                        </page>
+
+                        <page string="👥 Identidades técnicas">
+                            <group>
+                                <field name="bot_partner_id"/>
+                                <field name="owner_partner_id"/>
+                                <field name="owner_user_id"/>
+                                <field name="bot_user_id"/>
+                                <field name="internal_channel_id"/>
+                            </group>
+                            <div class="alert alert-warning">
+                                <strong>⚠️ IDs específicos del entorno de Joaco:</strong><br/>
+                                - bot_partner_id: 80799 (claudio.quimicacristal)<br/>
+                                - owner_partner_id: 65374 (Joaquín)<br/>
+                                - owner_user_id: 18<br/>
+                                - bot_user_id: 721<br/>
+                                - internal_channel_id: 969<br/>
+                                Si los IDs cambian (por restore o nueva instancia), actualizalos acá.
+                            </div>
+                        </page>
+
+                        <page string="🎛️ Habilidades del bot">
+                            <div class="alert alert-info">
+                                <strong>Switches de capacidades.</strong> Cuando apagás una, el bot
+                                deja de poder usar esa tool — automáticamente escala a Joaco si la
+                                necesita. Útil para limitar al bot mientras lo afinás.
+                            </div>
+
+                            <group string="💬 WhatsApp">
+                                <field name="enable_send_whatsapp" widget="boolean_toggle"/>
+                                <field name="enable_send_whatsapp_templates" widget="boolean_toggle"/>
+                            </group>
+
+                            <group string="📊 CRM y gestión de leads">
+                                <field name="enable_create_leads" widget="boolean_toggle"/>
+                                <field name="enable_update_leads" widget="boolean_toggle"/>
+                                <field name="enable_schedule_activities" widget="boolean_toggle"/>
+                                <field name="enable_escalate_to_joaco" widget="boolean_toggle"/>
+                                <field name="enable_qualification" widget="boolean_toggle"/>
+                            </group>
+
+                            <group string="💰 Ventas y cotizaciones">
+                                <field name="enable_create_sale_orders" widget="boolean_toggle"/>
+                                <field name="enable_generate_quote_pdf" widget="boolean_toggle"/>
+                                <field name="enable_generate_pricelist_pdf" widget="boolean_toggle"/>
+                                <field name="enable_confirm_sample" widget="boolean_toggle"/>
+                            </group>
+
+                            <group string="🤖 Proactividad (crones automáticos)">
+                                <field name="enable_proactive_activities" widget="boolean_toggle"/>
+                                <field name="enable_phase2_cadences" widget="boolean_toggle"/>
+                                <field name="enable_phase3_cadences" widget="boolean_toggle"/>
+                                <field name="enable_level_recalculation" widget="boolean_toggle"/>
+                                <field name="enable_churn_detection" widget="boolean_toggle"/>
+                            </group>
+
+                            <group string="🧠 Aprendizaje y conocimiento">
+                                <field name="enable_internal_channel_learning" widget="boolean_toggle"/>
+                                <field name="enable_apply_offers" widget="boolean_toggle"/>
+                            </group>
+
+                            <group string="📣 Broadcast semanal de oferta (lunes 14hs)">
+                                <field name="enable_weekly_offer_broadcast" widget="boolean_toggle"/>
+                                <field name="weekly_offer_template_id"
+                                       invisible="not enable_weekly_offer_broadcast"
+                                       options="{'no_create': True}"/>
+                            </group>
+                            <div class="alert alert-info" invisible="not enable_weekly_offer_broadcast">
+                                Los <b>lunes a las 14hs</b> se manda la oferta vigente a
+                                <b>todos los Mayoristas</b> que no estén Fuera de zona ni
+                                tengan takeover humano activo. Se reusa la primera oferta
+                                vigente del sistema (mayor prioridad).
+                            </div>
+
+                            <group string="📱 Cuentas WhatsApp activas">
+                                <field name="restricted_wa_account_ids"
+                                       widget="many2many_tags"
+                                       options="{'no_create': True}"/>
+                            </group>
+                            <div class="alert alert-info">
+                                Si está vacío, el bot actúa en <b>todas las cuentas</b>.
+                                Si tiene cuentas seleccionadas, el bot <b>solo procesa mensajes</b>
+                                de esas cuentas. Recomendado: solo Crilimp.
+                            </div>
+                        </page>
+
+                        <page string="🔄 Stages CRM mapeo">
+                            <div class="alert alert-info">
+                                Cuando el bot mueve a un cliente de fase, el lead del CRM se mueve
+                                automáticamente al stage que asignes acá.
+                            </div>
+                            <group>
+                                <field name="crm_stage_phase_1_id"/>
+                                <field name="crm_stage_phase_2_sample_id"/>
+                                <field name="crm_stage_phase_2_quoted_id"/>
+                                <field name="crm_stage_phase_3_won_id"/>
+                            </group>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- ====== List ====== -->
+    <record id="view_cristal_agent_config_list" model="ir.ui.view">
+        <field name="name">cristal.agent.config.list</field>
+        <field name="model">cristal.agent.config</field>
+        <field name="arch" type="xml">
+            <list string="Configuraciones">
+                <field name="name"/>
+                <field name="active" widget="boolean_toggle"/>
+                <field name="enabled" widget="boolean_toggle"/>
+                <field name="anthropic_model"/>
+                <field name="prompt_version"/>
+                <field name="runs_today"/>
+                <field name="runs_total"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- ====== Action ====== -->
+    <record id="action_cristal_agent_config" model="ir.actions.act_window">
+        <field name="name">Configuración del Agente</field>
+        <field name="res_model">cristal.agent.config</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+</odoo>
