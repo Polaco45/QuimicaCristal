@@ -307,6 +307,11 @@ class GeneratePricelistPdf(AgentTool):
         elements.append(Spacer(1, 4))
 
         product_styles = {
+            'category_header': ParagraphStyle(
+                'CategoryHeader', parent=styles['Normal'],
+                fontSize=11, textColor=colors.white, fontName='Helvetica-Bold', leading=14,
+                alignment=TA_LEFT,
+            ),
             'tmpl_header': ParagraphStyle(
                 'TmplHeader', parent=styles['Normal'],
                 fontSize=10, textColor=DARK, fontName='Helvetica-Bold', leading=12,
@@ -352,12 +357,34 @@ class GeneratePricelistPdf(AgentTool):
         ]
 
         rows = [header_row]
-        row_meta = []  # 'header_template', 'variant_row', 'simple'
+        row_meta = []  # 'category_header', 'tmpl_header', 'variant_row', 'simple'
 
-        for tmpl in templates:
+        # Agrupar templates por categoría (categ_id) ordenados por nombre de categoría
+        # Dentro de cada categoría, los templates van por prioridad mayorista desc + nombre asc
+        templates_sorted = templates.sorted(
+            key=lambda t: (
+                (t.categ_id.name or 'Sin categoría').lower(),
+                -(t.mayorista_priority or 0),
+                t.name,
+            )
+        )
+
+        current_category = None  # para detectar cuando cambia
+        for tmpl in templates_sorted:
             variants = tmpl.product_variant_ids.filtered(lambda v: v.sale_ok)
             if not variants:
                 continue
+
+            # Insertar header de categoría cuando cambia
+            tmpl_category = tmpl.categ_id.name if tmpl.categ_id else 'Sin categoría'
+            if tmpl_category != current_category:
+                current_category = tmpl_category
+                rows.append([
+                    '',
+                    Paragraph(tmpl_category.upper(), product_styles['category_header']),
+                    '', '', '',
+                ])
+                row_meta.append('category_header')
 
             has_multiple = len(variants) > 1
 
@@ -418,7 +445,13 @@ class GeneratePricelistPdf(AgentTool):
         ]
 
         for idx, meta in enumerate(row_meta, start=1):
-            if meta == 'tmpl_header':
+            if meta == 'category_header':
+                style_cmds.append(('BACKGROUND', (0, idx), (-1, idx), ORANGE))
+                style_cmds.append(('SPAN', (0, idx), (-1, idx)))
+                style_cmds.append(('TOPPADDING', (0, idx), (-1, idx), 8))
+                style_cmds.append(('BOTTOMPADDING', (0, idx), (-1, idx), 8))
+                style_cmds.append(('LEFTPADDING', (0, idx), (-1, idx), 10))
+            elif meta == 'tmpl_header':
                 style_cmds.append(('BACKGROUND', (0, idx), (-1, idx), colors.HexColor('#FFF5E6')))
                 style_cmds.append(('SPAN', (1, idx), (4, idx)))
                 style_cmds.append(('TOPPADDING', (0, idx), (-1, idx), 6))
