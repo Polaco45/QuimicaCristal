@@ -52,6 +52,25 @@ class AgentTool:
                     "flag": flag_name,
                 }
         except Exception as e:
+            # Si la TX está abortada (típico tras race condition), rollback
+            # y devolver error claro en vez de cascada de InFailedSqlTransaction.
+            msg = str(e)
+            if 'aborted' in msg.lower() or 'InFailedSqlTransaction' in msg:
+                _logger.error(
+                    "💀 Transacción ABORTADA detectada antes de %s. "
+                    "Haciendo rollback para liberar tools siguientes.",
+                    self.name,
+                )
+                try:
+                    env.cr.rollback()
+                except Exception:
+                    pass
+                return {
+                    "error": f"Transacción abortada antes de {self.name} "
+                             f"(probable race condition o conflicto SQL previo). "
+                             f"Tool no se ejecutó. Reintentá el mensaje del cliente.",
+                    "transaction_aborted": True,
+                }
             _logger.warning("No se pudo chequear flag para %s: %s", self.name, e)
 
         try:
@@ -64,6 +83,23 @@ class AgentTool:
                 "expected_schema": self.input_schema,
             }
         except Exception as e:
+            msg = str(e)
+            # Misma detección dentro del execute principal: si la TX se aborta
+            # acá, rollback y mensaje claro al modelo.
+            if 'aborted' in msg.lower() or 'InFailedSqlTransaction' in msg:
+                _logger.error(
+                    "💀 Transacción ABORTADA durante %s. Rollback aplicado.",
+                    self.name,
+                )
+                try:
+                    env.cr.rollback()
+                except Exception:
+                    pass
+                return {
+                    "error": f"Transacción abortada durante {self.name}. "
+                             f"Tool no se ejecutó. Reintentá.",
+                    "transaction_aborted": True,
+                }
             _logger.exception("Tool %s falló durante execute: %s", self.name, e)
             return {"error": f"{self.name} falló: {str(e)}"}
 

@@ -196,16 +196,36 @@ class CristalAgentMemory(models.Model):
         _logger.info("✅ Takeover desactivado para %s", self.partner_id.name)
 
     def increment_received(self):
+        """UPDATE atómico SQL para evitar race conditions cuando un mismo
+        cliente manda múltiples mensajes en ráfaga (3+ mensajes en pocos segundos)."""
         self.ensure_one()
-        self.total_messages_received = (self.total_messages_received or 0) + 1
+        self.env.cr.execute("""
+            UPDATE cristal_agent_memory
+            SET total_messages_received = COALESCE(total_messages_received, 0) + 1,
+                last_interaction_at = NOW() AT TIME ZONE 'UTC'
+            WHERE id = %s
+        """, (self.id,))
+        self.invalidate_recordset(['total_messages_received', 'last_interaction_at'])
 
     def increment_sent(self):
+        """UPDATE atómico SQL — mismo fix que increment_received."""
         self.ensure_one()
-        self.total_messages_sent = (self.total_messages_sent or 0) + 1
+        self.env.cr.execute("""
+            UPDATE cristal_agent_memory
+            SET total_messages_sent = COALESCE(total_messages_sent, 0) + 1
+            WHERE id = %s
+        """, (self.id,))
+        self.invalidate_recordset(['total_messages_sent'])
 
     def increment_escalation(self):
+        """UPDATE atómico SQL."""
         self.ensure_one()
-        self.total_escalations = (self.total_escalations or 0) + 1
+        self.env.cr.execute("""
+            UPDATE cristal_agent_memory
+            SET total_escalations = COALESCE(total_escalations, 0) + 1
+            WHERE id = %s
+        """, (self.id,))
+        self.invalidate_recordset(['total_escalations'])
 
     @api.model
     def cron_reactivate_expired_takeovers(self):
