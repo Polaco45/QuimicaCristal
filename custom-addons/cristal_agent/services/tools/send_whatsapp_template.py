@@ -102,39 +102,52 @@ class SendWhatsappTemplate(AgentTool):
                              f"por Meta (status: {template.status}). Escalá a Joaco."
                 }
 
-        # ─── 3. Construir free_text_json en el formato CORRECTO ───
-        # Odoo espera {"free_text_1": "...", "free_text_2": "..."} donde N es el
-        # índice del campo free_text en el orden de las variables del template.
-        variables = variables or []
-        free_text_json = self._build_free_text_json(template, variables)
+        # ─── 3. Detectar modelo del template y resolver res_id correcto ───
+        # Los templates suelen estar configurados sobre crm.lead (con variables
+        # tipo partner_id.name). El composer necesita un record de ese modelo
+        # para resolver las variables tipo 'field'.
+        template_model = template.model_id.model if template.model_id else 'res.partner'
+        composer_res_model, composer_res_id, lead_was_created = \
+            self._resolve_composer_res(env, template_model, partner, template_name)
 
-        # ─── 4. Usar el whatsapp.composer (flujo nativo) ───
+        if not composer_res_id:
+            return {
+                "error": f"No pude determinar registro de {template_model} para "
+                         f"el partner {partner.name}. Template no se mandó."
+            }
+
+        # ─── 4. Variables como campos free_text_1, free_text_2, ... ───
+        # Odoo 18 composer NO usa free_text_json; usa campos char individuales.
+        variables = variables or []
+        free_text_fields = {}
+        for i, val in enumerate(variables, start=1):
+            if i <= 10:  # composer soporta hasta free_text_10
+                free_text_fields[f'free_text_{i}'] = str(val)
+
+        # ─── 5. Crear composer y enviar ───
         try:
             Composer = env['whatsapp.composer'].sudo()
 
             composer_vals = {
-                'res_model': 'res.partner',
-                'res_ids': str(partner.id),
+                'res_model': composer_res_model,
+                'res_ids': str(composer_res_id),
                 'wa_template_id': template.id,
                 'phone': mobile,
+                **free_text_fields,
             }
-            if free_text_json:
-                composer_vals['free_text_json'] = free_text_json
 
             composer = Composer.with_context(
-                active_model='res.partner',
-                active_ids=[partner.id],
-                default_res_model='res.partner',
-                default_res_ids=str(partner.id),
+                active_model=composer_res_model,
+                active_ids=[composer_res_id],
+                default_res_model=composer_res_model,
+                default_res_ids=str(composer_res_id),
             ).create(composer_vals)
 
-            # Llamar al método de envío del composer (la firma puede variar por versión)
+            # Enviar usando el método nativo
             send_method = None
             for method_name in [
-                '_action_send_whatsapp_template',
                 'action_send_whatsapp_template',
                 '_send_whatsapp_template',
-                'action_send_whatsapp',
             ]:
                 if hasattr(composer, method_name):
                     send_method = getattr(composer, method_name)
@@ -148,34 +161,82 @@ class SendWhatsappTemplate(AgentTool):
 
             send_method()
 
-            # Confirmar que se creó el whatsapp.message
+            # Buscar el whatsapp.message creado para confirmar
             wa_msg = env['whatsapp.message'].sudo().search([
                 ('wa_template_id', '=', template.id),
-                ('mobile_number', 'like', mobile[-8:]),  # buscamos por últimos 8 dígitos
+                ('mobile_number', 'ilike', mobile[-8:]),
             ], order='create_date desc', limit=1)
 
             _logger.info(
-                "📤 Template '%s' enviado a %s (%s vars free_text) vía composer",
-                template_name, partner.name, len(variables)
+                "📤 Template '%s' enviado a %s vía composer (model=%s, res_id=%s, %s vars)",
+                template_name, partner.name, composer_res_model, composer_res_id, len(variables)
             )
 
             return {
                 "ok": True,
                 "wa_message_id": wa_msg.id if wa_msg else None,
+                "wa_message_state": wa_msg.state if wa_msg else None,
                 "template": template_name,
                 "partner": partner.name,
                 "mobile": mobile,
+                "composer_res_model": composer_res_model,
+                "composer_res_id": composer_res_id,
+                "lead_auto_created": lead_was_created,
                 "variables_sent": variables,
-                "method": "whatsapp.composer (nativo)",
                 "summary": (
                     f"Template '{template_name}' enviado a {partner.name} "
-                    f"vía composer nativo con {len(variables)} variables."
+                    f"({composer_res_model} id={composer_res_id}) "
+                    f"con {len(variables)} variables free_text."
                 ),
             }
 
         except Exception as e:
             _logger.exception("Error enviando template vía composer: %s", e)
             return {"error": f"No se pudo mandar el template: {e}"}
+
+    def _resolve_composer_res(self, env, template_model, partner, template_name):
+        """
+        Devuelve (res_model, res_id, lead_was_created).
+        Si el template usa crm.lead, busca o crea un lead para el partner.
+        Si usa res.partner directo, devuelve partner.
+        """
+        if template_model == 'crm.lead':
+            # Buscar lead más reciente del partner
+            lead = env['crm.lead'].sudo().search([
+                ('partner_id', '=', partner.id),
+            ], limit=1, order='create_date desc')
+
+            if lead:
+                return 'crm.lead', lead.id, False
+
+            # No hay lead: creamos uno "auto" para que el composer pueda renderizar.
+            # Esto pasa típicamente con el broadcast a mayoristas que nunca
+            # interactuaron con el bot todavía.
+            auto_lead = env['crm.lead'].sudo().create({
+                'name': f'[Auto] Envío template {template_name} a {partner.name}',
+                'partner_id': partner.id,
+                'type': 'lead',
+                'description': (
+                    f'Lead creado automáticamente para enviar el template '
+                    f'"{template_name}" porque el partner no tenía ningún lead '
+                    f'previo. Si es un cliente activo, asocialo con su lead real.'
+                ),
+            })
+            _logger.info(
+                "🆕 Auto-creé lead %s para %s (necesario para template '%s')",
+                auto_lead.id, partner.name, template_name
+            )
+            return 'crm.lead', auto_lead.id, True
+
+        elif template_model == 'res.partner':
+            return 'res.partner', partner.id, False
+
+        else:
+            _logger.warning(
+                "Template '%s' usa modelo '%s' no soportado por la tool.",
+                template_name, template_model
+            )
+            return None, None, False
 
     # ────────────── Helpers ──────────────
 
