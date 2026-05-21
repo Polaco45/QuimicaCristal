@@ -118,11 +118,13 @@ class SendWhatsappTemplate(AgentTool):
 
         # ─── 4. Variables como campos free_text_1, free_text_2, ... ───
         # Odoo 18 composer NO usa free_text_json; usa campos char individuales.
+        # IMPORTANTE: Meta rechaza variables con \n, \t, chars de control, o
+        # múltiples espacios consecutivos (error #132018). Sanitizamos siempre.
         variables = variables or []
         free_text_fields = {}
         for i, val in enumerate(variables, start=1):
             if i <= 10:  # composer soporta hasta free_text_10
-                free_text_fields[f'free_text_{i}'] = str(val)
+                free_text_fields[f'free_text_{i}'] = self._sanitize_variable(val)
 
         # ─── 5. Crear composer y enviar ───
         try:
@@ -256,6 +258,49 @@ class SendWhatsappTemplate(AgentTool):
             else:
                 cleaned = '+54' + cleaned.lstrip('0')
         return cleaned
+
+    def _sanitize_variable(self, val):
+        """
+        Limpia una variable antes de pasarla al composer de WhatsApp.
+        Meta rechaza variables con saltos de línea, tabs, chars de control,
+        o múltiples espacios (error #132018). También limita la longitud
+        a 1024 chars (más que eso Meta a veces rechaza).
+
+        Esta sanitización es CRÍTICA: sin ella, cualquier oferta con
+        formato multilinea va a hacer fallar el envío.
+        """
+        if val is None:
+            return ''
+
+        s = str(val)
+        # 1. Reemplazar saltos de línea por separador. Si el char anterior ya
+        # es puntuación (.,!?;:), solo agregamos espacio; si no, agregamos ". ".
+        def _replace_newline(m):
+            start = m.start()
+            prev = s[start - 1] if start > 0 else ''
+            return ' ' if prev in '.!?,;:' else '. '
+
+        s = re.sub(r'[\r\n]+', _replace_newline, s)
+        # 2. Tabs → espacio simple
+        s = s.replace('\t', ' ')
+        # 3. Sacar chars de control invisibles (excepto espacio normal)
+        s = re.sub(r'[\x00-\x1F\x7F]', '', s)
+        # 4. Colapsar múltiples espacios consecutivos en uno
+        s = re.sub(r' +', ' ', s).strip()
+        # 5. Sacar doble punto consecutivo que pueda haber quedado
+        s = re.sub(r'\.\s*\.', '.', s)
+        # 6. Limitar longitud (Meta tiende a rechazar >1024)
+        if len(s) > 1024:
+            s = s[:1020].rstrip() + '...'
+
+        # Log si hubo sanitización significativa
+        if str(val) != s:
+            _logger.info(
+                "🧹 Variable sanitizada: '%s...' → '%s...' (saltos/control/espacios)",
+                str(val)[:60], s[:60]
+            )
+
+        return s
 
     def _build_free_text_json(self, template, variables):
         """
