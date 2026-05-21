@@ -2,22 +2,25 @@
 """
 Tool: send_whatsapp_template
 
-Manda un template aprobado de WhatsApp al cliente. Necesario cuando la ventana
-de 24hs del cliente está cerrada (el cliente no escribió hace >24hs).
+Manda un template aprobado de WhatsApp al cliente usando el flujo nativo
+de Odoo (whatsapp.composer wizard). Necesario cuando la ventana de 24hs
+del cliente está cerrada (el cliente no escribió hace >24hs).
 
-Los templates tienen variables {{1}}, {{2}}, ... que se llenan con texto libre.
-Meta aprueba el esqueleto del template, no el contenido de las variables.
+Los templates tienen variables {{1}}, {{2}}, ... Algunas son automáticas
+(field_type='field', se llenan del registro como partner.name) y otras
+son texto libre (field_type='free_text', se proveen por la tool).
 
-Reglas de Meta para variables:
-- Texto razonable (no solo URL, no solo emoji, no solo número)
-- Longitud razonable (no demasiado largo)
-- Coherente con el template aprobado
+Esta tool SOLO recibe las variables free_text. Las de tipo field se
+resuelven automáticamente desde el partner.
 
-El bot llama a esta tool cuando:
-- send_whatsapp falla porque la ventana está cerrada
-- El cron proactivo le pasa una cadencia con template configurado
+Refactor v1.8.3:
+- Usa whatsapp.composer en vez de crear whatsapp.message a mano
+- Normaliza mobile (saca espacios, guiones)
+- Construye free_text_json en el formato correcto que espera Odoo
+- Renderiza body limpio (sin prefijo [TEMPLATE: ...])
 """
 import logging
+import re
 from .base import AgentTool
 from ..tool_registry import ToolRegistry
 
@@ -30,12 +33,13 @@ class SendWhatsappTemplate(AgentTool):
     description = (
         "Manda un TEMPLATE aprobado de WhatsApp al cliente. Usalo cuando la "
         "ventana de 24hs del cliente está cerrada (es decir, el cliente no "
-        "te escribió hace más de un día). Los templates pueden mandarse "
-        "EN CUALQUIER MOMENTO, sin importar la ventana. "
-        "Las variables son texto libre — vos escribís el contenido de cada {{N}}. "
-        "Tipicamente {{1}} es el nombre del cliente. "
-        "Lista de templates configurados en cadencias: usá search_knowledge "
-        "para ver qué template aplica a cada situación."
+        "te escribió hace más de un día). "
+        "Solo pasás las variables de texto libre del template — las variables "
+        "automáticas (como el nombre del cliente) se completan solas desde "
+        "el partner. "
+        "Ej: si el template dice 'Hola {{1}}, oferta: {{2}}' donde {{1}} es "
+        "auto (nombre) y {{2}} es free_text, pasás variables=['Lavandina 100L pagas 80L']. "
+        "Lista de templates configurados: usá search_knowledge."
     )
     input_schema = {
         "type": "object",
@@ -46,21 +50,18 @@ class SendWhatsappTemplate(AgentTool):
             },
             "template_name": {
                 "type": "string",
-                "description": "Nombre del template aprobado. Ej: 'oferta_semanal', "
-                               "'chequeo_post_muestra'.",
+                "description": "Nombre del template aprobado. Ej: 'oferta_semanal_general'.",
             },
             "variables": {
                 "type": "array",
                 "items": {"type": "string"},
-                "description": "Lista de strings para llenar las variables {{1}}, {{2}}, ... "
-                               "en orden. Ej: ['Patricia', 'Jabón Extra 200L al precio de 170L']. "
-                               "Cada variable debe ser texto razonable — no solo emoji, no solo "
-                               "URL, no demasiado largo (Meta puede rechazar).",
+                "description": "Lista de strings SOLO para las variables free_text del template, "
+                               "en el orden en que aparecen. NO incluyas el nombre del cliente "
+                               "(eso se llena solo). Cada variable debe ser texto razonable.",
             },
             "wa_account_id": {
                 "type": "integer",
-                "description": "(Opcional) ID de cuenta WhatsApp. Default: la cuenta default "
-                               "configurada en el agente.",
+                "description": "(Opcional) ID de cuenta WhatsApp. Default: cuenta del template.",
             },
         },
         "required": ["partner_id", "template_name", "variables"],
@@ -75,10 +76,13 @@ class SendWhatsappTemplate(AgentTool):
         if not partner.exists():
             return {"error": f"partner_id={partner_id} no existe"}
 
-        if not partner.mobile and not partner.phone:
-            return {"error": f"El partner {partner.name} no tiene mobile ni phone"}
+        # ─── 1. Mobile bien normalizado ───
+        mobile_raw = partner.mobile or partner.phone or ''
+        mobile = self._normalize_mobile(mobile_raw)
+        if not mobile:
+            return {"error": f"Partner {partner.name} no tiene mobile válido"}
 
-        # Buscar template
+        # ─── 2. Template aprobado ───
         WhatsappTemplate = env['whatsapp.template'].sudo()
         template = WhatsappTemplate.search([
             ('name', '=', template_name),
@@ -86,136 +90,132 @@ class SendWhatsappTemplate(AgentTool):
         ], limit=1)
 
         if not template:
-            # Si no encuentra approved, buscar cualquier estado
             template = WhatsappTemplate.search([('name', '=', template_name)], limit=1)
             if not template:
                 return {
                     "error": f"No encontré template '{template_name}'. "
-                             f"Revisá los nombres disponibles con search_knowledge o "
-                             f"pedile a Joaco que cree el template."
+                             f"Revisá nombres con search_knowledge."
                 }
             if template.status != 'approved':
                 return {
-                    "error": f"El template '{template_name}' existe pero no está aprobado "
+                    "error": f"Template '{template_name}' existe pero no está aprobado "
                              f"por Meta (status: {template.status}). Escalá a Joaco."
                 }
 
-        # Resolver cuenta
-        if wa_account_id:
-            wa_account = env['whatsapp.account'].sudo().browse(int(wa_account_id))
-        elif template.wa_account_id:
-            wa_account = template.wa_account_id
-        else:
-            config = env['cristal.agent.config'].sudo().get_active()
-            wa_account = getattr(config, 'wa_account_default_id', False)
-
-        if not wa_account or not wa_account.exists():
-            return {"error": "No pude determinar la cuenta de WhatsApp para mandar el template"}
-
-        # Normalizar número
-        mobile = partner.mobile or partner.phone
-        if not mobile.startswith('+'):
-            mobile = '+' + mobile.lstrip('0').lstrip()
-
-        # Crear el whatsapp.message con template y variables
+        # ─── 3. Construir free_text_json en el formato CORRECTO ───
+        # Odoo espera {"free_text_1": "...", "free_text_2": "..."} donde N es el
+        # índice del campo free_text en el orden de las variables del template.
         variables = variables or []
+        free_text_json = self._build_free_text_json(template, variables)
+
+        # ─── 4. Usar el whatsapp.composer (flujo nativo) ───
         try:
-            free_text_json = self._build_free_text_json(template, variables)
+            Composer = env['whatsapp.composer'].sudo()
 
-            wa_msg = env['whatsapp.message'].sudo().create({
-                'wa_account_id': wa_account.id,
+            composer_vals = {
+                'res_model': 'res.partner',
+                'res_ids': str(partner.id),
                 'wa_template_id': template.id,
-                'mobile_number': mobile,
-                'message_type': 'outbound',
-                'state': 'outgoing',
-                'free_text_json': free_text_json,
-                'mail_message_id': self._create_mail_message(env, partner, template, variables),
-            })
+                'phone': mobile,
+            }
+            if free_text_json:
+                composer_vals['free_text_json'] = free_text_json
 
-            # Mandar inmediatamente si el método existe
-            sent_now = False
-            try:
-                if hasattr(wa_msg, '_send_message'):
-                    wa_msg._send_message()
-                    sent_now = True
-            except Exception as e:
-                _logger.warning("_send_message falló, queda en cola: %s", e)
+            composer = Composer.with_context(
+                active_model='res.partner',
+                active_ids=[partner.id],
+                default_res_model='res.partner',
+                default_res_ids=str(partner.id),
+            ).create(composer_vals)
+
+            # Llamar al método de envío del composer (la firma puede variar por versión)
+            send_method = None
+            for method_name in [
+                '_action_send_whatsapp_template',
+                'action_send_whatsapp_template',
+                '_send_whatsapp_template',
+                'action_send_whatsapp',
+            ]:
+                if hasattr(composer, method_name):
+                    send_method = getattr(composer, method_name)
+                    break
+
+            if not send_method:
+                return {
+                    "error": "No encontré método de envío en whatsapp.composer. "
+                             "Posible cambio de versión Odoo. Escalá a Joaco."
+                }
+
+            send_method()
+
+            # Confirmar que se creó el whatsapp.message
+            wa_msg = env['whatsapp.message'].sudo().search([
+                ('wa_template_id', '=', template.id),
+                ('mobile_number', 'like', mobile[-8:]),  # buscamos por últimos 8 dígitos
+            ], order='create_date desc', limit=1)
 
             _logger.info(
-                "📤 Template '%s' enviado a %s (%s vars)",
+                "📤 Template '%s' enviado a %s (%s vars free_text) vía composer",
                 template_name, partner.name, len(variables)
             )
 
             return {
                 "ok": True,
-                "wa_message_id": wa_msg.id,
+                "wa_message_id": wa_msg.id if wa_msg else None,
                 "template": template_name,
                 "partner": partner.name,
                 "mobile": mobile,
                 "variables_sent": variables,
-                "sent_immediately": sent_now,
+                "method": "whatsapp.composer (nativo)",
                 "summary": (
                     f"Template '{template_name}' enviado a {partner.name} "
-                    f"con {len(variables)} variables."
+                    f"vía composer nativo con {len(variables)} variables."
                 ),
             }
 
         except Exception as e:
-            _logger.exception("Error enviando template: %s", e)
+            _logger.exception("Error enviando template vía composer: %s", e)
             return {"error": f"No se pudo mandar el template: {e}"}
+
+    # ────────────── Helpers ──────────────
+
+    def _normalize_mobile(self, raw):
+        """Saca espacios, guiones, paréntesis. Deja solo dígitos y +."""
+        if not raw:
+            return ''
+        cleaned = re.sub(r'[^\d+]', '', raw)
+        if not cleaned:
+            return ''
+        if not cleaned.startswith('+'):
+            # Si no tiene +, asumimos +54 (Argentina) si arranca con 549
+            if cleaned.startswith('549'):
+                cleaned = '+' + cleaned
+            elif cleaned.startswith('54'):
+                cleaned = '+' + cleaned
+            else:
+                cleaned = '+54' + cleaned.lstrip('0')
+        return cleaned
 
     def _build_free_text_json(self, template, variables):
         """
-        Arma el JSON que el módulo whatsapp espera para las variables.
-        Formato esperado por Odoo: {"body": {"1": "valor1", "2": "valor2"}}
+        Construye el JSON en el formato que espera Odoo:
+        {"free_text_1": "valor", "free_text_2": "valor"}
+
+        El índice N se refiere al ORDEN de las variables free_text del template,
+        no a la posición {{N}} en el body. Las variables tipo 'field' se llenan
+        automáticamente del partner por Odoo.
         """
-        import json
-        body = {}
-        for i, val in enumerate(variables, start=1):
-            body[str(i)] = str(val)
-        return json.dumps({"body": body})
+        if not variables:
+            return {}
 
-    def _create_mail_message(self, env, partner, template, variables):
-        """Crea un mail.message para que quede registro del envío en el canal."""
-        # Buscar canal del cliente si existe
-        Channel = env['discuss.channel'].sudo()
-        channel = Channel.search([
-            ('channel_type', '=', 'whatsapp'),
-            ('whatsapp_partner_id', '=', partner.id),
-        ], limit=1) if hasattr(Channel, 'whatsapp_partner_id') else False
+        # Identificar qué variables del template son free_text
+        free_text_vars = template.variable_ids.filtered(
+            lambda v: getattr(v, 'field_type', None) == 'free_text'
+        ).sorted('name')
 
-        # Renderizar body para preview
-        body_html = self._render_template_preview(template, variables)
+        result = {}
+        for idx, var in enumerate(free_text_vars, start=1):
+            if idx <= len(variables):
+                result[f'free_text_{idx}'] = str(variables[idx - 1])
 
-        config = env['cristal.agent.config'].sudo().get_active()
-        bot_partner = config.bot_partner_id or env['res.partner'].sudo().browse(80799)
-
-        msg_vals = {
-            'author_id': bot_partner.id,
-            'body': body_html,
-            'message_type': 'whatsapp_message',
-            'subtype_id': env.ref('mail.mt_comment').id,
-        }
-        if channel:
-            msg_vals['model'] = 'discuss.channel'
-            msg_vals['res_id'] = channel.id
-        else:
-            msg_vals['model'] = 'res.partner'
-            msg_vals['res_id'] = partner.id
-
-        try:
-            msg = env['mail.message'].sudo().with_context(
-                from_cristal_agent=True
-            ).create(msg_vals)
-            return msg.id
-        except Exception as e:
-            _logger.warning("No se pudo crear mail.message para template: %s", e)
-            return False
-
-    def _render_template_preview(self, template, variables):
-        """Devuelve HTML con el template renderizado para el preview en mail.message."""
-        body = template.body or ""
-        for i, val in enumerate(variables, start=1):
-            body = body.replace('{{%s}}' % i, str(val))
-            body = body.replace('{{ %s }}' % i, str(val))
-        return f"<p>[TEMPLATE: {template.name}]</p><p>{body}</p>"
+        return result
