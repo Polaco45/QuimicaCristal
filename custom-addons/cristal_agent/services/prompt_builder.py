@@ -188,7 +188,12 @@ def _build_partner_context(env, partner):
 
 
 def _build_knowledge_context(env, partner=None):
-    """Sección con conocimiento relevante de la KB."""
+    """Sección con conocimiento relevante de la KB.
+
+    Las entries con priority >= 100 (campañas activas, alertas críticas) se
+    muestran COMPLETAS en una sección destacada al inicio, sin truncar.
+    El resto se trunca a 350 chars para ahorrar tokens.
+    """
     Knowledge = env['cristal.agent.knowledge'].sudo()
     level = partner.agent_level if partner and partner.agent_level != 'none' else None
     partner_id = partner.id if partner else None
@@ -197,25 +202,46 @@ def _build_knowledge_context(env, partner=None):
         category=None,
         partner_id=partner_id,
         level=level,
-        limit=10,  # Reducido de 30 a 10 para bajar consumo de tokens
+        limit=15,
     )
 
     if not entries:
         return ""
 
-    lines = ["\n## CONOCIMIENTO ACTIVO (revisalo antes de responder)"]
-    by_category = {}
-    for e in entries:
-        by_category.setdefault(e['category'], []).append(e)
+    # Separar entries críticas (priority >= 100) del resto
+    criticas = [e for e in entries if e.get('priority', 0) >= 100]
+    normales = [e for e in entries if e.get('priority', 0) < 100]
 
-    for category, items in by_category.items():
-        lines.append(f"\n### {category}")
-        for item in items:
-            # Truncamos el contenido si es muy largo
-            content = item['content']
-            if len(content) > 350:
-                content = content[:350] + "..."
-            lines.append(f"- **{item['name']}**: {content}")
+    lines = []
+
+    # ─── Bloque CRÍTICO: campañas y alertas, contenido COMPLETO ───
+    if criticas:
+        lines.append("\n## 🚨 CAMPAÑAS / ALERTAS ACTIVAS — APLICAR OBLIGATORIAMENTE")
+        lines.append(
+            "⚠️ Lo siguiente tiene prioridad sobre cualquier otra regla. "
+            "Cuando aplica, seguilo TEXTUAL — no resumas, no simplifiques, "
+            "no omitas partes. Si la entrada incluye una plantilla de "
+            "respuesta, usala con todos sus puntos.\n"
+        )
+        for item in criticas:
+            lines.append(f"### {item['name']}")
+            lines.append(item['content'])  # Sin truncar
+            lines.append("")
+
+    # ─── Bloque NORMAL: knowledge general, contenido truncado ───
+    if normales:
+        lines.append("\n## CONOCIMIENTO ACTIVO (revisalo antes de responder)")
+        by_category = {}
+        for e in normales:
+            by_category.setdefault(e['category'], []).append(e)
+
+        for category, items in by_category.items():
+            lines.append(f"\n### {category}")
+            for item in items:
+                content = item['content']
+                if len(content) > 350:
+                    content = content[:350] + "..."
+                lines.append(f"- **{item['name']}**: {content}")
 
     return "\n".join(lines)
 
@@ -289,6 +315,28 @@ def build_user_message_for_whatsapp(env, wa_message, partner, plain_text):
     if wa_message.mail_message_id:
         channel_id = wa_message.mail_message_id.res_id
 
+    # Detectar si el mobile del wa_message coincide con OTRO partner (duplicado).
+    # Si hay duplicado, el bot tiene que saberlo para no saludar con el nombre
+    # equivocado.
+    import re
+    mob_clean = re.sub(r'[^\d+]', '', wa_message.mobile_number or '')
+    duplicados_info = ""
+    if mob_clean and len(mob_clean) >= 10:
+        last10 = mob_clean[-10:]
+        otros = env['res.partner'].sudo().search([
+            ('id', '!=', partner.id),
+            '|', ('mobile', 'ilike', last10), ('phone', 'ilike', last10),
+        ], limit=3)
+        if otros:
+            nombres = ", ".join([f"{p.name} (id={p.id})" for p in otros])
+            duplicados_info = (
+                f"\n⚠️ ATENCIÓN: el mismo número de WhatsApp está cargado en "
+                f"otros partners: {nombres}. La persona que escribe puede "
+                f"NO ser {partner.name}. Si no estás 100% seguro del nombre, "
+                f"saludá con \"¡Hola!\" sin nombre — es preferible al nombre "
+                f"equivocado."
+            )
+
     parts = []
     parts.append("MENSAJE WHATSAPP ENTRANTE")
     parts.append("")
@@ -301,11 +349,14 @@ def build_user_message_for_whatsapp(env, wa_message, partner, plain_text):
     parts.append(f"- wa_account_id: {wa_message.wa_account_id.id if wa_message.wa_account_id else 'N/A'}")
     if channel_id:
         parts.append(f"- channel_id (discuss.channel): {channel_id}")
+    if duplicados_info:
+        parts.append(duplicados_info)
     parts.append("")
     parts.append(f"Texto del cliente:")
     parts.append(f'"{plain_text}"')
     parts.append("")
     parts.append("Procedé según las reglas del system prompt. "
+                 "Si hay CAMPAÑAS/ALERTAS ACTIVAS arriba, aplicalas SIN omitir partes. "
                  "Respondé al cliente vía send_whatsapp y, cuando termines, "
                  "devolveme un resumen de UNA línea de lo que hiciste.")
 
