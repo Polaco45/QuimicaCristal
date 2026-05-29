@@ -30,6 +30,7 @@ INSTITUTIONAL_FLOWS = [
     ('inst_detecting_type', 'Detectando tipo de cliente (A/B)'),
     ('inst_q_rubro', 'Preguntando rubro'),
     ('inst_q_nombre_empresa', 'Preguntando nombre y empresa'),
+    ('inst_q_email', 'Preguntando email'),
     ('inst_q_factura', 'Preguntando si necesita factura'),
     ('inst_q_fiscal', 'Pidiendo nombre fiscal + CUIT'),
     ('inst_q_rol', 'Preguntando rol del contacto'),

@@ -199,36 +199,45 @@ class SendWhatsappTemplate(AgentTool):
     def _resolve_composer_res(self, env, template_model, partner, template_name):
         """
         Devuelve (res_model, res_id, lead_was_created).
-        Si el template usa crm.lead, busca o crea un lead para el partner.
-        Si usa res.partner directo, devuelve partner.
+        Si el template usa crm.lead, busca opportunity ACTIVA (no Ganada/Perdida).
+        Si no existe, crea UNA opportunity nueva (no lead) en stage Nuevo.
+
+        FIX v1.9.6: ya no crea leads [Auto]. Si hay que crear algo, es opportunity.
         """
         if template_model == 'crm.lead':
-            # Buscar lead más reciente del partner
-            lead = env['crm.lead'].sudo().search([
+            # Buscar opportunity abierta del partner (no Ganada=4, no Perdida=13)
+            opp = env['crm.lead'].sudo().search([
                 ('partner_id', '=', partner.id),
+                ('type', '=', 'opportunity'),
+                ('stage_id', 'not in', [4, 13]),
+                ('active', '=', True),
             ], limit=1, order='create_date desc')
 
-            if lead:
-                return 'crm.lead', lead.id, False
+            if opp:
+                _logger.info(
+                    "🔁 Reusando opportunity %s de %s para template '%s'",
+                    opp.id, partner.name, template_name
+                )
+                return 'crm.lead', opp.id, False
 
-            # No hay lead: creamos uno "auto" para que el composer pueda renderizar.
-            # Esto pasa típicamente con el broadcast a mayoristas que nunca
-            # interactuaron con el bot todavía.
-            auto_lead = env['crm.lead'].sudo().create({
-                'name': f'[Auto] Envío template {template_name} a {partner.name}',
+            # No hay opp abierta: creamos UNA opportunity nueva (no lead).
+            # Esto pasa típicamente con broadcasts a partners que nunca compraron.
+            new_opp = env['crm.lead'].sudo().create({
+                'name': f'{partner.name}',  # nombre simple, sin [Auto]
                 'partner_id': partner.id,
-                'type': 'lead',
+                'type': 'opportunity',  # ← OPPORTUNITY, no lead
+                'stage_id': 1,  # Nuevo
                 'description': (
-                    f'Lead creado automáticamente para enviar el template '
-                    f'"{template_name}" porque el partner no tenía ningún lead '
-                    f'previo. Si es un cliente activo, asocialo con su lead real.'
+                    f'Oportunidad creada al enviar el template "{template_name}" '
+                    f'por broadcast. Si el cliente responde, se va a actualizar '
+                    f'automáticamente con el contexto.'
                 ),
             })
             _logger.info(
-                "🆕 Auto-creé lead %s para %s (necesario para template '%s')",
-                auto_lead.id, partner.name, template_name
+                "🆕 Creé opportunity %s para %s (template '%s')",
+                new_opp.id, partner.name, template_name
             )
-            return 'crm.lead', auto_lead.id, True
+            return 'crm.lead', new_opp.id, True
 
         elif template_model == 'res.partner':
             return 'res.partner', partner.id, False

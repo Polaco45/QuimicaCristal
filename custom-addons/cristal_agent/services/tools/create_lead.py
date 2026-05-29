@@ -147,12 +147,13 @@ class CreateLead(AgentTool):
         else:
             return {"error": f"client_type inválido: {client_type}"}
 
-        # Vals del lead
+        # Vals del opp (FIX v1.9.6: forzar type=opportunity, nunca lead)
         vals = {
             'name': lead_name,
             'partner_id': partner.id,
             'user_id': user_id,
             'team_id': team_id,
+            'type': 'opportunity',
             'agent_managed': True,
             'agent_strategy_phase': phase,
         }

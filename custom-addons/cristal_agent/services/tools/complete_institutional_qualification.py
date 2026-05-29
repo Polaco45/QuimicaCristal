@@ -39,9 +39,13 @@ PRICELIST_LE2 = 33
 STAGE_CALIFICADO = 14
 TEAM_VENTAS = 1
 USER_JOACO = 18
-ACTIVITY_VISITAR_INSTITUCION = 3
+ACTIVITY_COORDINAR_VISITA = 2   # "Llamada" — usar para coordinar visita Plan Control. Si Joaco crea un type "Coordinar visita" propio, cambiar este ID.
 CATEGORY_EMPRESA = 1
 IDENTIFICATION_TYPE_CUIT = 4   # l10n_latam.identification.type CUIT
+
+# Stages CERRADOS de crm.lead (no reusamos opportunities en estos)
+# 4 = Ganado, 13 = Perdido
+STAGES_CLOSED = (4, 13)
 
 # Ciudades válidas (case insensitive, normalizadas sin acentos)
 VALID_CITIES_NORMALIZED = {
@@ -72,6 +76,58 @@ def _sanitize_vat(vat):
     return re.sub(r'\D', '', vat)
 
 
+def _resolve_rubro_category_id(env, rubro_label, rubro_category_id):
+    """
+    Resuelve el ID de partner.category del rubro.
+
+    Si `rubro_category_id` viene válido (>0), lo usa directamente.
+    Si viene 0/None/False pero hay `rubro_label`, busca en res.partner.category
+    bajo el parent_id=14 (Rubros) por nombre case-insensitive y devuelve el
+    primer match razonable.
+
+    Devuelve int (ID) o None si no se pudo resolver.
+    """
+    # Caso A: ya viene un ID válido > 0
+    if rubro_category_id and isinstance(rubro_category_id, int) and rubro_category_id > 0:
+        cat = env['res.partner.category'].sudo().browse(rubro_category_id)
+        if cat.exists():
+            return rubro_category_id
+
+    # Caso B: hay que resolver por nombre
+    if not rubro_label or not isinstance(rubro_label, str):
+        return None
+
+    label_norm = rubro_label.strip().lower()
+    if not label_norm:
+        return None
+
+    Cat = env['res.partner.category'].sudo()
+    # Primero búsqueda exacta bajo parent Rubros (id=14)
+    found = Cat.search([
+        ('parent_id', '=', 14),
+        ('name', '=ilike', label_norm),
+    ], limit=1)
+    if found:
+        return found.id
+
+    # Búsqueda parcial bajo parent Rubros
+    found = Cat.search([
+        ('parent_id', '=', 14),
+        ('name', 'ilike', label_norm),
+    ], limit=1)
+    if found:
+        return found.id
+
+    # Búsqueda inversa: el label contiene el nombre de la categoría
+    # (ej: label="agricola y agro" matchea "Agro")
+    all_rubros = Cat.search([('parent_id', '=', 14)])
+    for cat in all_rubros:
+        if cat.name and cat.name.lower() in label_norm:
+            return cat.id
+
+    return None
+
+
 @ToolRegistry.register
 class CompleteInstitutionalQualification(AgentTool):
     name = "complete_institutional_qualification"
@@ -98,7 +154,8 @@ class CompleteInstitutionalQualification(AgentTool):
                 "description": (
                     "Datos completos de la calificación. Campos esperados: "
                     "contact_name (str), company_name (str), "
-                    "rubro_label (str), rubro_partner_category_id (int), "
+                    "rubro_label (str), rubro_partner_category_id (int, opcional: si lo dejás en 0 o no lo pasás, la tool lo resuelve buscando por rubro_label en partner.category), "
+                    "email (str, obligatorio para mandar cotización después), "
                     "necesita_factura (bool), fiscal_name (str, si factura), "
                     "vat (str, CUIT si factura), rol (str), "
                     "street (str), city (str), disponibilidad (str), "
@@ -109,6 +166,7 @@ class CompleteInstitutionalQualification(AgentTool):
                     "company_name": {"type": "string"},
                     "rubro_label": {"type": "string"},
                     "rubro_partner_category_id": {"type": "integer"},
+                    "email": {"type": "string"},
                     "necesita_factura": {"type": "boolean"},
                     "fiscal_name": {"type": "string"},
                     "vat": {"type": "string"},
@@ -119,7 +177,8 @@ class CompleteInstitutionalQualification(AgentTool):
                     "notas_extra": {"type": "string"},
                 },
                 "required": [
-                    "contact_name", "rubro_label", "rubro_partner_category_id",
+                    "contact_name", "rubro_label",
+                    "email",
                     "necesita_factura", "rol", "street", "city", "disponibilidad",
                 ],
             },
@@ -133,8 +192,28 @@ class CompleteInstitutionalQualification(AgentTool):
 
         data = qualification_data or {}
 
+        # ─── Resolver rubro por nombre si vino 0/None ───
+        # FIX v1.9.6: la tool ahora resuelve sola el ID de partner.category
+        # cuando el bot pasa rubro_partner_category_id=0 (caso AGRO 2000).
+        resolved_rubro_id = _resolve_rubro_category_id(
+            env,
+            data.get('rubro_label'),
+            data.get('rubro_partner_category_id'),
+        )
+        if resolved_rubro_id:
+            data['rubro_partner_category_id'] = resolved_rubro_id
+        else:
+            # Si el rubro no se pudo resolver, no abortamos: usamos solo la
+            # categoría EMPRESA (1) en el partner y dejamos rubro_cat_id=None
+            # para que en el bloque atómico no se intente hacer (4, None).
+            data['rubro_partner_category_id'] = None
+            _logger.warning(
+                "⚠️ Rubro no resuelto para label '%s'. Partner queda sin rubro_cat_id.",
+                data.get('rubro_label'),
+            )
+
         # ── Validaciones previas (antes de la transacción) ──
-        required = ['contact_name', 'rubro_label', 'rubro_partner_category_id',
+        required = ['contact_name', 'rubro_label', 'email',
                     'rol', 'street', 'city', 'disponibilidad']
         missing = [k for k in required if not data.get(k)]
         if missing:
@@ -143,6 +222,16 @@ class CompleteInstitutionalQualification(AgentTool):
                 "error": f"Faltan datos: {', '.join(missing)}",
                 "missing": missing,
             }
+
+        # Validación rápida formato email
+        email = (data.get('email') or '').strip().lower()
+        if '@' not in email or '.' not in email.split('@')[-1]:
+            return {
+                "ok": False,
+                "error": f"Email inválido: '{email}'. Volvé a preguntar el correo electrónico.",
+                "missing": ['email'],
+            }
+        data['email'] = email
 
         # Validar zona ANTES de hacer cualquier escritura
         city_norm = _normalize_city(data.get('city', ''))
@@ -153,7 +242,7 @@ class CompleteInstitutionalQualification(AgentTool):
                 memory = env['cristal.agent.memory'].sudo().get_or_create(partner)
                 memory.write({
                     'flow_state': 'inst_out_of_zone',
-                    'qualification_data': data,  # guardamos para futuro
+                    'qualification_data': data,
                 })
             return {
                 "ok": False,
@@ -182,18 +271,30 @@ class CompleteInstitutionalQualification(AgentTool):
                 }
 
         # ── Cierre atómico con savepoint ──
-        # El savepoint permite rollback solo de esta operación sin tirar
-        # toda la request del bot.
         try:
             with env.cr.savepoint():
                 result = self._do_atomic_close(env, partner_id, data)
             return result
         except Exception as e:
             _logger.exception("Error en cierre atómico institucional: %s", e)
+            # FIX v1.9.6: si falla el cierre, SIEMPRE activamos takeover
+            # para que el bot deje de contestar y Joaco intervenga manualmente.
+            try:
+                partner = env['res.partner'].sudo().browse(partner_id)
+                if partner.exists():
+                    memory = env['cristal.agent.memory'].sudo().get_or_create(partner)
+                    memory.write({
+                        'human_takeover': True,
+                        'takeover_reason': f"Cierre atómico falló: {str(e)[:200]}",
+                    })
+                    _logger.info("🤫 Takeover activado por error de cierre")
+            except Exception as e2:
+                _logger.error("No se pudo activar takeover tras error: %s", e2)
             return {
                 "ok": False,
-                "error": f"Falló cierre atómico (rollback hecho): {str(e)[:200]}",
+                "error": f"Falló cierre atómico (rollback hecho, takeover activado): {str(e)[:200]}",
                 "rollback": True,
+                "takeover_set": True,
             }
 
     def _do_atomic_close(self, env, partner_id, data):
@@ -212,11 +313,20 @@ class CompleteInstitutionalQualification(AgentTool):
 
         contact_name = data['contact_name']
         company_name = data.get('company_name') or contact_name
-        rubro_cat_id = data['rubro_partner_category_id']
+        rubro_cat_id = data.get('rubro_partner_category_id')  # puede ser None si no resolvió
+        email = data.get('email')
         necesita_factura = bool(data.get('necesita_factura'))
         rol = data['rol']
         street = data['street']
         city = data['city']
+
+        # Helper para construir lista de categorías
+        # (siempre EMPRESA, + rubro si se resolvió)
+        def _cat_ids():
+            base = [(4, CATEGORY_EMPRESA)]
+            if rubro_cat_id:
+                base.append((4, rubro_cat_id))
+            return base
         disponibilidad = data['disponibilidad']
         notas_extra = data.get('notas_extra') or ''
 
@@ -250,13 +360,13 @@ class CompleteInstitutionalQualification(AgentTool):
                 'state_id': STATE_CORDOBA,
                 'country_id': COUNTRY_AR,
                 'property_product_pricelist': PRICELIST_LE2,
-                'category_id': [(4, CATEGORY_EMPRESA), (4, rubro_cat_id)],
+                'category_id': _cat_ids(),
             }
 
             if company:
                 # Actualizar solo campos vacíos para no pisar datos buenos
                 update_vals = {
-                    'category_id': [(4, CATEGORY_EMPRESA), (4, rubro_cat_id)],
+                    'category_id': _cat_ids(),
                     # Pricelist L.E 2 SIEMPRE en institucional, aunque la
                     # empresa ya tuviera otra cargada (regla del brief).
                     'property_product_pricelist': PRICELIST_LE2,
@@ -303,6 +413,7 @@ class CompleteInstitutionalQualification(AgentTool):
                 contact.write({
                     'function': contact.function or rol,
                     'name': contact.name if contact.name and contact.name != company.name else contact_name,
+                    'email': contact.email or email,
                 })
                 _logger.info("👤 Subcontacto existente actualizado: %s", contact.name)
             elif not original.parent_id and not original.is_company:
@@ -312,6 +423,7 @@ class CompleteInstitutionalQualification(AgentTool):
                     'name': contact_name,
                     'function': rol,
                     'type': 'contact',
+                    'email': email,
                 })
                 contact = original
                 _logger.info("👤 Partner original convertido en subcontacto: %s", contact.name)
@@ -323,9 +435,14 @@ class CompleteInstitutionalQualification(AgentTool):
                     'function': rol,
                     'mobile': mobile,
                     'phone': mobile,
+                    'email': email,
                     'type': 'contact',
                 })
                 _logger.info("👤 Subcontacto nuevo creado: %s", contact.name)
+
+            # Email también en la empresa si no tenía
+            if email and not company.email:
+                company.write({'email': email})
 
             partner_for_lead = company
 
@@ -336,62 +453,105 @@ class CompleteInstitutionalQualification(AgentTool):
                 'function': rol,
                 'street': street,
                 'city': city,
+                'email': email,
                 'state_id': original.state_id.id or STATE_CORDOBA,
                 'country_id': original.country_id.id or COUNTRY_AR,
                 # IMPORTANTE: pricelist L.E 2 SIEMPRE en institucional —
                 # no respetamos el default de Odoo (suele asignar L.C 1).
                 'property_product_pricelist': PRICELIST_LE2,
-                'category_id': [(4, CATEGORY_EMPRESA), (4, rubro_cat_id)],
+                'category_id': _cat_ids(),
             })
             partner_for_lead = original
             contact = original
             company = None
             _logger.info("👤 Sin factura: usando partner original %s", original.name)
 
-        # ─── 3. CREAR LEAD ───
-        lead_name = f"[Plan Control] {partner_for_lead.name}"
-        lead_description = self._build_lead_description(data, partner_for_lead, contact)
+        # ─── 3. CREAR/REUSAR OPORTUNIDAD ───
+        # FIX v1.9.6: ya no creamos lead — siempre opportunity.
+        # Si ya hay una opp abierta del partner (no Ganada/Perdida), la reusamos.
+        opp_name = f"[Plan Control] {partner_for_lead.name}"
+        opp_description = self._build_lead_description(data, partner_for_lead, contact)
 
-        lead = Lead.create({
-            'name': lead_name,
-            'partner_id': partner_for_lead.id,
-            'contact_name': contact_name,
-            'function': rol,
-            'mobile': contact.mobile or contact.phone or '',
-            'street': street,
-            'city': city,
-            'team_id': TEAM_VENTAS,
-            'stage_id': STAGE_CALIFICADO,
-            'user_id': USER_JOACO,
-            'type': 'opportunity',
-            'description': lead_description,
-        })
-        _logger.info("📋 Lead creado: %s (id=%s) en stage Calificado", lead.name, lead.id)
+        existing_opp = Lead.search([
+            ('partner_id', '=', partner_for_lead.id),
+            ('type', '=', 'opportunity'),
+            ('stage_id', 'not in', list(STAGES_CLOSED)),
+            ('active', '=', True),
+        ], order='create_date desc', limit=1)
 
-        # ─── 4. ACTIVIDAD para Joaco ───
+        if existing_opp:
+            # Actualizar la existente — la "ascendemos" a Calificado
+            update_vals = {
+                'stage_id': STAGE_CALIFICADO,
+                'user_id': USER_JOACO,
+                'team_id': TEAM_VENTAS,
+                'contact_name': contact_name,
+                'function': rol,
+                'street': street,
+                'city': city,
+                'email_from': data.get('email') or existing_opp.email_from,
+                'mobile': contact.mobile or contact.phone or existing_opp.mobile,
+            }
+            existing_opp.write(update_vals)
+            # Agregar la descripción nueva al final de la existente
+            prev = existing_opp.description or ''
+            existing_opp.write({
+                'description': (
+                    f"{prev}\n\n=== RECALIFICACIÓN {date.today().isoformat()} ===\n{opp_description}"
+                    if prev else opp_description
+                ),
+            })
+            opp = existing_opp
+            _logger.info("📋 Oportunidad EXISTENTE reusada: %s (id=%s) → stage Calificado", opp.name, opp.id)
+        else:
+            opp = Lead.create({
+                'name': opp_name,
+                'partner_id': partner_for_lead.id,
+                'contact_name': contact_name,
+                'function': rol,
+                'mobile': contact.mobile or contact.phone or '',
+                'email_from': data.get('email'),
+                'street': street,
+                'city': city,
+                'team_id': TEAM_VENTAS,
+                'stage_id': STAGE_CALIFICADO,
+                'user_id': USER_JOACO,
+                'type': 'opportunity',
+                'description': opp_description,
+            })
+            _logger.info("📋 Oportunidad CREADA: %s (id=%s) en stage Calificado", opp.name, opp.id)
+
+        # Mantener `lead` como alias para no romper el resto del código
+        lead = opp
+
+        # ─── 4. ACTIVIDAD "Coordinar visita" para Joaco HOY ───
+        # FIX v1.9.6: cambia de "Visitar Institucion (3, +1d)" a "Llamada (2, hoy)"
+        # con summary explícito. La coordinación se hace HOY por tel/whatsapp,
+        # la visita real es otro día (Joaco la agenda manualmente después).
         activity_note = (
-            f"<p>Cliente calificado por el chatbot. Solicita relevamiento.</p>"
-            f"<p><b>Disponibilidad indicada:</b> {disponibilidad}</p>"
+            f"<p><b>🎯 Coordinar visita Plan Control — {partner_for_lead.name}</b></p>"
+            f"<p>Cliente calificado por el chatbot. Llamarlo/WhatsAppearlo HOY para coordinar día y horario de visita.</p>"
+            f"<p><b>Disponibilidad que indicó:</b> {disponibilidad}</p>"
             f"<p><b>Dirección:</b> {street}, {city}</p>"
             f"<p><b>WhatsApp:</b> {contact.mobile or contact.phone or '-'}</p>"
+            f"<p><b>Email:</b> {data.get('email') or '-'}</p>"
             f"<p><b>Contacto:</b> {contact_name} ({rol})</p>"
-            f"<p>Contactar dentro de las próximas 24hs.</p>"
         )
         activity = Activity.create({
             'res_model': 'crm.lead',
             'res_model_id': env['ir.model']._get('crm.lead').id,
-            'res_id': lead.id,
-            'activity_type_id': ACTIVITY_VISITAR_INSTITUCION,
-            'summary': f"[CALIFICADO] Coordinar relevamiento con {partner_for_lead.name}",
+            'res_id': opp.id,
+            'activity_type_id': ACTIVITY_COORDINAR_VISITA,
+            'summary': f"Coordinar visita Plan Control: {partner_for_lead.name}",
             'note': activity_note,
-            'date_deadline': date.today(),
+            'date_deadline': date.today(),   # HOY, no +1d
             'user_id': USER_JOACO,
         })
-        _logger.info("📅 Actividad creada (id=%s) para Joaco", activity.id)
+        _logger.info("📞 Actividad 'Coordinar visita' creada (id=%s) para Joaco — deadline HOY", activity.id)
 
         # ─── 5. ACTUALIZAR MEMORY ───
         memory.write({
-            'lead_id': lead.id,
+            'lead_id': opp.id,
             'qual_qualified': True,
             'flow_state': 'inst_handed_over',
             'client_type': 'institucional',
@@ -404,8 +564,9 @@ class CompleteInstitutionalQualification(AgentTool):
 
         return {
             "ok": True,
-            "lead_id": lead.id,
-            "lead_name": lead.name,
+            "lead_id": opp.id,
+            "opportunity_id": opp.id,
+            "lead_name": opp.name,
             "lead_stage": "Calificado (id=14)",
             "partner_id": partner_for_lead.id,
             "partner_name": partner_for_lead.name,
@@ -436,6 +597,7 @@ Empresa: {partner_for_lead.name}
 CUIT: {partner_for_lead.vat or '(no informado)'}
 Necesita factura: {'Sí' if data.get('necesita_factura') else 'No'}
 Contacto: {data.get('contact_name', '')} - {data.get('rol', '')}
+Email: {data.get('email', '-')}
 Teléfono: {contact.mobile or contact.phone or '-'}
 Dirección: {data.get('street', '')}, {data.get('city', '')}
 Disponibilidad: {data.get('disponibilidad', '')}
