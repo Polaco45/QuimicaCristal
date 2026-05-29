@@ -177,7 +177,7 @@ class CompleteInstitutionalQualification(AgentTool):
                     "notas_extra": {"type": "string"},
                 },
                 "required": [
-                    "contact_name", "rubro_label",
+                    "contact_name", "company_name", "rubro_label",
                     "email",
                     "necesita_factura", "rol", "street", "city", "disponibilidad",
                 ],
@@ -213,7 +213,7 @@ class CompleteInstitutionalQualification(AgentTool):
             )
 
         # ── Validaciones previas (antes de la transacción) ──
-        required = ['contact_name', 'rubro_label', 'email',
+        required = ['contact_name', 'company_name', 'rubro_label', 'email',
                     'rol', 'street', 'city', 'disponibilidad']
         missing = [k for k in required if not data.get(k)]
         if missing:
@@ -447,24 +447,123 @@ class CompleteInstitutionalQualification(AgentTool):
             partner_for_lead = company
 
         else:
-            # Sin factura: usamos el partner original directamente
-            original.write({
-                'name': contact_name,
-                'function': rol,
-                'street': street,
-                'city': city,
-                'email': email,
-                'state_id': original.state_id.id or STATE_CORDOBA,
-                'country_id': original.country_id.id or COUNTRY_AR,
-                # IMPORTANTE: pricelist L.E 2 SIEMPRE en institucional —
-                # no respetamos el default de Odoo (suele asignar L.C 1).
-                'property_product_pricelist': PRICELIST_LE2,
-                'category_id': _cat_ids(),
-            })
-            partner_for_lead = original
-            contact = original
-            company = None
-            _logger.info("👤 Sin factura: usando partner original %s", original.name)
+            # ═══════════════════════════════════════════════════════════
+            # FIX v1.9.7: Sin factura tambi\u00e9n debe crear empresa madre.
+            # La empresa existe en la realidad aunque no haya CUIT —
+            # tiene que estar como partner is_company=True para que las
+            # cotizaciones, mails y actividades futuras se hagan contra ella.
+            # ═══════════════════════════════════════════════════════════
+            if company_name and company_name.strip() and company_name.strip().lower() != contact_name.strip().lower():
+                # Buscar si la empresa ya existe por nombre (sin CUIT no hay otra forma)
+                company = Partner.search([
+                    ('name', '=ilike', company_name.strip()),
+                    ('is_company', '=', True),
+                ], limit=1)
+                if not company:
+                    company = Partner.search([
+                        ('name', 'ilike', company_name.strip()),
+                        ('is_company', '=', True),
+                    ], limit=1)
+
+                company_vals = {
+                    'street': street,
+                    'city': city,
+                    'state_id': STATE_CORDOBA,
+                    'country_id': COUNTRY_AR,
+                    'email': email,
+                    'property_product_pricelist': PRICELIST_LE2,
+                    'category_id': _cat_ids(),
+                }
+
+                if company:
+                    update_vals = {
+                        'category_id': _cat_ids(),
+                        'property_product_pricelist': PRICELIST_LE2,
+                    }
+                    for k in ('street', 'city'):
+                        if not company[k]:
+                            update_vals[k] = company_vals[k]
+                    if not company.state_id:
+                        update_vals['state_id'] = STATE_CORDOBA
+                    if not company.country_id:
+                        update_vals['country_id'] = COUNTRY_AR
+                    if email and not company.email:
+                        update_vals['email'] = email
+                    company.write(update_vals)
+                    _logger.info("🏢 Empresa (sin factura) actualizada: %s (id=%s)", company.name, company.id)
+                else:
+                    company_vals.update({
+                        'name': company_name.strip(),
+                        'is_company': True,
+                        'company_type': 'company',
+                    })
+                    company = Partner.create(company_vals)
+                    _logger.info("🏢 Empresa (sin factura) creada: %s (id=%s)", company.name, company.id)
+
+                # Subcontacto Lucas Pérez bajo Frigorífico San Juan
+                mobile = original.mobile or original.phone or ''
+                existing_subcontact = Partner.search([
+                    ('parent_id', '=', company.id),
+                    '|',
+                    ('mobile', '=', mobile),
+                    ('phone', '=', mobile),
+                ], limit=1)
+
+                if existing_subcontact:
+                    contact = existing_subcontact
+                    contact.write({
+                        'function': contact.function or rol,
+                        'email': contact.email or email,
+                    })
+                    _logger.info("👤 Subcontacto existente: %s", contact.name)
+                elif not original.parent_id and not original.is_company:
+                    # Mover al partner original como subcontacto
+                    original.write({
+                        'parent_id': company.id,
+                        'name': contact_name,
+                        'function': rol,
+                        'type': 'contact',
+                        'email': email,
+                        # Importante: NO setear category_id acá. Las categorías
+                        # van en la empresa, no en el contacto.
+                        'category_id': [(5, 0, 0)],  # vacía categorías del contacto
+                    })
+                    contact = original
+                    _logger.info("👤 Original → subcontacto: %s bajo %s", contact.name, company.name)
+                else:
+                    # Original tiene parent_id distinto: crear subcontacto nuevo
+                    contact = Partner.create({
+                        'name': contact_name,
+                        'parent_id': company.id,
+                        'function': rol,
+                        'mobile': mobile,
+                        'phone': mobile,
+                        'email': email,
+                        'type': 'contact',
+                    })
+                    _logger.info("👤 Subcontacto nuevo (sin factura): %s", contact.name)
+
+                partner_for_lead = company
+
+            else:
+                # company_name vacío o igual al contact_name: realmente no hay
+                # empresa que crear (ej: monotributista que se llama igual).
+                # Usamos al partner original como is_company=True (vendedor independiente).
+                original.write({
+                    'name': contact_name,
+                    'function': rol,
+                    'street': street,
+                    'city': city,
+                    'email': email,
+                    'state_id': original.state_id.id or STATE_CORDOBA,
+                    'country_id': original.country_id.id or COUNTRY_AR,
+                    'property_product_pricelist': PRICELIST_LE2,
+                    'category_id': _cat_ids(),
+                })
+                partner_for_lead = original
+                contact = original
+                company = None
+                _logger.info("👤 Sin empresa separada (monotributo/individual): %s", original.name)
 
         # ─── 3. CREAR/REUSAR OPORTUNIDAD ───
         # FIX v1.9.6: ya no creamos lead — siempre opportunity.
