@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_partner_form_inherit_cristal_agent" model="ir.ui.view">
+        <field name="name">res.partner.form.inherit.cristal.agent</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="base.view_partner_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//notebook" position="inside">
+                <page string="🤖 Agente Claudio" name="cristal_agent_page">
+
+                    <group>
+                        <group string="Estado actual">
+                            <field name="agent_strategy_phase" widget="badge"
+                                   decoration-success="agent_strategy_phase == 'phase_3_onboarding'"
+                                   decoration-info="agent_strategy_phase in ['phase_2_post_sample', 'phase_2_quoted']"
+                                   decoration-warning="agent_strategy_phase == 'churning'"/>
+                            <field name="agent_level" widget="badge"
+                                   decoration-success="agent_level == 'oro'"
+                                   decoration-info="agent_level == 'plata'"
+                                   decoration-muted="agent_level in ['bronce', 'none']"/>
+                            <field name="agent_monthly_volume_avg" widget="monetary"/>
+                            <field name="agent_grace_period_until"/>
+                        </group>
+                        <group string="Actividad reciente">
+                            <field name="agent_last_inbound_at"/>
+                            <field name="agent_last_outbound_at"/>
+                            <field name="agent_last_purchase_at"/>
+                            <field name="agent_days_since_last_purchase"/>
+                            <field name="agent_churn_score"
+                                   decoration-danger="agent_churn_score &gt;= 50"/>
+                        </group>
+                    </group>
+
+                    <separator string="📋 Observaciones acumuladas del agente"/>
+                    <field name="agent_observations" readonly="1"
+                           placeholder="A medida que Claudio interactúe con este cliente, va a ir registrando acá lo que aprende: preferencias, datos comerciales, episodios destacados."/>
+
+                    <separator string="🎯 Programa de referidos"/>
+                    <group>
+                        <field name="agent_referred_by_id"/>
+                        <field name="agent_referrals_count"/>
+                    </group>
+
+                </page>
+            </xpath>
+        </field>
+    </record>
+
+</odoo>

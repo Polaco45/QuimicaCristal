@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- MENÚ PRINCIPAL — v1.9.5: 2 apartados gemelos + Sistema       -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+
+    <menuitem id="menu_cristal_agent_root"
+              name="🤖 Cristal Agent"
+              sequence="10"
+              web_icon="cristal_agent,static/description/icon.png"/>
+
+    <!-- ═════════════════════════════════════ -->
+    <!-- 📊 DASHBOARD (común a ambos canales)   -->
+    <!-- ═════════════════════════════════════ -->
+    <menuitem id="menu_cristal_agent_dashboard"
+              name="📊 Dashboard"
+              parent="menu_cristal_agent_root"
+              sequence="5"
+              action="action_cristal_agent_dashboard"/>
+
+    <!-- ═════════════════════════════════════════════════════ -->
+    <!-- 📦 MAYORISTA — Claudio v3.1 (cuenta Crilimp id=8)      -->
+    <!-- ═════════════════════════════════════════════════════ -->
+    <menuitem id="menu_mayorista_root"
+              name="📦 Mayorista"
+              parent="menu_cristal_agent_root"
+              sequence="20"/>
+
+    <menuitem id="menu_mayorista_memorias"
+              name="💬 Conversaciones"
+              parent="menu_mayorista_root"
+              sequence="10"
+              action="action_memory_mayorista"/>
+
+    <menuitem id="menu_mayorista_runs"
+              name="📜 Ejecuciones"
+              parent="menu_mayorista_root"
+              sequence="20"
+              action="action_run_mayorista"/>
+
+    <menuitem id="menu_mayorista_partners"
+              name="👥 Partners (etiqueta Mayorista)"
+              parent="menu_mayorista_root"
+              sequence="30"
+              action="action_partner_mayorista"/>
+
+    <menuitem id="menu_mayorista_cadencias"
+              name="📅 Cadencias proactivas"
+              parent="menu_mayorista_root"
+              sequence="40"
+              action="action_cadence_mayorista"/>
+
+    <menuitem id="menu_mayorista_ofertas"
+              name="🎁 Ofertas activas"
+              parent="menu_mayorista_root"
+              sequence="50"
+              action="action_cristal_agent_offer"/>
+
+    <menuitem id="menu_mayorista_catalogo"
+              name="📋 Catálogo"
+              parent="menu_mayorista_root"
+              sequence="60"
+              action="action_mayorista_catalog"/>
+
+    <menuitem id="menu_mayorista_config"
+              name="⚙️ Configuración (prompt v3.1)"
+              parent="menu_mayorista_root"
+              sequence="100"
+              action="action_cristal_agent_config"/>
+
+    <!-- ═════════════════════════════════════════════════════ -->
+    <!-- 🏢 INSTITUCIONAL — Plan Control (cuenta Compras id=5)  -->
+    <!-- ═════════════════════════════════════════════════════ -->
+    <menuitem id="menu_institucional_root"
+              name="🏢 Institucional"
+              parent="menu_cristal_agent_root"
+              sequence="30"/>
+
+    <menuitem id="menu_institucional_memorias"
+              name="💬 Conversaciones"
+              parent="menu_institucional_root"
+              sequence="10"
+              action="action_memory_institucional"/>
+
+    <menuitem id="menu_institucional_calificaciones"
+              name="⏳ Calificaciones en curso"
+              parent="menu_institucional_root"
+              sequence="20"
+              action="action_calificaciones_en_curso"/>
+
+    <menuitem id="menu_institucional_leads"
+              name="✅ Leads calificados"
+              parent="menu_institucional_root"
+              sequence="30"
+              action="action_leads_calificados_institucional"/>
+
+    <menuitem id="menu_institucional_runs"
+              name="📜 Ejecuciones"
+              parent="menu_institucional_root"
+              sequence="40"
+              action="action_run_institucional"/>
+
+    <menuitem id="menu_institucional_partners"
+              name="👥 Partners (etiqueta EMPRESA)"
+              parent="menu_institucional_root"
+              sequence="50"
+              action="action_partner_institucional"/>
+
+    <menuitem id="menu_institucional_cadencias"
+              name="📅 Cadencias proactivas"
+              parent="menu_institucional_root"
+              sequence="60"
+              action="action_cadence_institucional"/>
+
+    <menuitem id="menu_institucional_config"
+              name="⚙️ Configuración (prompt Plan Control)"
+              parent="menu_institucional_root"
+              sequence="100"
+              action="action_cristal_agent_config"/>
+
+    <!-- ═════════════════════════════════════ -->
+    <!-- 📚 COMPARTIDO — Knowledge base         -->
+    <!-- ═════════════════════════════════════ -->
+    <menuitem id="menu_compartido_root"
+              name="📚 Compartido"
+              parent="menu_cristal_agent_root"
+              sequence="50"/>
+
+    <menuitem id="menu_compartido_knowledge"
+              name="📚 Base de conocimiento"
+              parent="menu_compartido_root"
+              sequence="10"
+              action="action_cristal_agent_knowledge"/>
+
+    <menuitem id="menu_compartido_all_runs"
+              name="📜 Todas las ejecuciones"
+              parent="menu_compartido_root"
+              sequence="20"
+              action="action_cristal_agent_run"/>
+
+    <menuitem id="menu_compartido_all_memorias"
+              name="💬 Todas las conversaciones"
+              parent="menu_compartido_root"
+              sequence="30"
+              action="action_cristal_agent_memory"/>
+
+    <!-- ═════════════════════════════════════ -->
+    <!-- ⚙️ SISTEMA                              -->
+    <!-- ═════════════════════════════════════ -->
+    <menuitem id="menu_sistema_root"
+              name="⚙️ Sistema"
+              parent="menu_cristal_agent_root"
+              sequence="100"
+              groups="base.group_system"/>
+
+    <menuitem id="menu_sistema_config"
+              name="⚙️ Configuración general"
+              parent="menu_sistema_root"
+              sequence="10"
+              action="action_cristal_agent_config"/>
+
+</odoo>

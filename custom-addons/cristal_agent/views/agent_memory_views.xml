@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Form -->
+    <record id="view_cristal_agent_memory_form" model="ir.ui.view">
+        <field name="name">cristal.agent.memory.form</field>
+        <field name="model">cristal.agent.memory</field>
+        <field name="arch" type="xml">
+            <form string="Memoria del agente">
+                <sheet>
+                    <div class="oe_title">
+                        <h1><field name="partner_id" readonly="1"/></h1>
+                    </div>
+
+                    <group>
+                        <group string="Estado">
+                            <field name="phone"/>
+                            <field name="client_type"/>
+                            <field name="flow_state"/>
+                            <field name="cadence_phase"/>
+                            <field name="last_interaction_at"/>
+                            <field name="lead_id"/>
+                        </group>
+                        <group string="Takeover humano">
+                            <field name="human_takeover"/>
+                            <field name="takeover_until"/>
+                            <field name="takeover_reason"/>
+                        </group>
+                    </group>
+
+                    <notebook>
+                        <page string="Buffer de calificación mayorista">
+                            <group>
+                                <field name="qual_name"/>
+                                <field name="qual_email"/>
+                                <field name="qual_has_business"/>
+                                <field name="qual_products"/>
+                                <field name="qual_monthly_volume"/>
+                                <field name="qual_volume_amount"/>
+                                <field name="qual_zone"/>
+                                <field name="qual_qualified"/>
+                            </group>
+                        </page>
+                        <page string="🏢 Buffer institucional (v1.9.x)">
+                            <div class="alert alert-info">
+                                <strong>qualification_data</strong> es un JSON con los datos
+                                transitorios del flow institucional. Se llena pregunta por
+                                pregunta y se vacía al cerrar la calificación (los datos
+                                pasan a res.partner + crm.lead).
+                            </div>
+                            <field name="qualification_data"
+                                   widget="json"
+                                   nolabel="1"
+                                   options="{'mode': 'view'}"/>
+                        </page>
+                        <page string="Cadencias">
+                            <group>
+                                <field name="cadence_started_at"/>
+                                <field name="last_cadence_step_executed"/>
+                            </group>
+                        </page>
+                        <page string="Stats">
+                            <group>
+                                <field name="total_messages_received"/>
+                                <field name="total_messages_sent"/>
+                                <field name="total_escalations"/>
+                            </group>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- List -->
+    <record id="view_cristal_agent_memory_list" model="ir.ui.view">
+        <field name="name">cristal.agent.memory.list</field>
+        <field name="model">cristal.agent.memory</field>
+        <field name="arch" type="xml">
+            <list string="Memorias">
+                <field name="partner_id"/>
+                <field name="client_type" widget="badge"/>
+                <field name="flow_state"/>
+                <field name="cadence_phase"/>
+                <field name="last_interaction_at"/>
+                <field name="human_takeover" widget="boolean_toggle"/>
+                <field name="total_messages_received"/>
+                <field name="total_messages_sent"/>
+                <field name="total_escalations"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Kanban — más visual (v1.9.5) -->
+    <record id="view_cristal_agent_memory_kanban" model="ir.ui.view">
+        <field name="name">cristal.agent.memory.kanban</field>
+        <field name="model">cristal.agent.memory</field>
+        <field name="arch" type="xml">
+            <kanban default_group_by="client_type" class="o_kanban_small_column">
+                <field name="partner_id"/>
+                <field name="client_type"/>
+                <field name="flow_state"/>
+                <field name="cadence_phase"/>
+                <field name="human_takeover"/>
+                <field name="last_interaction_at"/>
+                <field name="total_messages_received"/>
+                <field name="total_messages_sent"/>
+                <field name="lead_id"/>
+                <templates>
+                    <t t-name="kanban-box">
+                        <div class="oe_kanban_card oe_kanban_global_click">
+                            <div class="o_kanban_record_top">
+                                <div class="o_kanban_record_headings">
+                                    <strong class="o_kanban_record_title">
+                                        <field name="partner_id"/>
+                                    </strong>
+                                </div>
+                            </div>
+                            <div class="o_kanban_record_body">
+                                <div>
+                                    <field name="flow_state" widget="badge"
+                                           decoration-info="flow_state in ['inst_q_rubro','inst_q_nombre_empresa','inst_q_factura','inst_q_fiscal','inst_q_rol','inst_q_direccion','inst_q_disponibilidad','inst_q_empresa_check']"
+                                           decoration-success="flow_state in ['inst_q_completed','inst_handed_over','q_completed']"
+                                           decoration-warning="flow_state in ['idle','inst_detecting_type']"
+                                           decoration-danger="flow_state == 'inst_out_of_zone'"/>
+                                </div>
+                                <div t-if="record.cadence_phase.raw_value and record.cadence_phase.raw_value != 'none'" class="mt-1">
+                                    <small>📅 <field name="cadence_phase"/></small>
+                                </div>
+                                <div t-if="record.lead_id.raw_value" class="mt-1">
+                                    <small>📋 <field name="lead_id"/></small>
+                                </div>
+                                <div t-if="record.human_takeover.raw_value" class="mt-1">
+                                    <span class="badge text-bg-warning">🤫 Takeover activo</span>
+                                </div>
+                            </div>
+                            <div class="o_kanban_record_bottom">
+                                <div class="oe_kanban_bottom_left">
+                                    <small>📥 <field name="total_messages_received"/> · 📤 <field name="total_messages_sent"/></small>
+                                </div>
+                                <div class="oe_kanban_bottom_right">
+                                    <small><field name="last_interaction_at" widget="relative"/></small>
+                                </div>
+                            </div>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
+    <!-- Action -->
+    <record id="action_cristal_agent_memory" model="ir.actions.act_window">
+        <field name="name">Memorias por cliente</field>
+        <field name="res_model">cristal.agent.memory</field>
+        <field name="view_mode">kanban,list,form</field>
+    </record>
+
+</odoo>

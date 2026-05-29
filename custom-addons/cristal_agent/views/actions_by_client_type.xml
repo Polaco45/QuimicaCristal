@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- ACTIONS FILTRADAS POR CLIENT_TYPE (v1.9.5) -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+
+    <!-- ══════════ MAYORISTA ══════════ -->
+
+    <record id="action_memory_mayorista" model="ir.actions.act_window">
+        <field name="name">Conversaciones mayoristas</field>
+        <field name="res_model">cristal.agent.memory</field>
+        <field name="view_mode">kanban,list,form</field>
+        <field name="domain">[('client_type', '=', 'mayorista')]</field>
+        <field name="context">{'default_client_type': 'mayorista'}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">No hay conversaciones mayoristas todavía</p>
+            <p>Cuando un mayorista escriba por WhatsApp (cuenta Crilimp id=8), aparece acá.</p>
+        </field>
+    </record>
+
+    <record id="action_run_mayorista" model="ir.actions.act_window">
+        <field name="name">Ejecuciones mayoristas</field>
+        <field name="res_model">cristal.agent.run</field>
+        <field name="view_mode">list,form</field>
+        <field name="domain">[('partner_id.agent_memory_id.client_type', '=', 'mayorista')]</field>
+    </record>
+
+    <record id="action_cadence_mayorista" model="ir.actions.act_window">
+        <field name="name">Cadencias mayoristas</field>
+        <field name="res_model">cristal.agent.cadence</field>
+        <field name="view_mode">list,form</field>
+        <field name="domain">[('client_type', 'in', ['mayorista', 'both'])]</field>
+        <field name="context">{'default_client_type': 'mayorista'}</field>
+    </record>
+
+    <record id="action_partner_mayorista" model="ir.actions.act_window">
+        <field name="name">Partners mayoristas</field>
+        <field name="res_model">res.partner</field>
+        <field name="view_mode">kanban,list,form</field>
+        <field name="domain">[('category_id', 'in', [16])]</field>
+        <field name="context">{'default_category_id': [(4, 16)]}</field>
+    </record>
+
+    <!-- ══════════ INSTITUCIONAL ══════════ -->
+
+    <record id="action_memory_institucional" model="ir.actions.act_window">
+        <field name="name">Conversaciones institucionales</field>
+        <field name="res_model">cristal.agent.memory</field>
+        <field name="view_mode">kanban,list,form</field>
+        <field name="domain">[('client_type', '=', 'institucional')]</field>
+        <field name="context">{'default_client_type': 'institucional'}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">No hay conversaciones institucionales todavía</p>
+            <p>Cuando una empresa escriba por WhatsApp (cuenta Compras id=5), aparece acá.</p>
+        </field>
+    </record>
+
+    <record id="action_calificaciones_en_curso" model="ir.actions.act_window">
+        <field name="name">⏳ Calificaciones en curso</field>
+        <field name="res_model">cristal.agent.memory</field>
+        <field name="view_mode">kanban,list,form</field>
+        <field name="domain">[
+            ('client_type', '=', 'institucional'),
+            ('flow_state', 'in', [
+                'inst_detecting_type', 'inst_q_rubro', 'inst_q_nombre_empresa',
+                'inst_q_factura', 'inst_q_fiscal', 'inst_q_rol',
+                'inst_q_direccion', 'inst_q_disponibilidad', 'inst_q_empresa_check'
+            ]),
+            ('human_takeover', '=', False),
+        ]</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">No hay calificaciones en curso</p>
+            <p>Cuando una empresa esté en medio del flow de 6 preguntas, aparece acá.</p>
+        </field>
+    </record>
+
+    <record id="action_leads_calificados_institucional" model="ir.actions.act_window">
+        <field name="name">✅ Leads calificados (Plan Control)</field>
+        <field name="res_model">crm.lead</field>
+        <field name="view_mode">kanban,list,form</field>
+        <field name="domain">[
+            ('stage_id', '=', 14),
+            ('name', 'ilike', 'Plan Control'),
+        ]</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">No hay leads institucionales calificados todavía</p>
+            <p>Cuando el bot complete una calificación institucional, el lead aparece acá en stage "Calificado".</p>
+        </field>
+    </record>
+
+    <record id="action_run_institucional" model="ir.actions.act_window">
+        <field name="name">Ejecuciones institucionales</field>
+        <field name="res_model">cristal.agent.run</field>
+        <field name="view_mode">list,form</field>
+        <field name="domain">[('partner_id.agent_memory_id.client_type', '=', 'institucional')]</field>
+    </record>
+
+    <record id="action_partner_institucional" model="ir.actions.act_window">
+        <field name="name">Partners institucionales</field>
+        <field name="res_model">res.partner</field>
+        <field name="view_mode">kanban,list,form</field>
+        <field name="domain">[('category_id', 'in', [1])]</field>
+        <field name="context">{'default_category_id': [(4, 1)]}</field>
+    </record>
+
+    <record id="action_cadence_institucional" model="ir.actions.act_window">
+        <field name="name">Cadencias institucionales</field>
+        <field name="res_model">cristal.agent.cadence</field>
+        <field name="view_mode">list,form</field>
+        <field name="domain">[('client_type', 'in', ['institucional', 'both'])]</field>
+        <field name="context">{'default_client_type': 'institucional'}</field>
+    </record>
+
+</odoo>

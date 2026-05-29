@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_cristal_agent_cadence_tree" model="ir.ui.view">
+        <field name="name">cristal.agent.cadence.tree</field>
+        <field name="model">cristal.agent.cadence</field>
+        <field name="arch" type="xml">
+            <list string="Cadencias proactivas" multi_edit="1">
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+                <field name="phase" widget="badge"/>
+                <field name="trigger_event"/>
+                <field name="trigger_days_offset" string="Días"/>
+                <field name="whatsapp_template_id"/>
+                <field name="requires_open_window" string="Solo ventana abierta"/>
+                <field name="max_runs_per_partner" string="Máx/cliente"/>
+                <field name="active" widget="boolean_toggle"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_cristal_agent_cadence_form" model="ir.ui.view">
+        <field name="name">cristal.agent.cadence.form</field>
+        <field name="model">cristal.agent.cadence</field>
+        <field name="arch" type="xml">
+            <form string="Cadencia proactiva">
+                <sheet>
+                    <div class="oe_title">
+                        <label for="name"/>
+                        <h1>
+                            <field name="name" placeholder="Ej: Chequeo post-muestra día +2"/>
+                        </h1>
+                    </div>
+                    <group>
+                        <group string="Disparador">
+                            <field name="phase"/>
+                            <field name="trigger_event"/>
+                            <field name="trigger_days_offset"/>
+                            <field name="max_runs_per_partner"/>
+                            <field name="active"/>
+                            <field name="sequence"/>
+                        </group>
+                        <group string="WhatsApp">
+                            <field name="whatsapp_template_id"
+                                   options="{'no_create': True}"
+                                   domain="[('status', '=', 'approved')]"/>
+                            <field name="wa_account_id"/>
+                            <field name="requires_open_window"/>
+                        </group>
+                    </group>
+                    <separator string="Guía de variables del template"/>
+                    <field name="template_variables_guide"
+                           placeholder="Ejemplo: '{{1}}=nombre del cliente, {{2}}=descripción de la oferta vigente para esta semana'"/>
+
+                    <separator string="Instrucciones para Claudio"/>
+                    <field name="instructions_for_bot"
+                           placeholder="Qué tiene que hacer el bot al dispararse esta cadencia. Ej: 'Chequear si llegó la muestra, preguntar qué le pareció, y según la respuesta avanzar fase o manejar objeciones.'"/>
+
+                    <separator string="Notas internas (para vos)"/>
+                    <field name="description" placeholder="Notas tuyas sobre esta cadencia"/>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_cristal_agent_cadence_search" model="ir.ui.view">
+        <field name="name">cristal.agent.cadence.search</field>
+        <field name="model">cristal.agent.cadence</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="name"/>
+                <filter name="active" string="Activas" domain="[('active', '=', True)]"/>
+                <separator/>
+                <filter name="phase_1" string="Fase 1" domain="[('phase', '=', 'phase_1')]"/>
+                <filter name="phase_2" string="Fase 2" domain="[('phase', '=', 'phase_2')]"/>
+                <filter name="phase_2_quoted" string="Fase 2 - Quoted" domain="[('phase', '=', 'phase_2_quoted')]"/>
+                <filter name="phase_3" string="Fase 3" domain="[('phase', '=', 'phase_3')]"/>
+                <filter name="phase_4" string="Fase 4" domain="[('phase', '=', 'phase_4')]"/>
+                <filter name="phase_5" string="Fase 5" domain="[('phase', '=', 'phase_5')]"/>
+                <group string="Agrupar por">
+                    <filter name="group_phase" string="Fase" context="{'group_by': 'phase'}"/>
+                    <filter name="group_event" string="Evento trigger" context="{'group_by': 'trigger_event'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_cristal_agent_cadence" model="ir.actions.act_window">
+        <field name="name">📅 Cadencias proactivas</field>
+        <field name="res_model">cristal.agent.cadence</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_cristal_agent_cadence_search"/>
+        <field name="context">{'search_default_active': 1, 'search_default_group_phase': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Cadencias proactivas
+            </p>
+            <p>
+                Estos son los pasos que Claudio ejecuta automáticamente para hacer
+                seguimiento a tus clientes (post-muestra, post-compra, recuperación, etc.).
+                Asignale a cada paso un <b>template de WhatsApp</b> aprobado por Meta
+                para que pueda contactar al cliente incluso después de las 24hs de la
+                última conversación.
+            </p>
+        </field>
+    </record>
+
+</odoo>

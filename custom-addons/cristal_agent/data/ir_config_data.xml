@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <!--
+        Configuración inicial del agente.
+
+        Se crea UNA config activa con defaults razonables. Las identidades
+        técnicas (bot_partner_id, owner_partner_id, etc.) NO se asignan acá
+        para evitar errores de FK si los IDs no existen en la DB destino.
+
+        Los IDs se asignan desde:
+        1. El post_init_hook (que valida si los IDs existen y los setea)
+        2. La UI Cristal Agent → Configuración (manualmente por Joaco)
+
+        El system_prompt se carga desde data/prompts/claudio_v2.md vía post_init_hook.
+        -->
+
+        <record id="cristal_agent_config_main" model="cristal.agent.config" forcecreate="True">
+            <field name="name">Configuración principal</field>
+            <field name="active" eval="True"/>
+            <field name="enabled" eval="True"/>
+            <field name="anthropic_api_url">https://api.anthropic.com/v1/messages</field>
+            <field name="anthropic_model">claude-sonnet-4-6</field>
+            <field name="anthropic_version">2023-06-01</field>
+            <field name="max_tokens" eval="4096"/>
+            <field name="max_iterations" eval="20"/>
+            <field name="temperature" eval="0.7"/>
+            <field name="enable_prompt_caching" eval="True"/>
+            <field name="prompt_version">claudio_v2</field>
+            <field name="timezone">America/Argentina/Cordoba</field>
+            <field name="work_hours_start" eval="8.5"/>
+            <field name="work_hours_end" eval="21.0"/>
+            <field name="system_prompt"><![CDATA[Sos Claudio, agente comercial autónomo de Química Cristal en Río Cuarto, Córdoba, Argentina.
+
+⚠️ CONFIGURACIÓN INICIAL: este es un prompt placeholder. El prompt completo se carga
+automáticamente desde data/prompts/claudio_v2.md al instalar el módulo (vía post_init_hook).
+
+Si estás viendo este texto, significa que el post_init_hook no se ejecutó. Andá a:
+Cristal Agent → Configuración → Configuración principal, abrí el campo "System prompt activo"
+y pegá ahí el contenido del archivo data/prompts/claudio_v2.md del módulo.
+
+Mientras no haya un prompt completo, NO respondas nada al cliente. Solo escalá a Joaco.]]></field>
+        </record>
+
+    </data>
+</odoo>

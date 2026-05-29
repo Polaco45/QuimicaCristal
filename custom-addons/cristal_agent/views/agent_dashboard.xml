@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Vista de gráfico para el Dashboard -->
+    <record id="view_cristal_agent_run_graph" model="ir.ui.view">
+        <field name="name">cristal.agent.run.graph</field>
+        <field name="model">cristal.agent.run</field>
+        <field name="arch" type="xml">
+            <graph string="Actividad del agente" type="line">
+                <field name="create_date" interval="day"/>
+                <field name="iterations" type="measure"/>
+                <field name="cost_usd" type="measure"/>
+            </graph>
+        </field>
+    </record>
+
+    <!-- Vista pivot -->
+    <record id="view_cristal_agent_run_pivot" model="ir.ui.view">
+        <field name="name">cristal.agent.run.pivot</field>
+        <field name="model">cristal.agent.run</field>
+        <field name="arch" type="xml">
+            <pivot string="Análisis de ejecuciones">
+                <field name="trigger" type="row"/>
+                <field name="state" type="col"/>
+                <field name="iterations" type="measure"/>
+                <field name="total_tool_calls" type="measure"/>
+                <field name="cost_usd" type="measure"/>
+            </pivot>
+        </field>
+    </record>
+
+    <!-- Action del dashboard -->
+    <record id="action_cristal_agent_dashboard" model="ir.actions.act_window">
+        <field name="name">Dashboard del Agente</field>
+        <field name="res_model">cristal.agent.run</field>
+        <field name="view_mode">graph,pivot,list</field>
+        <field name="context">{
+            'search_default_filter_today': 1,
+            'graph_mode': 'line',
+        }</field>
+    </record>
+
+</odoo>
