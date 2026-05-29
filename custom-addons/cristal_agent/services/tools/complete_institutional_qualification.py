@@ -255,12 +255,15 @@ class CompleteInstitutionalQualification(AgentTool):
 
             if company:
                 # Actualizar solo campos vacíos para no pisar datos buenos
-                update_vals = {'category_id': [(4, CATEGORY_EMPRESA), (4, rubro_cat_id)]}
+                update_vals = {
+                    'category_id': [(4, CATEGORY_EMPRESA), (4, rubro_cat_id)],
+                    # Pricelist L.E 2 SIEMPRE en institucional, aunque la
+                    # empresa ya tuviera otra cargada (regla del brief).
+                    'property_product_pricelist': PRICELIST_LE2,
+                }
                 for k in ('street', 'city'):
                     if not company[k]:
                         update_vals[k] = company_vals[k]
-                if not company.property_product_pricelist:
-                    update_vals['property_product_pricelist'] = PRICELIST_LE2
                 if not company.state_id:
                     update_vals['state_id'] = STATE_CORDOBA
                 if not company.country_id:
@@ -335,7 +338,9 @@ class CompleteInstitutionalQualification(AgentTool):
                 'city': city,
                 'state_id': original.state_id.id or STATE_CORDOBA,
                 'country_id': original.country_id.id or COUNTRY_AR,
-                'property_product_pricelist': original.property_product_pricelist.id or PRICELIST_LE2,
+                # IMPORTANTE: pricelist L.E 2 SIEMPRE en institucional —
+                # no respetamos el default de Odoo (suele asignar L.C 1).
+                'property_product_pricelist': PRICELIST_LE2,
                 'category_id': [(4, CATEGORY_EMPRESA), (4, rubro_cat_id)],
             })
             partner_for_lead = original
