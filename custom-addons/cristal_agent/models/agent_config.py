@@ -9,6 +9,7 @@ La configuración se accede desde cualquier parte del código vía:
     config = self.env['cristal.agent.config'].get_active()
 """
 import logging
+from datetime import timedelta
 from odoo import models, fields, api, _
 from odoo.exceptions import ValidationError, UserError
 
@@ -75,15 +76,25 @@ class CristalAgentConfig(models.Model):
 
     # ─────────── System prompt ───────────
     system_prompt = fields.Text(
-        string="System prompt activo",
+        string="System prompt activo (mayorista)",
         required=True,
-        help="Prompt que define la personalidad, reglas y comportamiento del agente. "
-             "El default se carga desde data/prompts/claudio_v2.md al instalar.",
+        help="Prompt que define la personalidad, reglas y comportamiento del agente "
+             "para flow MAYORISTA. El default se carga desde data/prompts/claudio_v2.md.",
     )
     prompt_version = fields.Char(
         string="Versión del prompt",
         default="claudio_v2",
         required=True,
+    )
+
+    # v1.9.0: prompt institucional. Si está vacío, el sistema usa el prompt
+    # mayorista con una sección condicional. Si tiene valor, lo usa entero
+    # cuando memory.client_type == 'institucional'.
+    system_prompt_institutional = fields.Text(
+        string="System prompt institucional",
+        help="Prompt dedicado para flow INSTITUCIONAL (empresas finales, "
+             "Plan Control). Si está vacío, se usa el prompt mayorista. "
+             "Default se carga de data/prompts/claudio_institutional_v1.md.",
     )
 
     # ─────────── Operativa ───────────
@@ -285,7 +296,8 @@ class CristalAgentConfig(models.Model):
         string="Cuentas WhatsApp donde actúa el bot",
         help="Lista de cuentas donde el bot procesa mensajes entrantes. "
              "Si está vacío, el bot actúa en todas las cuentas. "
-             "Recomendado: solo Crilimp (para que mensajes de Compras o Info no disparen al bot)."
+             "v1.9.0: configurar [5, 8] para que el bot actúe en Crilimp (mayorista, id=8) "
+             "Y Compras (institucional, id=5). Info (id=3) queda fuera."
     )
 
     # ═════════════════ RANGOS DE NIVELES (en LITROS mensuales) ═════════════════
@@ -414,3 +426,100 @@ class CristalAgentConfig(models.Model):
             }
         except Exception as e:
             raise UserError(_("Error al conectar con Anthropic: %s") % str(e))
+
+    # ════════════════════════════════════════════════════════════════════
+    # v1.9.0 — Helpers de routing institucional vs mayorista
+    # ════════════════════════════════════════════════════════════════════
+
+    # IDs de las cuentas WhatsApp. Hardcoded por ahora — si Joaco cambia
+    # las cuentas, hay que actualizar acá.
+    WA_ACCOUNT_CRILIMP = 8       # Mayorista (flow Claudio v3.1)
+    WA_ACCOUNT_COMPRAS = 5       # Institucional (flow Plan Control)
+    WA_ACCOUNT_INFO = 3          # No usar
+
+    # Categorías de partner que indican el tipo (fallback cuando no hay
+    # wa_account_id claro). Pueden estar superpuestas en algunos partners.
+    CATEGORY_MAYORISTA = 16
+    CATEGORY_EMPRESA = 1
+
+    # Partners internos a EXCLUIR del filtro de "cliente activo" para no
+    # contar comprobantes X de consumo propio (Sergio, Joaquin, Claudio bot, etc).
+    INTERNAL_PARTNER_IDS = [3, 60023, 65371, 65374, 75679, 79526, 79653, 80799, 64675]
+
+    @api.model
+    def detect_client_type(self, wa_account_id=None, partner=None):
+        """
+        Devuelve 'mayorista' / 'institucional' / 'unknown'.
+
+        Criterio principal: wa_account_id por donde entró el mensaje.
+        Fallback: categorías del partner.
+        """
+        # CRITERIO 1: wa_account_id (la fuente más confiable)
+        if wa_account_id == self.WA_ACCOUNT_CRILIMP:
+            return 'mayorista'
+        if wa_account_id == self.WA_ACCOUNT_COMPRAS:
+            return 'institucional'
+
+        # CRITERIO 2: categorías del partner
+        if partner:
+            cats = partner.category_id.ids
+            if self.CATEGORY_MAYORISTA in cats:
+                return 'mayorista'
+            if self.CATEGORY_EMPRESA in cats:
+                return 'institucional'
+
+        return 'unknown'
+
+    @api.model
+    def has_recent_real_sale(self, partner, days=180):
+        """
+        True si el partner (o su commercial_partner) tiene una venta REAL
+        (no muestra, no comprobante interno) en los últimos N días.
+
+        Filtros:
+        - state = 'sale' (confirmada)
+        - company_id = 1 (Crilim S.A.S.)
+        - amount_total > 0 (excluye muestras de $0)
+        - commercial_partner NO está en lista de internos
+        - date_order >= today - N días
+        """
+        if not partner:
+            return False
+
+        # Excluir el propio partner si es interno (no aplica bypass)
+        commercial_id = partner.commercial_partner_id.id
+        if commercial_id in self.INTERNAL_PARTNER_IDS:
+            return False
+
+        cutoff = fields.Date.today() - timedelta(days=days)
+        count = self.env['sale.order'].sudo().search_count([
+            ('partner_id.commercial_partner_id', '=', commercial_id),
+            ('state', '=', 'sale'),
+            ('company_id', '=', 1),
+            ('amount_total', '>', 0),
+            ('partner_id.commercial_partner_id', 'not in', self.INTERNAL_PARTNER_IDS),
+            ('date_order', '>=', cutoff),
+        ])
+        return count > 0
+
+    @api.model
+    def should_bypass_qualification(self, client_type, partner, memory):
+        """
+        Devuelve (bool, reason) indicando si el bot debe saltarse el
+        flow de calificación y activar takeover directamente.
+
+        IMPORTANTE: el bypass aplica SOLO a client_type='institucional'.
+        Para mayorista (Claudio v3.1) NUNCA se hace bypass.
+        """
+        if client_type != 'institucional':
+            return (False, None)
+
+        # Si ya estaba calificado en el pasado, no recalificar
+        if memory and memory.qual_qualified:
+            return (True, "Ya calificado previamente")
+
+        # Si tiene venta real reciente, es cliente activo
+        if self.has_recent_real_sale(partner):
+            return (True, "Cliente activo con ventas recientes")
+
+        return (False, None)

@@ -69,3 +69,7 @@ from . import set_partner_level
 
 # Operativos
 from . import pause_bot
+
+# Calificación institucional (v1.9.1)
+from . import update_qualification_data
+from . import complete_institutional_qualification

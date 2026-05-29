@@ -21,28 +21,31 @@ from datetime import datetime
 _logger = logging.getLogger(__name__)
 
 
-def build_system_prompt(env, partner=None, base_prompt=None):
+def build_system_prompt(env, partner=None, base_prompt=None, client_type=None):
     """
     Construye el system prompt completo para Claude.
 
-    El system prompt se compone de:
-    1. Base prompt (Claudio v2) — la personalidad y reglas
-    2. Contexto del cliente actual (si lo hay)
-    3. Conocimiento relevante de la KB
-    4. Ofertas vigentes aplicables
-    5. Datos del momento (fecha, hora, día de la semana)
-    6. Reglas duras (CRM, escalación, limitaciones técnicas)
+    v1.9.0: si client_type='institucional' y hay system_prompt_institutional
+    configurado, lo usa entero. Si no, usa el mayorista de siempre.
     """
     Config = env['cristal.agent.config'].sudo()
     config = Config.get_active()
 
     parts = []
 
-    # ─── 1. Base prompt ───
+    # ─── 1. Base prompt — switch por client_type (v1.9.0) ───
     if base_prompt:
         parts.append(base_prompt)
+    elif client_type == 'institucional' and config.system_prompt_institutional:
+        parts.append(config.system_prompt_institutional)
+        _logger.info("📝 Usando system prompt INSTITUCIONAL")
     else:
         parts.append(config.system_prompt or "")
+        if client_type == 'institucional':
+            _logger.warning(
+                "⚠️ client_type=institucional pero no hay system_prompt_institutional "
+                "configurado. Usando el mayorista como fallback."
+            )
 
     # ─── 2. Contexto temporal ───
     now = datetime.now()

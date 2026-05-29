@@ -70,6 +70,27 @@ def post_init_load_prompt(env):
     except Exception as e:
         _logger.exception("Error cargando prompt en post_init: %s", e)
 
+    # 1.5 v1.9.0 — Cargar prompt institucional si existe
+    try:
+        inst_path = os.path.join(
+            os.path.dirname(os.path.realpath(__file__)),
+            'data', 'prompts', 'claudio_institutional_v1.md'
+        )
+        if os.path.exists(inst_path):
+            with open(inst_path, 'r', encoding='utf-8') as f:
+                inst_content = f.read()
+            # Solo lo sobrescribimos si está vacío (no pisar config manual)
+            if not config.system_prompt_institutional:
+                config.write({'system_prompt_institutional': inst_content})
+                _logger.info(
+                    "✅ Prompt institucional cargado (%s chars) en config id=%s",
+                    len(inst_content), config.id
+                )
+        else:
+            _logger.warning("post_init: no existe prompt institucional en data/prompts/")
+    except Exception as e:
+        _logger.exception("Error cargando prompt institucional: %s", e)
+
     # 2. Asignar identidades técnicas con validación
     vals = {}
     for field_name, default_id in DEFAULT_IDENTITIES.items():

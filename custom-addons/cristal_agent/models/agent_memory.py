@@ -25,6 +25,22 @@ QUALIFICATION_FLOWS = [
     ('q_completed', 'Calificación completada'),
 ]
 
+# Estados del flujo de calificación institucional (v1.9.0)
+INSTITUTIONAL_FLOWS = [
+    ('inst_detecting_type', 'Detectando tipo de cliente (A/B)'),
+    ('inst_q_rubro', 'Preguntando rubro'),
+    ('inst_q_nombre_empresa', 'Preguntando nombre y empresa'),
+    ('inst_q_factura', 'Preguntando si necesita factura'),
+    ('inst_q_fiscal', 'Pidiendo nombre fiscal + CUIT'),
+    ('inst_q_rol', 'Preguntando rol del contacto'),
+    ('inst_q_direccion', 'Preguntando dirección'),
+    ('inst_q_disponibilidad', 'Preguntando disponibilidad relevamiento'),
+    ('inst_q_empresa_check', 'Verificando si la empresa es la cargada u otra'),
+    ('inst_q_completed', 'Calificación institucional completada'),
+    ('inst_handed_over', 'Handoff a vendedor humano'),
+    ('inst_out_of_zone', 'Descalificado por zona'),
+]
+
 
 class CristalAgentMemory(models.Model):
     _name = 'cristal.agent.memory'
@@ -40,9 +56,19 @@ class CristalAgentMemory(models.Model):
     )
     phone = fields.Char(string="Teléfono", index=True)
 
+    # ─────────── Tipo de cliente (v1.9.0) ───────────
+    # Detección: principal por wa_account_id del mensaje entrante,
+    # fallback por categorías del partner. Si ambos fallan, 'unknown' y
+    # el bot pregunta A/B.
+    client_type = fields.Selection([
+        ('mayorista', 'Mayorista (revendedor Crilimp)'),
+        ('institucional', 'Institucional (empresa final)'),
+        ('unknown', 'No determinado'),
+    ], string="Tipo de cliente", default='unknown', required=True, index=True)
+
     # ─────────── Estado del flujo conversacional ───────────
     flow_state = fields.Selection(
-        QUALIFICATION_FLOWS + [
+        QUALIFICATION_FLOWS + INSTITUTIONAL_FLOWS + [
             ('idle', 'Idle'),
             ('cf_handling', 'Atendiendo CF'),
             ('empresa_handling', 'Atendiendo Empresa'),
@@ -58,6 +84,19 @@ class CristalAgentMemory(models.Model):
     last_interaction_at = fields.Datetime(
         string="Última interacción",
         default=fields.Datetime.now,
+    )
+
+    # ─────────── Datos transitorios de calificación (v1.9.0) ───────────
+    # JSON con datos que el bot va recolectando durante la conversación.
+    # AL CERRAR la calificación, esos datos se vuelcan a res.partner
+    # (campos nativos) + crm.lead, y este buffer se limpia.
+    # No usar para datos definitivos del cliente — eso va en res.partner.
+    qualification_data = fields.Json(
+        string="Buffer calificación (JSON)",
+        help="Datos transitorios mientras se recolectan respuestas. "
+             "Estructura típica: {contact_name, company_name, fiscal_name, "
+             "vat, rubro_label, rubro_partner_category_id, necesita_factura, "
+             "rol, street, city, disponibilidad, notas_extra}",
     )
 
     # ─────────── Buffer de calificación (Fase 1) ───────────

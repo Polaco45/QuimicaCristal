@@ -110,7 +110,41 @@ class WhatsAppMessage(models.Model):
             _logger.info("🤫 Takeover activo para %s. Bot ignora el mensaje.", partner.name)
             return
 
-        # 7) Actualizar timestamp de últimoinbound
+        # 6.5) v1.9.0 — Detectar client_type y aplicar bypass institucional
+        # Determinamos el tipo de cliente principal por wa_account_id,
+        # fallback por categorías del partner.
+        wa_account_id = wa_message.wa_account_id.id if wa_message.wa_account_id else None
+        client_type = config.detect_client_type(wa_account_id=wa_account_id, partner=partner)
+
+        # Si la memoria no tenía tipo todavía O era unknown y ahora podemos
+        # determinarlo, la actualizamos.
+        if memory.client_type in (False, 'unknown') and client_type != 'unknown':
+            memory.sudo().write({'client_type': client_type})
+        elif memory.client_type and memory.client_type != 'unknown':
+            # Si la memoria ya tenía un client_type seteado, lo respetamos
+            # (puede haber sido cambiado manualmente o por switch mid-flow).
+            client_type = memory.client_type
+
+        _logger.info("🏷️  Client type detectado: %s (wa_account=%s, partner=%s)",
+                     client_type, wa_account_id, partner.name)
+
+        # BYPASS: solo aplica a institucional. Para mayorista NUNCA hay bypass.
+        should_bypass, bypass_reason = config.should_bypass_qualification(
+            client_type=client_type,
+            partner=partner,
+            memory=memory,
+        )
+        if should_bypass:
+            _logger.info(
+                "🚦 Bypass institucional para %s — motivo: %s",
+                partner.name, bypass_reason
+            )
+            # Activamos takeover indefinido y notificamos a Joaco
+            memory.activate_takeover(reason=bypass_reason, duration_hours=0)
+            self._notify_joaco_institutional_bypass(wa_message, partner, bypass_reason, plain_body)
+            return
+
+        # 7) Actualizar timestamp de último inbound
         partner.sudo().write({'agent_last_inbound_at': fields.Datetime.now()})
 
         # 8) Disparar el agente (en otro contexto, idealmente async)
@@ -119,6 +153,40 @@ class WhatsAppMessage(models.Model):
         # Importamos acá para evitar circular imports
         from ..services.claude_client import dispatch_agent_for_message
         dispatch_agent_for_message(self.env, wa_message, partner, memory, plain_body)
+
+    def _notify_joaco_institutional_bypass(self, wa_message, partner, reason, plain_body):
+        """
+        v1.9.0 — Notifica a Joaco vía canal interno cuando el bot se saltea
+        la calificación institucional (cliente activo o ya calificado).
+        """
+        try:
+            JOACO_INTERNAL_CHANNEL = 969  # Canal interno con Joaco
+
+            channel = self.env['discuss.channel'].sudo().browse(JOACO_INTERNAL_CHANNEL)
+            if not channel.exists():
+                _logger.warning("Canal interno %s no existe — skip notificación", JOACO_INTERNAL_CHANNEL)
+                return
+
+            wa_account_name = wa_message.wa_account_id.name if wa_message.wa_account_id else "?"
+            preview = plain_body[:120] if plain_body else ""
+
+            msg = (
+                f"🚦 Bypass institucional activado\n"
+                f"👤 Cliente: {partner.name} (id={partner.id})\n"
+                f"📞 WhatsApp: {wa_message.mobile_number}\n"
+                f"🏷️ Cuenta WA: {wa_account_name}\n"
+                f"💬 Motivo: {reason}\n"
+                f"📨 Mensaje: \"{preview}\"\n\n"
+                f"Atendelo manualmente."
+            )
+            channel.message_post(
+                body=msg.replace('\n', '<br/>'),
+                message_type='comment',
+                subtype_xmlid='mail.mt_comment',
+            )
+            _logger.info("📣 Notificación de bypass enviada a canal %s", JOACO_INTERNAL_CHANNEL)
+        except Exception as e:
+            _logger.exception("Error notificando bypass institucional: %s", e)
 
     def _find_or_create_partner(self, phone_raw):
         """

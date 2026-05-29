@@ -30,6 +30,18 @@ class CristalAgentCadence(models.Model):
     sequence = fields.Integer(default=10)
     active = fields.Boolean(default=True)
 
+    # v1.9.0: filtro por tipo de cliente
+    client_type = fields.Selection([
+        ('mayorista', 'Mayorista'),
+        ('institucional', 'Institucional'),
+        ('both', 'Ambos'),
+    ], string="Tipo de cliente",
+       default='mayorista',
+       required=True,
+       help="Las cadencias institucionales por ahora se manejan vía "
+            "base.automation del CRM, no acá. Default 'mayorista' para no "
+            "tocar las 10 cadencias existentes.")
+
     phase = fields.Selection([
         ('phase_1', 'Fase 1 — Calificación'),
         ('phase_2', 'Fase 2 — Conversión (post-muestra)'),

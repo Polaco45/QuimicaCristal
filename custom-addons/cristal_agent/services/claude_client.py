@@ -44,12 +44,16 @@ def dispatch_agent_for_message(env, wa_message, partner, memory, plain_text):
     })
 
     try:
+        # v1.9.0 — Detectar client_type del memory (ya está seteado por
+        # el pipeline en whatsapp_message.py antes de llegar acá).
+        client_type = memory.client_type if memory and memory.client_type else None
+
         # Construir prompts
-        system_prompt = build_system_prompt(env, partner=partner)
+        system_prompt = build_system_prompt(env, partner=partner, client_type=client_type)
         user_message = build_user_message_for_whatsapp(env, wa_message, partner, plain_text)
 
         # Ejecutar el loop
-        client = ClaudeClient(env, run=run)
+        client = ClaudeClient(env, run=run, client_type=client_type)
         result = client.run_conversation(
             system_prompt=system_prompt,
             user_message=user_message,
@@ -294,9 +298,11 @@ class ClaudeClient:
     su run (para loguear todo).
     """
 
-    def __init__(self, env, run=None):
+    def __init__(self, env, run=None, client_type=None):
         self.env = env
         self.run = run
+        # v1.9.0 — Filtra tools por client_type. Si None, todas las tools.
+        self.client_type = client_type
         self.config = env['cristal.agent.config'].sudo().get_active()
         self.api_key = self.env['cristal.agent.config'].sudo().get_api_key()
 
@@ -472,9 +478,8 @@ class ClaudeClient:
             system_param = system_prompt
 
         # Tools: si caching está prendido, marcamos la ÚLTIMA tool con cache_control.
-        # Eso cachea TODAS las tools anteriores (es como tiene que ser, propagación
-        # hacia atrás). Ahorra ~3k tokens por llamada.
-        tools_param = self.tool_registry.schemas_for_anthropic()
+        # v1.9.0 — Filtramos por client_type si aplica.
+        tools_param = self.tool_registry.schemas_for_anthropic(client_type=self.client_type)
         if self.config.enable_prompt_caching and tools_param:
             # Copiar la última tool y agregarle cache_control
             tools_param = list(tools_param)
