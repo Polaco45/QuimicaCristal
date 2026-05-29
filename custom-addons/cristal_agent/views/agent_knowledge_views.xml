@@ -33,6 +33,7 @@
 
                     <group string="Aplica a">
                         <field name="applies_to"/>
+                        <field name="client_type_filter"/>
                         <field name="partner_ids" widget="many2many_tags"
                                invisible="applies_to != 'specific_partners'"/>
                     </group>
@@ -54,6 +55,7 @@
                 <field name="name"/>
                 <field name="category"/>
                 <field name="applies_to"/>
+                <field name="client_type_filter" widget="badge"/>
                 <field name="valid_until"/>
                 <field name="source"/>
                 <field name="times_used"/>

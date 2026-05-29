@@ -85,6 +85,17 @@ class CristalAgentKnowledge(models.Model):
         ('specific_partners', 'Clientes específicos'),
     ], string="Aplica a", default='all', required=True)
 
+    # FIX v1.9.9: filtrar knowledge por canal (mayorista vs institucional)
+    # Para que las reglas de un canal NO se inyecten en el prompt del otro.
+    client_type_filter = fields.Selection([
+        ('both', 'Ambos canales'),
+        ('mayorista', 'Solo bot Mayorista (Crilimp)'),
+        ('institucional', 'Solo bot Institucional (Compras)'),
+    ], string="Aplica al bot", default='both', required=True,
+       help="Filtra en qué bot se inyecta esta knowledge. Crítico para "
+            "reglas de derivación entre canales: si la regla 'derivar a Compras' "
+            "se mete en el bot de Compras, se vuelve circular.")
+
     partner_ids = fields.Many2many(
         'res.partner',
         string="Clientes específicos",
@@ -120,7 +131,7 @@ class CristalAgentKnowledge(models.Model):
 
     # ─────────── Métodos ───────────
     @api.model
-    def search_for_agent(self, category=None, partner_id=None, level=None, limit=20):
+    def search_for_agent(self, category=None, partner_id=None, level=None, client_type=None, limit=20):
         """
         Busca conocimiento aplicable a la situación actual.
 
@@ -128,6 +139,8 @@ class CristalAgentKnowledge(models.Model):
             category: filtrar por categoría (None = todas)
             partner_id: filtrar conocimiento aplicable a este partner
             level: nivel del partner ('bronce', 'plata', 'oro') para filtrar
+            client_type: 'mayorista' o 'institucional' — filtra knowledge por canal.
+                         Si None, devuelve todo (compat retro).
             limit: máximo de resultados
 
         Returns:
@@ -136,7 +149,6 @@ class CristalAgentKnowledge(models.Model):
         today = fields.Date.today()
 
         # Dominio base: activos y vigentes
-        # Estructura: active AND (valid_from null OR <=today) AND (valid_until null OR >=today)
         domain = [
             ('active', '=', True),
             '|', ('valid_from', '=', False), ('valid_from', '<=', today),
@@ -144,6 +156,11 @@ class CristalAgentKnowledge(models.Model):
         ]
         if category:
             domain.append(('category', '=', category))
+
+        # FIX v1.9.9: filtrar por canal del bot
+        if client_type in ('mayorista', 'institucional'):
+            # El bot ve: knowledge que aplica a "both" + las específicas a su canal
+            domain.append(('client_type_filter', 'in', ['both', client_type]))
 
         # Construir cláusulas de targeting de forma robusta usando 'in'
         level_map = {
@@ -156,7 +173,6 @@ class CristalAgentKnowledge(models.Model):
             applies_to_values.append(level_map[level])
 
         if partner_id:
-            # OR: (applies_to in [...]) OR (applies_to='specific_partners' AND partner_ids in [partner_id])
             domain.extend([
                 '|',
                 ('applies_to', 'in', applies_to_values),
@@ -164,7 +180,6 @@ class CristalAgentKnowledge(models.Model):
                      ('partner_ids', 'in', [partner_id]),
             ])
         else:
-            # Solo applies_to in [...]
             domain.append(('applies_to', 'in', applies_to_values))
 
         records = self.search(domain, limit=limit, order='priority desc, write_date desc')

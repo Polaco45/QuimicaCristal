@@ -62,7 +62,7 @@ def build_system_prompt(env, partner=None, base_prompt=None, client_type=None):
         parts.append(_build_partner_context(env, partner))
 
     # ─── 5. Conocimiento relevante de la KB ───
-    parts.append(_build_knowledge_context(env, partner))
+    parts.append(_build_knowledge_context(env, partner, client_type=client_type))
 
     # ─── 6. Ofertas vigentes ───
     parts.append(_build_offers_context(env, partner))
@@ -190,7 +190,7 @@ def _build_partner_context(env, partner):
     return "\n".join(lines)
 
 
-def _build_knowledge_context(env, partner=None):
+def _build_knowledge_context(env, partner=None, client_type=None):
     """Sección con conocimiento relevante de la KB.
 
     Las entries con priority >= 100 (campañas activas, alertas críticas) se
@@ -205,6 +205,7 @@ def _build_knowledge_context(env, partner=None):
         category=None,
         partner_id=partner_id,
         level=level,
+        client_type=client_type,
         limit=15,
     )
 
