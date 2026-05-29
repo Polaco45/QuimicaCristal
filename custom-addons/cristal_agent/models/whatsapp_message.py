@@ -111,21 +111,38 @@ class WhatsAppMessage(models.Model):
             return
 
         # 6.5) v1.9.0 — Detectar client_type y aplicar bypass institucional
-        # Determinamos el tipo de cliente principal por wa_account_id,
-        # fallback por categorías del partner.
+        #
+        # v1.9.10 FIX CRÍTICO: el wa_account_id del mensaje ENTRANTE manda
+        # SIEMPRE. Antes la memoria histórica pisaba la detección, lo que
+        # causaba el loop circular: cliente escribía primero a Crilimp →
+        # memory.client_type='mayorista' → después escribía a Compras pero
+        # el bot lo seguía tratando como mayorista → derivaba al canal donde
+        # ya estaba.
         wa_account_id = wa_message.wa_account_id.id if wa_message.wa_account_id else None
-        client_type = config.detect_client_type(wa_account_id=wa_account_id, partner=partner)
 
-        # Si la memoria no tenía tipo todavía O era unknown y ahora podemos
-        # determinarlo, la actualizamos.
-        if memory.client_type in (False, 'unknown') and client_type != 'unknown':
-            memory.sudo().write({'client_type': client_type})
-        elif memory.client_type and memory.client_type != 'unknown':
-            # Si la memoria ya tenía un client_type seteado, lo respetamos
-            # (puede haber sido cambiado manualmente o por switch mid-flow).
-            client_type = memory.client_type
+        if wa_account_id:
+            # Hay cuenta WA: la cuenta es autoridad sobre la memoria
+            detected = config.detect_client_type(wa_account_id=wa_account_id, partner=partner)
+            if detected != 'unknown':
+                client_type = detected
+                # Si la memoria histórica difiere, la actualizamos para reflejar
+                # el canal actual del cliente (puede haber cambiado de canal).
+                if memory.client_type != client_type:
+                    old = memory.client_type
+                    memory.sudo().write({'client_type': client_type})
+                    _logger.info(
+                        "🔄 client_type actualizado por wa_account: %s → %s "
+                        "(partner=%s, wa_account=%s)",
+                        old or '(none)', client_type, partner.name, wa_account_id
+                    )
+            else:
+                # wa_account no resuelve (no está en la lista conocida) → fallback memoria
+                client_type = memory.client_type or 'unknown'
+        else:
+            # Sin wa_account_id (cron, trigger manual): usar memoria como fallback
+            client_type = memory.client_type or config.detect_client_type(partner=partner)
 
-        _logger.info("🏷️  Client type detectado: %s (wa_account=%s, partner=%s)",
+        _logger.info("🏷️  Client type para este mensaje: %s (wa_account=%s, partner=%s)",
                      client_type, wa_account_id, partner.name)
 
         # BYPASS: solo aplica a institucional. Para mayorista NUNCA hay bypass.
