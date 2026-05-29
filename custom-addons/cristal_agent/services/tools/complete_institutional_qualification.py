@@ -41,6 +41,7 @@ TEAM_VENTAS = 1
 USER_JOACO = 18
 ACTIVITY_VISITAR_INSTITUCION = 3
 CATEGORY_EMPRESA = 1
+IDENTIFICATION_TYPE_CUIT = 4   # l10n_latam.identification.type CUIT
 
 # Ciudades válidas (case insensitive, normalizadas sin acentos)
 VALID_CITIES_NORMALIZED = {
@@ -61,6 +62,14 @@ def _normalize_city(city):
     for k, v in replacements.items():
         s = s.replace(k, v)
     return s
+
+
+def _sanitize_vat(vat):
+    """Quita guiones, espacios y puntos del CUIT. Devuelve solo dígitos."""
+    if not vat:
+        return ''
+    import re
+    return re.sub(r'\D', '', vat)
 
 
 @ToolRegistry.register
@@ -214,7 +223,14 @@ class CompleteInstitutionalQualification(AgentTool):
         # ─── 1. Crear o actualizar EMPRESA ───
         if necesita_factura:
             fiscal_name = data['fiscal_name']
-            vat = data['vat'].strip()
+            vat_raw = data['vat'].strip()
+            vat = _sanitize_vat(vat_raw)   # quita guiones, espacios, puntos
+
+            if not vat or len(vat) != 11:
+                raise ValueError(
+                    f"CUIT inválido: '{vat_raw}'. Debe tener 11 dígitos. "
+                    f"Después de sanitizar quedó '{vat}' ({len(vat)} dígitos)."
+                )
 
             # Buscar por CUIT primero (más confiable que name)
             company = Partner.search([
@@ -249,17 +265,23 @@ class CompleteInstitutionalQualification(AgentTool):
                     update_vals['state_id'] = STATE_CORDOBA
                 if not company.country_id:
                     update_vals['country_id'] = COUNTRY_AR
+                # Si no tenía tipo de identificación seteado, ponemos CUIT
+                if not company.l10n_latam_identification_type_id:
+                    update_vals['l10n_latam_identification_type_id'] = IDENTIFICATION_TYPE_CUIT
                 company.write(update_vals)
                 _logger.info("🏢 Empresa actualizada: %s (id=%s)", company.name, company.id)
             else:
                 company_vals.update({
                     'name': fiscal_name,
+                    # IMPORTANTE: setear el tipo de identificación ANTES del vat
+                    # para que el validador de l10n_ar use CUIT (no DNI default)
+                    'l10n_latam_identification_type_id': IDENTIFICATION_TYPE_CUIT,
                     'vat': vat,
                     'is_company': True,
                     'company_type': 'company',
                 })
                 company = Partner.create(company_vals)
-                _logger.info("🏢 Empresa creada: %s (id=%s)", company.name, company.id)
+                _logger.info("🏢 Empresa creada: %s (id=%s, vat=%s)", company.name, company.id, vat)
 
             # ─── 2. SUBCONTACTO bajo la empresa ───
             # Si el partner original ya tiene parent_id distinto, NO lo movemos
