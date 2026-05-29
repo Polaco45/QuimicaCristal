@@ -13,6 +13,30 @@ _logger = logging.getLogger(__name__)
 class ResPartner(models.Model):
     _inherit = 'res.partner'
 
+    # ─────────── Referencia a la memoria del agente (v1.9.5) ───────────
+    # Computed con search, NO almacenado. Hace que `partner.agent_memory_id.client_type`
+    # funcione en domains de Odoo (necesario para filtrar runs/actions por tipo).
+    agent_memory_id = fields.Many2one(
+        'cristal.agent.memory',
+        string="Memoria del agente",
+        compute='_compute_agent_memory_id',
+        search='_search_agent_memory_id',
+        help="Memoria de Cristal Agent vinculada a este partner.",
+    )
+
+    def _compute_agent_memory_id(self):
+        Memory = self.env['cristal.agent.memory'].sudo()
+        memories = Memory.search([('partner_id', 'in', self.ids)])
+        mapping = {m.partner_id.id: m for m in memories}
+        for p in self:
+            p.agent_memory_id = mapping.get(p.id, False)
+
+    def _search_agent_memory_id(self, operator, value):
+        # Permite domains tipo [('agent_memory_id.client_type', '=', 'mayorista')]
+        Memory = self.env['cristal.agent.memory'].sudo()
+        memories = Memory.search([])
+        return [('id', 'in', memories.mapped('partner_id').ids)]
+
     # ─────────── Lo que sabe el bot del cliente (texto libre acumulativo) ───────────
     agent_observations = fields.Text(
         string="Observaciones del agente",

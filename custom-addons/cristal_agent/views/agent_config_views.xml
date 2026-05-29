@@ -57,11 +57,28 @@
                             </div>
                         </page>
 
-                        <page string="🧠 System prompt">
-                            <field name="system_prompt"
-                                  
-                                   options="{'resizable': true}"
-                                   nolabel="1"/>
+                        <page string="🧠 System prompts">
+                            <notebook>
+                                <page string="📦 Mayorista (Claudio v3.1)">
+                                    <field name="prompt_version"/>
+                                    <field name="system_prompt"
+                                           options="{'resizable': true}"
+                                           nolabel="1"/>
+                                </page>
+                                <page string="🏢 Institucional (Plan Control)">
+                                    <div class="alert alert-info">
+                                        <strong>Flow institucional v1.9.x</strong>: este prompt
+                                        se usa cuando un mensaje entra por la cuenta WhatsApp
+                                        <em>Compras (id=5)</em> o cuando el partner tiene la
+                                        etiqueta EMPRESA (id=1). Define las 6 preguntas de
+                                        calificación + cierre atómico. Editalo con cuidado.
+                                    </div>
+                                    <field name="system_prompt_institutional"
+                                           options="{'resizable': true}"
+                                           nolabel="1"
+                                           placeholder="Si lo dejás vacío, el bot usa el system_prompt mayorista incluso para clientes institucionales (fallback)."/>
+                                </page>
+                            </notebook>
                         </page>
 
                         <page string="👥 Identidades técnicas">
