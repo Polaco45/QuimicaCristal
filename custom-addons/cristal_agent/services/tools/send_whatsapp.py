@@ -98,21 +98,31 @@ class SendWhatsApp(AgentTool):
         # ═════════ CHECK VENTANA 24HS (solo para clientes externos) ═════════
         if not is_internal_channel:
             from ..helpers import is_24h_window_open, hours_since_last_inbound
-            # Buscar partner por número o por channel
+            # v1.10.1 FIX: el partner para el chequeo de ventana es el que
+            # disparó este run (el remitente REAL), no un miembro adivinado del
+            # canal. Antes se tomaba others[0] de channel_partner_ids excluyendo
+            # solo bot+owner; si había un operador interno (Guillermo, etc.) en
+            # el canal, el chequeo miraba SU historial (sin inbound reciente) y
+            # devolvía WINDOW_CLOSED falso aunque el cliente acabara de escribir.
             partner_check = None
-            try:
-                Channel = env['discuss.channel'].sudo()
-                ch = Channel.browse(int(channel_id))
-                if ch.exists() and ch.channel_partner_ids:
-                    bot_pid = config.bot_partner_id.id if config.bot_partner_id else 80799
-                    owner_pid = config.owner_partner_id.id if config.owner_partner_id else 65374
-                    others = ch.channel_partner_ids.filtered(
-                        lambda p: p.id not in (bot_pid, owner_pid)
-                    )
-                    if others:
-                        partner_check = others[0]
-            except Exception:
-                pass
+            if run and run.partner_id:
+                partner_check = run.partner_id
+            else:
+                try:
+                    Channel = env['discuss.channel'].sudo()
+                    ch = Channel.browse(int(channel_id))
+                    if ch.exists() and ch.channel_partner_ids:
+                        internal_ids = set(env['cristal.agent.config'].INTERNAL_PARTNER_IDS)
+                        bot_pid = config.bot_partner_id.id if config.bot_partner_id else 80799
+                        owner_pid = config.owner_partner_id.id if config.owner_partner_id else 65374
+                        internal_ids |= {bot_pid, owner_pid}
+                        others = ch.channel_partner_ids.filtered(
+                            lambda p: p.id not in internal_ids
+                        )
+                        if others:
+                            partner_check = others[0]
+                except Exception:
+                    pass
 
             if partner_check:
                 is_open, last_inbound = is_24h_window_open(

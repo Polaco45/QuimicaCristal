@@ -7,6 +7,27 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.10.1] — 2026-06-01
+
+### Fixed — WINDOW_CLOSED falso por resolución de partner incorrecta en send_whatsapp
+
+`send_whatsapp` resolvía el partner para el chequeo de ventana de 24hs adivinando
+desde `channel_partner_ids` (primer miembro que no fuera bot ni owner). Si en el
+canal había un operador interno (Guillermo, Adrian, etc. — que quedan como miembros
+cuando responden manual desde Discuss), el chequeo miraba el historial de ESE
+operador (sin inbound reciente → 999hs) y devolvía `WINDOW_CLOSED` aunque el cliente
+acabara de escribir. El bot entonces escalaba a Joaco en vez de responder.
+
+- Ahora el chequeo usa `run.partner_id` (el remitente real que disparó el run).
+- El fallback por miembros del canal excluye TODOS los `INTERNAL_PARTNER_IDS`, no
+  solo bot+owner.
+
+Detectado en prueba post-deploy: mensaje desde 3585481199 (línea interna, canal
+preexistente con Guillermo como miembro) → WINDOW_CLOSED → escalado. Sin cambios de
+esquema; fix solo de código.
+
+---
+
 ## [18.0.1.10.0] — 2026-06-01
 
 ### Flow institucional v2 — triage de intención + orden nuevo
