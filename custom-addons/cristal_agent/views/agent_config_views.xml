@@ -67,12 +67,17 @@
                                 </page>
                                 <page string="🏢 Institucional (Plan Control)">
                                     <div class="alert alert-info">
-                                        <strong>Flow institucional v1.9.x</strong>: este prompt
+                                        <strong>Flow institucional v1.10.x</strong>: este prompt
                                         se usa cuando un mensaje entra por la cuenta WhatsApp
                                         <em>Compras (id=5)</em> o cuando el partner tiene la
-                                        etiqueta EMPRESA (id=1). Define las 6 preguntas de
-                                        calificación + cierre atómico. Editalo con cuidado.
+                                        etiqueta EMPRESA (id=1). Triage de intención (lead /
+                                        operativo / ruido) + nombre+empresa → opp → propuesta +
+                                        reporte → visita → calificación. Editalo con cuidado.
                                     </div>
+                                    <group>
+                                        <field name="institutional_report_attachment_id"
+                                               help="PDF de muestra que el bot adjunta en la propuesta. Subilo como adjunto y seleccionalo acá."/>
+                                    </group>
                                     <field name="system_prompt_institutional"
                                            options="{'resizable': true}"
                                            nolabel="1"

@@ -37,8 +37,18 @@ def build_system_prompt(env, partner=None, base_prompt=None, client_type=None):
     if base_prompt:
         parts.append(base_prompt)
     elif client_type == 'institucional' and config.system_prompt_institutional:
-        parts.append(config.system_prompt_institutional)
-        _logger.info("📝 Usando system prompt INSTITUCIONAL")
+        inst_prompt = config.system_prompt_institutional
+        # v1.10.0 — inyectar el ID del reporte de muestra (PDF) que el bot
+        # adjunta en la propuesta. Si no está configurado, dejamos NO_CONFIGURADO
+        # y el prompt instruye al bot a mandar sin adjunto + avisar a Joaco.
+        report_id = config.institutional_report_attachment_id.id \
+            if config.institutional_report_attachment_id else None
+        inst_prompt = inst_prompt.replace(
+            "{{REPORTE_MUESTRA_ATTACHMENT_ID}}",
+            str(report_id) if report_id else "NO_CONFIGURADO",
+        )
+        parts.append(inst_prompt)
+        _logger.info("📝 Usando system prompt INSTITUCIONAL (reporte_id=%s)", report_id)
     else:
         parts.append(config.system_prompt or "")
         if client_type == 'institucional':

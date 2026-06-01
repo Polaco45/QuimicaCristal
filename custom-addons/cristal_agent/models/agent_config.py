@@ -94,7 +94,18 @@ class CristalAgentConfig(models.Model):
         string="System prompt institucional",
         help="Prompt dedicado para flow INSTITUCIONAL (empresas finales, "
              "Plan Control). Si está vacío, se usa el prompt mayorista. "
-             "Default se carga de data/prompts/claudio_institutional_v1.md.",
+             "Default se carga de data/prompts/claudio_institutional_v2.md.",
+    )
+
+    # v1.10.0: reporte de muestra (PDF) que el bot adjunta en la propuesta
+    # institucional (STEP 3 del flow). El prompt referencia el placeholder
+    # {{REPORTE_MUESTRA_ATTACHMENT_ID}}, que prompt_builder reemplaza por este ID.
+    institutional_report_attachment_id = fields.Many2one(
+        'ir.attachment',
+        string="Reporte de muestra (PDF institucional)",
+        help="PDF de ejemplo del reporte mensual de consumo que el bot adjunta "
+             "en la propuesta institucional. Si está vacío, el bot manda la "
+             "propuesta sin adjunto y avisa a Joaco que falta cargarlo.",
     )
 
     # ─────────── Operativa ───────────

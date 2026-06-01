@@ -7,6 +7,39 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.10.0] — 2026-06-01
+
+### Flow institucional v2 — triage de intención + orden nuevo
+
+El número de Química Cristal (Compras) recibe de todo, no solo leads. Antes el bot
+disparaba el pitch de Plan Control ante cualquier mensaje no-bypasseado (incluido un
+"gracias"). Esta versión agrega clasificación de intención y reordena el flujo.
+
+#### Added
+- `data/prompts/claudio_institutional_v2.md`: nuevo prompt institucional con
+  **STEP 0 TRIAGE** (A: lead interesado → corre flujo; B: consulta operativa →
+  línea de espera + `escalate_to_joaco` + `pause_bot(0)`; C: ruido/social/equivocado
+  → no responde) y el orden nuevo: nombre+empresa → `create_lead` (opp temprana,
+  idempotente) → propuesta + reporte de muestra adjunto + CTA de visita → si SÍ,
+  calificación completa con chequeo de zona → `complete_institutional_qualification`.
+- Campo `institutional_report_attachment_id` en `cristal.agent.config`: PDF de
+  muestra del reporte mensual que el bot adjunta en la propuesta.
+- `prompt_builder` inyecta el ID del reporte en el placeholder
+  `{{REPORTE_MUESTRA_ATTACHMENT_ID}}`. Si no está configurado, el bot manda la
+  propuesta sin adjunto y avisa a Joaco.
+- Campo del reporte agregado a la vista de config (tab Institucional).
+- `migrations/18.0.1.10.0/post-migration.py`: carga el prompt v2 en la config.
+
+#### Notes
+- NO cambia el ruteo institucional/mayorista (por cuenta WA) ni el bypass de
+  cliente activo: siguen igual.
+- Manual post-deploy: subir `reporte_muestra.pdf` como adjunto y seleccionarlo en
+  Config → Institucional → "Reporte de muestra". Sin eso, la propuesta sale sin PDF.
+- Pendiente para que la opp temprana no ensucie el pipeline: prender una cadencia
+  de seguimiento sobre la etapa "Propuesta enviada".
+
+---
+
 ## [18.0.1.0.0] — 2026-05-08
 
 ### Versión inicial
