@@ -64,19 +64,38 @@ class CreateLead(AgentTool):
                 "type": "string",
                 "description": "Descripción libre del lead.",
             },
+            "contact_name": {
+                "type": "string",
+                "description": "Nombre real de la PERSONA que escribe (ej: 'Carla'). "
+                               "Se graba en el lead y, si el contacto es nuevo, "
+                               "reemplaza el nombre que trajo el perfil de WhatsApp.",
+            },
+            "company_name": {
+                "type": "string",
+                "description": "Nombre real de la EMPRESA/local (ej: 'Resto la Liendre').",
+            },
         },
         "required": ["partner_id", "lead_name", "client_type"],
     }
 
     def _execute(self, env, run=None, partner_id=None, lead_name=None,
                  client_type=None, phase='phase_1', expected_revenue=None,
-                 qualification_data=None, description=None, **kwargs):
+                 qualification_data=None, description=None,
+                 contact_name=None, company_name=None, **kwargs):
         if not (partner_id and lead_name and client_type):
             return {"error": "partner_id, lead_name y client_type son obligatorios"}
 
         partner = env['res.partner'].sudo().browse(int(partner_id))
         if not partner.exists():
             return {"error": f"partner_id={partner_id} no existe"}
+
+        # v1.10.4 — Si el contacto es FRESCO (autocreado por WhatsApp: sin email,
+        # sin empresa padre, no es company), su nombre vino del perfil de WhatsApp
+        # o es un placeholder. Lo pisamos con el nombre real capturado en la charla
+        # para no dejar el contacto mal etiquetado (ej. "Química Cristal").
+        if contact_name and not partner.is_company and not partner.parent_id and not partner.email:
+            if partner.name != contact_name:
+                partner.write({'name': contact_name})
 
         # ═════════════════ PROTECCIÓN ANTI-DUPLICADO ═════════════════
         # Buscar lead activo existente gestionado por el agente
@@ -116,6 +135,11 @@ class CreateLead(AgentTool):
                 update_vals['agent_qualification_data'] = json.dumps(existing_data, ensure_ascii=False)
             if description and not lead.description:
                 update_vals['description'] = description
+            # v1.10.4 — completar contacto/empresa reales si faltaban
+            if contact_name and not lead.contact_name:
+                update_vals['contact_name'] = contact_name
+            if company_name and not lead.partner_name:
+                update_vals['partner_name'] = company_name
             if update_vals:
                 lead.write(update_vals)
 
@@ -163,6 +187,12 @@ class CreateLead(AgentTool):
             vals['agent_qualification_data'] = json.dumps(qualification_data, ensure_ascii=False)
         if description:
             vals['description'] = description
+        # v1.10.4 — grabar contacto y empresa reales en el lead, en vez de dejar
+        # que Odoo los autocomplete desde el nombre (a veces sucio) del partner.
+        if contact_name:
+            vals['contact_name'] = contact_name
+        if company_name:
+            vals['partner_name'] = company_name
 
         try:
             lead = Lead.create(vals)

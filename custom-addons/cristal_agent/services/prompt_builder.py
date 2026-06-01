@@ -369,6 +369,42 @@ def build_user_message_for_whatsapp(env, wa_message, partner, plain_text):
     parts.append(f"Texto del cliente:")
     parts.append(f'"{plain_text}"')
     parts.append("")
+
+    # v1.10.3 — ESTADO DEL HILO para el STEP 0 TRIAGE institucional.
+    # Señal de "previa intervención del bot": hay datos de calificación en curso
+    # y/o el bot ya posteó mensajes en este canal (author_id = bot_partner).
+    try:
+        bot_partner_id = config.bot_partner_id.id if config.bot_partner_id else 80799
+        mem = env['cristal.agent.memory'].sudo().search(
+            [('partner_id', '=', partner.id)], limit=1
+        )
+        thread_reasons = []
+        if mem and mem.qualification_data:
+            thread_reasons.append("hay datos de calificación en curso")
+        if channel_id:
+            bot_msgs = env['mail.message'].sudo().search_count([
+                ('model', '=', 'discuss.channel'),
+                ('res_id', '=', channel_id),
+                ('author_id', '=', bot_partner_id),
+            ])
+            if bot_msgs:
+                thread_reasons.append("el bot ya mandó mensajes en este canal")
+        if thread_reasons:
+            parts.append(
+                "## ESTADO DEL HILO\n"
+                f"⚠️ HILO ACTIVO ({'; '.join(thread_reasons)}). El mensaje entrante es la "
+                "CONTINUACIÓN/RESPUESTA a tu última pregunta. NO es ruido. Seguí el flujo "
+                "donde estabas."
+            )
+        else:
+            parts.append(
+                "## ESTADO DEL HILO\n"
+                "MENSAJE FRÍO: no hay intervención previa tuya en este hilo."
+            )
+        parts.append("")
+    except Exception:
+        pass
+
     parts.append("Procedé según las reglas del system prompt. "
                  "Si hay CAMPAÑAS/ALERTAS ACTIVAS arriba, aplicalas SIN omitir partes. "
                  "Respondé al cliente vía send_whatsapp y, cuando termines, "

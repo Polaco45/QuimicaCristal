@@ -7,6 +7,50 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.10.4] — 2026-06-01
+
+### Fixed — Lead/contacto mal etiquetado con el nombre del perfil de WhatsApp
+
+Al crear el lead temprano, el `contact_name` y el partner quedaban con el nombre
+que trae el perfil de WhatsApp del que escribe (en la prueba: "Química Cristal",
+porque el teléfono de test tiene ese nombre de perfil). El nombre de la oportunidad
+salía bien, pero el contacto del lead quedaba sucio.
+
+- `create_lead` ahora acepta `contact_name` y `company_name` y los graba en el lead
+  (`contact_name` / `partner_name`), en vez de dejar que Odoo los autocomplete desde
+  el nombre del partner.
+- Si el contacto es fresco (autocreado por WhatsApp: no es company, sin `parent_id`,
+  sin email), `create_lead` le pone el nombre real capturado en la conversación.
+- STEP 2 del prompt institucional ahora pasa `contact_name` y `company_name`.
+- `migrations/18.0.1.10.4/post-migration.py` recarga el prompt.
+
+Nota: el origen del "Química Cristal" era el nombre de perfil de WhatsApp del teléfono
+de prueba (Odoo nombra el contacto con eso). En un cliente real sería su nombre/perfil.
+El fix hace que, igual, el lead quede con los datos reales de la charla.
+
+---
+
+## [18.0.1.10.3] — 2026-06-01
+
+### Fixed — Confirmación en medio del flujo clasificada como "ruido"
+
+El STEP 0 clasificaba cada mensaje aislado por su texto. Una confirmación en plena
+calificación ("asi es" tras "¿en Río Cuarto?") caía en ruido → el bot se quedaba en
+silencio y cortaba el flujo.
+
+- `prompt_builder` ahora inyecta el ESTADO DEL HILO en el mensaje: HILO ACTIVO (el
+  bot ya intervino — hay `qualification_data` y/o mail.message con `author_id` =
+  bot en el canal) vs MENSAJE FRÍO.
+- STEP 0 reescrito: en HILO ACTIVO el mensaje es continuación/respuesta y NUNCA es
+  ruido (las confirmaciones cortas son respuestas válidas → seguí el flujo). En
+  MENSAJE FRÍO: lead claro → corre el flujo; no-lead (operativo/social/ruido) →
+  escala a Joaco + `pause_bot(0)`.
+- Se elimina el silencio a nivel prompt; el silencio queda solo para takeover activo
+  (nivel código, post-calificación).
+- `migrations/18.0.1.10.3/post-migration.py` recarga el prompt v2 corregido.
+
+---
+
 ## [18.0.1.10.2] — 2026-06-01
 
 ### Added — Subida del reporte de muestra desde la config (UI)
