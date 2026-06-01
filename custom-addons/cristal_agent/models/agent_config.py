@@ -105,7 +105,19 @@ class CristalAgentConfig(models.Model):
         string="Reporte de muestra (PDF institucional)",
         help="PDF de ejemplo del reporte mensual de consumo que el bot adjunta "
              "en la propuesta institucional. Si está vacío, el bot manda la "
-             "propuesta sin adjunto y avisa a Joaco que falta cargarlo.",
+             "propuesta sin adjunto y avisa a Joaco que falta cargarlo. "
+             "Se completa solo al subir un PDF en 'institutional_report_pdf'.",
+    )
+
+    # v1.10.2 — campo de subida cómodo. Al subir un PDF acá y guardar, se crea
+    # un ir.attachment standalone y se setea institutional_report_attachment_id.
+    institutional_report_pdf = fields.Binary(
+        string="Subir reporte de muestra (PDF)",
+        help="Arrastrá acá el PDF de muestra ANONIMIZADO (no uses datos reales "
+             "de un cliente). Al guardar, queda como el reporte que adjunta el bot.",
+    )
+    institutional_report_pdf_filename = fields.Char(
+        string="Nombre del archivo del reporte",
     )
 
     # ─────────── Operativa ───────────
@@ -359,7 +371,29 @@ class CristalAgentConfig(models.Model):
             self.env['ir.config_parameter'].sudo().set_param(
                 'cristal_agent.anthropic_api_key', vals['anthropic_api_key']
             )
-        return super().write(vals)
+        res = super().write(vals)
+        # v1.10.2 — si subieron un PDF de reporte, materializarlo como
+        # ir.attachment standalone y apuntar el m2o que usa el bot.
+        if 'institutional_report_pdf' in vals:
+            for rec in self:
+                rec._sync_institutional_report_attachment()
+        return res
+
+    def _sync_institutional_report_attachment(self):
+        """Crea un ir.attachment standalone a partir del PDF subido y lo asigna
+        a institutional_report_attachment_id (el que adjunta send_whatsapp)."""
+        self.ensure_one()
+        if not self.institutional_report_pdf:
+            return
+        name = self.institutional_report_pdf_filename or 'Reporte de muestra - Quimica Cristal.pdf'
+        att = self.env['ir.attachment'].sudo().create({
+            'name': name,
+            'datas': self.institutional_report_pdf,
+            'mimetype': 'application/pdf',
+            'type': 'binary',
+        })
+        # No re-dispara el sync porque vals no incluye institutional_report_pdf.
+        self.institutional_report_attachment_id = att.id
 
     @api.constrains('active')
     def _check_only_one_active(self):

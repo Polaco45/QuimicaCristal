@@ -75,8 +75,14 @@
                                         reporte → visita → calificación. Editalo con cuidado.
                                     </div>
                                     <group>
+                                        <field name="institutional_report_pdf_filename" invisible="1"/>
+                                        <field name="institutional_report_pdf"
+                                               widget="binary"
+                                               filename="institutional_report_pdf_filename"
+                                               help="Arrastrá el PDF de muestra ANONIMIZADO (no uses datos reales de un cliente). Al guardar, queda como el reporte que adjunta el bot."/>
                                         <field name="institutional_report_attachment_id"
-                                               help="PDF de muestra que el bot adjunta en la propuesta. Subilo como adjunto y seleccionalo acá."/>
+                                               readonly="1"
+                                               help="Adjunto que el bot envía. Se completa solo al subir el PDF de arriba y guardar."/>
                                     </group>
                                     <field name="system_prompt_institutional"
                                            options="{'resizable': true}"

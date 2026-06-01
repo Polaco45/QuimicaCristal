@@ -7,6 +7,20 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.10.2] — 2026-06-01
+
+### Added — Subida del reporte de muestra desde la config (UI)
+
+El campo `institutional_report_attachment_id` (Many2one) no daba un upload cómodo.
+Ahora hay un campo de subida de archivo en Config → Institucional:
+- `institutional_report_pdf` (Binary) + `institutional_report_pdf_filename`.
+- Al subir un PDF y guardar, el `write` crea un `ir.attachment` standalone y setea
+  `institutional_report_attachment_id` (el que adjunta `send_whatsapp` en STEP 3).
+
+Recordatorio: subir una muestra ANONIMIZADA, nunca el reporte real de un cliente.
+
+---
+
 ## [18.0.1.10.1] — 2026-06-01
 
 ### Fixed — WINDOW_CLOSED falso por resolución de partner incorrecta en send_whatsapp
