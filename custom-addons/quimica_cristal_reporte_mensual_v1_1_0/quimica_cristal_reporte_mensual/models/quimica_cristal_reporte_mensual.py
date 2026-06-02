@@ -71,7 +71,9 @@ CATEGORIAS_REPORTE = {
         20,  # Casa y Jardin
         23,  # Linea Automotor
         53,  # Combos y Kit
-        7,   # Consumo Masivo
+    ],
+    'consumo_masivo': [
+        7,   # Consumo Masivo (marcas líder: Blem, Raid, Glade, Cif, Lysoform...)
     ],
 }
 
@@ -82,6 +84,7 @@ CATEGORIAS_LABELS = {
     'bolsas': 'Bolsas',
     'accesorios': 'Accesorios',
     'varios': 'Varios',
+    'consumo_masivo': 'Consumo Masivo',
 }
 
 # Partners internos a excluir SIEMPRE (consumo propio)
@@ -97,10 +100,26 @@ MESES_ES = {
 }
 
 
-def macro_categoria(categ_id):
+def macro_categoria(categ_id, product_name=None):
     """Mapea product.category.id a una macro categoría del reporte.
     Default: 'varios' (no rompe nada si la categoría no está mapeada).
+
+    Override papeles: la categoría 26 'Dispensers y accesorios' de Odoo mezcla
+    dispensers reales (accesorios) con bobinas / papel higiénico / toallas de
+    papel (que son PAPELES). Como no se puede partir la categoría sin tocar la
+    data maestra de Odoo (con riesgo contable), se reclasifican acá por nombre:
+    los productos de papel de esa categoría van a 'papeles', los dispensers y
+    porta-rollos siguen en 'accesorios'.
     """
+    name = (product_name or '').lower()
+    if categ_id == 26 and name:
+        es_dispenser = ('dispenser' in name) or ('porta rollo' in name)
+        es_papel = (
+            'bobina' in name or 'papel hig' in name
+            or 'toalla inter' in name or 'toalla pack' in name
+        )
+        if es_papel and not es_dispenser:
+            return 'papeles'
     if not categ_id:
         return 'varios'
     for macro, ids in CATEGORIAS_REPORTE.items():
@@ -109,7 +128,7 @@ def macro_categoria(categ_id):
     return 'varios'
 
 
-def _build_donut_svg(liq_pct=0, pap_pct=0, bol_pct=0, acc_pct=0, var_pct=0):
+def _build_donut_svg(liq_pct=0, pap_pct=0, bol_pct=0, acc_pct=0, var_pct=0, cm_pct=0):
     """Construye un SVG inline del donut con 5 segmentos.
 
     Compatible con wkhtmltopdf (que NO soporta conic-gradient).
@@ -129,6 +148,7 @@ def _build_donut_svg(liq_pct=0, pap_pct=0, bol_pct=0, acc_pct=0, var_pct=0):
         (bol_pct, '#1a1a1a'),  # Bolsas
         (acc_pct, '#7a7a7a'),  # Accesorios
         (var_pct, '#bababa'),  # Varios
+        (cm_pct,  '#4a4a4a'),  # Consumo Masivo
     ]
 
     # Filtrar segmentos en 0
@@ -270,12 +290,14 @@ class QuimicaCristalReporteMensual(models.Model):
     cat_bolsas = fields.Monetary(string='Bolsas', currency_field='currency_id')
     cat_accesorios = fields.Monetary(string='Accesorios', currency_field='currency_id')
     cat_varios = fields.Monetary(string='Varios', currency_field='currency_id')
+    cat_consumo_masivo = fields.Monetary(string='Consumo Masivo', currency_field='currency_id')
 
     cat_liquidos_pct = fields.Float(string='Líquidos %', digits=(5, 2))
     cat_papeles_pct = fields.Float(string='Papeles %', digits=(5, 2))
     cat_bolsas_pct = fields.Float(string='Bolsas %', digits=(5, 2))
     cat_accesorios_pct = fields.Float(string='Accesorios %', digits=(5, 2))
     cat_varios_pct = fields.Float(string='Varios %', digits=(5, 2))
+    cat_consumo_masivo_pct = fields.Float(string='Consumo Masivo %', digits=(5, 2))
 
     # ============================================================
     # TENDENCIA 4 MESES (JSON)
@@ -484,7 +506,7 @@ class QuimicaCristalReporteMensual(models.Model):
             self.productos_distintos = len(all_products)
 
             # Categorías consolidadas: suma de las sucursales
-            for cat in ['liquidos', 'papeles', 'bolsas', 'accesorios', 'varios']:
+            for cat in ['liquidos', 'papeles', 'bolsas', 'accesorios', 'varios', 'consumo_masivo']:
                 field = f'cat_{cat}'
                 total_cat = sum(self.sucursal_ids.mapped(field))
                 self[field] = total_cat
@@ -496,7 +518,7 @@ class QuimicaCristalReporteMensual(models.Model):
         # Calcular porcentajes de categorías
         total_categorias = (
             self.cat_liquidos + self.cat_papeles + self.cat_bolsas
-            + self.cat_accesorios + self.cat_varios
+            + self.cat_accesorios + self.cat_varios + self.cat_consumo_masivo
         )
         if total_categorias > 0:
             self.cat_liquidos_pct = self.cat_liquidos / total_categorias * 100
@@ -504,6 +526,7 @@ class QuimicaCristalReporteMensual(models.Model):
             self.cat_bolsas_pct = self.cat_bolsas / total_categorias * 100
             self.cat_accesorios_pct = self.cat_accesorios / total_categorias * 100
             self.cat_varios_pct = self.cat_varios / total_categorias * 100
+            self.cat_consumo_masivo_pct = self.cat_consumo_masivo / total_categorias * 100
 
         log.append("=== Generación completada ===")
         self.generation_log = '\n'.join(log)
@@ -595,7 +618,7 @@ class QuimicaCristalReporteMensual(models.Model):
 
         for p in productos_ordenados:
             prod = p['product_id']
-            cat_key = macro_categoria(prod.categ_id.id if prod.categ_id else None)
+            cat_key = macro_categoria(prod.categ_id.id if prod.categ_id else None, prod.name)
             pct = (p['amount_total'] / total_lineas * 100) if total_lineas else 0
 
             cat_acum[cat_key] += p['amount_total']
@@ -624,6 +647,7 @@ class QuimicaCristalReporteMensual(models.Model):
                 'cat_bolsas': cat_acum['bolsas'],
                 'cat_accesorios': cat_acum['accesorios'],
                 'cat_varios': cat_acum['varios'],
+                'cat_consumo_masivo': cat_acum['consumo_masivo'],
             })
             total_suc_cat = sum(cat_acum.values())
             if total_suc_cat > 0:
@@ -633,6 +657,7 @@ class QuimicaCristalReporteMensual(models.Model):
                     'cat_bolsas_pct': cat_acum['bolsas'] / total_suc_cat * 100,
                     'cat_accesorios_pct': cat_acum['accesorios'] / total_suc_cat * 100,
                     'cat_varios_pct': cat_acum['varios'] / total_suc_cat * 100,
+                    'cat_consumo_masivo_pct': cat_acum['consumo_masivo'] / total_suc_cat * 100,
                 })
         else:
             self.write({
@@ -641,6 +666,7 @@ class QuimicaCristalReporteMensual(models.Model):
                 'cat_bolsas': cat_acum['bolsas'],
                 'cat_accesorios': cat_acum['accesorios'],
                 'cat_varios': cat_acum['varios'],
+                'cat_consumo_masivo': cat_acum['consumo_masivo'],
             })
 
     def _compute_previous_month_amount(self, shipping_id=None):
@@ -777,7 +803,7 @@ class QuimicaCristalReporteMensual(models.Model):
         <p>Hola,</p>
         <p>Adjuntamos el reporte mensual de consumo de <b>{mes_nombre} {self.period_year}</b>
         correspondiente a <b>{self.partner_id.name}</b>.</p>
-        <p>Cualquier consulta, escribinos al WhatsApp 358 548 1191.</p>
+        <p>Cualquier consulta, escribinos al WhatsApp 358 548 1199.</p>
         <p><i>Quimica Cristal · Limpieza profesional · Río Cuarto, Córdoba</i></p>
         """
 
@@ -969,6 +995,7 @@ class QuimicaCristalReporteMensual(models.Model):
             bol_pct=self.cat_bolsas_pct or 0,
             acc_pct=self.cat_accesorios_pct or 0,
             var_pct=self.cat_varios_pct or 0,
+            cm_pct=self.cat_consumo_masivo_pct or 0,
         )
         return Markup(svg)
 
@@ -1002,12 +1029,14 @@ class QuimicaCristalReporteMensualSucursal(models.Model):
     cat_bolsas = fields.Monetary(currency_field='currency_id')
     cat_accesorios = fields.Monetary(currency_field='currency_id')
     cat_varios = fields.Monetary(currency_field='currency_id')
+    cat_consumo_masivo = fields.Monetary(currency_field='currency_id')
 
     cat_liquidos_pct = fields.Float(digits=(5, 2))
     cat_papeles_pct = fields.Float(digits=(5, 2))
     cat_bolsas_pct = fields.Float(digits=(5, 2))
     cat_accesorios_pct = fields.Float(digits=(5, 2))
     cat_varios_pct = fields.Float(digits=(5, 2))
+    cat_consumo_masivo_pct = fields.Float(digits=(5, 2))
 
     trend_data = fields.Text()
 
@@ -1069,6 +1098,7 @@ class QuimicaCristalReporteMensualSucursal(models.Model):
             bol_pct=self.cat_bolsas_pct or 0,
             acc_pct=self.cat_accesorios_pct or 0,
             var_pct=self.cat_varios_pct or 0,
+            cm_pct=self.cat_consumo_masivo_pct or 0,
         )
         return Markup(svg)
 
@@ -1094,6 +1124,7 @@ class QuimicaCristalReporteMensualLine(models.Model):
         ('bolsas', 'Bolsas'),
         ('accesorios', 'Accesorios'),
         ('varios', 'Varios'),
+        ('consumo_masivo', 'Consumo Masivo'),
     ], string='Categoría')
 
     quantity = fields.Float(string='Cantidad', digits=(12, 2))
