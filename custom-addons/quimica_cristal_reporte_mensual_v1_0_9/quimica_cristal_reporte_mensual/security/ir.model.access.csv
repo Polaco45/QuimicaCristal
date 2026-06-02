@@ -1,0 +1,5 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_reporte_mensual_user,reporte.mensual.user,model_quimica_cristal_reporte_mensual,base.group_user,1,1,1,1
+access_reporte_mensual_sucursal_user,reporte.mensual.sucursal.user,model_quimica_cristal_reporte_mensual_sucursal,base.group_user,1,1,1,1
+access_reporte_mensual_line_user,reporte.mensual.line.user,model_quimica_cristal_reporte_mensual_line,base.group_user,1,1,1,1
+access_reporte_descarga_wizard,reporte.descarga.wizard,model_quimica_cristal_reporte_descarga_wizard,base.group_user,1,1,1,1

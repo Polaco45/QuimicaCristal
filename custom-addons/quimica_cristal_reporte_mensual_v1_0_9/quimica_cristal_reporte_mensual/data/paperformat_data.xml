@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="0">
+        <!--
+            Paperformat custom: A4 sin header_spacing.
+            El paperformat default (base.paperformat_euro) reserva 35mm arriba
+            para el header de empresa de Odoo, que NO usamos. Por eso el reporte
+            quedaba con un espacio blanco enorme al inicio.
+
+            margin_top/left/right = 0 → el header oscuro va borde a borde.
+            margin_bottom = 16 → reserva la franja inferior para el footer real
+            de wkhtmltopdf (el <div class="footer"> del template). Sin esto, el
+            footer pisa el contenido o no entra.
+
+            noupdate="0" a propósito: queremos que el upgrade del módulo
+            re-aplique estos valores. Con noupdate="1" Odoo los ignora al
+            actualizar y el margin_bottom no tomaría efecto.
+        -->
+        <record id="paperformat_qcr_reporte" model="report.paperformat">
+            <field name="name">Quimica Cristal · Reporte mensual (A4 sin header)</field>
+            <field name="format">A4</field>
+            <field name="page_height">0</field>
+            <field name="page_width">0</field>
+            <field name="orientation">Portrait</field>
+            <field name="margin_top">0</field>
+            <field name="margin_bottom">16</field>
+            <field name="margin_left">0</field>
+            <field name="margin_right">0</field>
+            <field name="header_line" eval="False"/>
+            <field name="header_spacing">0</field>
+            <field name="dpi">90</field>
+            <field name="disable_shrinking" eval="False"/>
+        </record>
+    </data>
+</odoo>

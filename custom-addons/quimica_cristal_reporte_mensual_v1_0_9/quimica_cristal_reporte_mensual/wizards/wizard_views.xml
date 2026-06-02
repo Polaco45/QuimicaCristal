@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+
+        <!-- ============================================================ -->
+        <!-- FORM VIEW DEL WIZARD                                         -->
+        <!-- ============================================================ -->
+        <record id="view_reporte_descarga_wizard_form" model="ir.ui.view">
+            <field name="name">quimica.cristal.reporte.descarga.wizard.form</field>
+            <field name="model">quimica.cristal.reporte.descarga.wizard</field>
+            <field name="arch" type="xml">
+                <form string="Generar reporte manual">
+                    <sheet>
+                        <div class="alert alert-info" role="alert">
+                            <b>Generación manual de reporte mensual</b><br/>
+                            Elegí el cliente y el período que querés. Si ya existe un
+                            reporte para esa combinación, se va a <b>regenerar</b>
+                            (sobrescribir con los datos actuales de Odoo).
+                        </div>
+
+                        <group>
+                            <group string="¿Qué reporte querés?">
+                                <field name="partner_id" options="{'no_create': True}"/>
+                                <field name="period_year"/>
+                                <field name="period_month"/>
+                            </group>
+                            <group string="¿Qué hacer con el reporte?">
+                                <field name="accion" widget="radio"/>
+                            </group>
+                        </group>
+
+                        <group string="Info del cliente y período seleccionado">
+                            <field name="info_partner" nolabel="1" widget="html"/>
+                        </group>
+                    </sheet>
+
+                    <footer>
+                        <button name="action_execute" string="Ejecutar"
+                                type="object" class="btn-primary"/>
+                        <button string="Cancelar" class="btn-secondary"
+                                special="cancel"/>
+                    </footer>
+                </form>
+            </field>
+        </record>
+
+        <!-- ============================================================ -->
+        <!-- ACTION                                                       -->
+        <!-- ============================================================ -->
+        <record id="action_reporte_descarga_wizard" model="ir.actions.act_window">
+            <field name="name">Generar reporte manual</field>
+            <field name="res_model">quimica.cristal.reporte.descarga.wizard</field>
+            <field name="view_mode">form</field>
+            <field name="target">new</field>
+        </record>
+
+    </data>
+</odoo>

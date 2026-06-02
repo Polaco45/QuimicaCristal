@@ -1,0 +1,274 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+
+        <!-- ============================================================ -->
+        <!-- LIST VIEW                                                    -->
+        <!-- ============================================================ -->
+        <record id="view_reporte_mensual_list" model="ir.ui.view">
+            <field name="name">quimica.cristal.reporte.mensual.list</field>
+            <field name="model">quimica.cristal.reporte.mensual</field>
+            <field name="arch" type="xml">
+                <list string="Reportes mensuales">
+                    <field name="partner_id"/>
+                    <field name="period_year"/>
+                    <field name="period_month"/>
+                    <field name="amount_total" widget="monetary"/>
+                    <field name="pedidos"/>
+                    <field name="notas_credito"/>
+                    <field name="is_multi_sucursal" widget="boolean_toggle" optional="hide"/>
+                    <field name="sucursales_count" optional="hide"/>
+                    <field name="state" widget="badge"
+                           decoration-info="state == 'draft'"
+                           decoration-warning="state == 'generated'"
+                           decoration-success="state == 'sent'"/>
+                    <field name="sent_date" optional="hide"/>
+                    <field name="currency_id" column_invisible="True"/>
+                </list>
+            </field>
+        </record>
+
+        <!-- ============================================================ -->
+        <!-- FORM VIEW                                                    -->
+        <!-- ============================================================ -->
+        <record id="view_reporte_mensual_form" model="ir.ui.view">
+            <field name="name">quimica.cristal.reporte.mensual.form</field>
+            <field name="model">quimica.cristal.reporte.mensual</field>
+            <field name="arch" type="xml">
+                <form string="Reporte mensual">
+                    <header>
+                        <button name="action_generate" string="Generar"
+                                type="object" class="btn-primary"
+                                invisible="state != 'draft'"/>
+                        <button name="action_generate" string="Re-generar"
+                                type="object" class="btn-secondary"
+                                invisible="state == 'draft'"
+                                confirm="Esto va a borrar las líneas y recalcular todo. ¿Continuamos?"/>
+                        <button name="action_download_pdf" string="Descargar PDF"
+                                type="object" class="btn-secondary"
+                                invisible="state == 'draft'"/>
+                        <button name="action_send_email" string="Enviar por email"
+                                type="object" class="btn-primary"
+                                invisible="state == 'draft'"
+                                confirm="¿Confirmás envío al email del cliente?"/>
+                        <field name="state" widget="statusbar"/>
+                    </header>
+
+                    <sheet>
+                        <div class="oe_title">
+                            <h1>
+                                <field name="display_name" readonly="1"/>
+                            </h1>
+                        </div>
+
+                        <group>
+                            <group string="Período">
+                                <field name="partner_id"
+                                       readonly="state != 'draft'"
+                                       options="{'no_create': True}"/>
+                                <field name="period_year"
+                                       readonly="state != 'draft'"/>
+                                <field name="period_month"
+                                       readonly="state != 'draft'"/>
+                                <field name="date_from" readonly="1"/>
+                                <field name="date_to" readonly="1"/>
+                                <field name="company_id" invisible="1"/>
+                                <field name="currency_id" invisible="1"/>
+                            </group>
+                            <group string="Totales (TOTAL c/IVA, NC restada)">
+                                <field name="amount_total" widget="monetary" readonly="1"/>
+                                <field name="pedidos" readonly="1"/>
+                                <field name="notas_credito" readonly="1"
+                                       string="Notas de crédito restadas"/>
+                                <field name="productos_distintos" readonly="1"/>
+                                <field name="ticket_promedio" widget="monetary" readonly="1"/>
+                                <field name="vs_anterior_pct" readonly="1"
+                                       widget="percentage" digits="[5, 2]"/>
+                                <field name="is_multi_sucursal" readonly="1"/>
+                            </group>
+                        </group>
+
+                        <notebook>
+                            <page string="Categorías" name="categorias">
+                                <group>
+                                    <group string="Destacadas (3 principales)">
+                                        <field name="cat_liquidos" widget="monetary" readonly="1"/>
+                                        <field name="cat_liquidos_pct" widget="percentage" readonly="1"/>
+                                        <field name="cat_papeles" widget="monetary" readonly="1"/>
+                                        <field name="cat_papeles_pct" widget="percentage" readonly="1"/>
+                                        <field name="cat_bolsas" widget="monetary" readonly="1"/>
+                                        <field name="cat_bolsas_pct" widget="percentage" readonly="1"/>
+                                    </group>
+                                    <group string="Secundarias">
+                                        <field name="cat_accesorios" widget="monetary" readonly="1"/>
+                                        <field name="cat_accesorios_pct" widget="percentage" readonly="1"/>
+                                        <field name="cat_varios" widget="monetary" readonly="1"/>
+                                        <field name="cat_varios_pct" widget="percentage" readonly="1"/>
+                                    </group>
+                                </group>
+                            </page>
+
+                            <page string="Sucursales" name="sucursales"
+                                  invisible="not is_multi_sucursal">
+                                <field name="sucursal_ids" readonly="1">
+                                    <list>
+                                        <field name="partner_shipping_id"/>
+                                        <field name="amount_total" widget="monetary"/>
+                                        <field name="pct_total" widget="percentage"/>
+                                        <field name="pedidos"/>
+                                        <field name="notas_credito"/>
+                                        <field name="ticket_promedio" widget="monetary"/>
+                                        <field name="productos_distintos"/>
+                                        <field name="currency_id" column_invisible="True"/>
+                                    </list>
+                                </field>
+                            </page>
+
+                            <page string="Productos" name="productos"
+                                  invisible="is_multi_sucursal">
+                                <field name="line_ids" readonly="1">
+                                    <list>
+                                        <field name="product_default_code"/>
+                                        <field name="product_name"/>
+                                        <field name="categoria" widget="badge"/>
+                                        <field name="quantity"/>
+                                        <field name="amount_total" widget="monetary"/>
+                                        <field name="pct_mes" widget="percentage"/>
+                                        <field name="currency_id" column_invisible="True"/>
+                                    </list>
+                                </field>
+                            </page>
+
+                            <page string="Observación manual" name="obs">
+                                <p class="text-muted">
+                                    Opcional. Si tiene contenido, aparece en el PDF.
+                                    El cron automático NUNCA escribe acá - es solo manual.
+                                </p>
+                                <field name="observation" nolabel="1"
+                                       placeholder="Comentario opcional para este reporte específico..."/>
+                            </page>
+
+                            <page string="Log de generación" name="log"
+                                  invisible="state == 'draft'">
+                                <field name="generation_log" widget="text" readonly="1"
+                                       nolabel="1"/>
+                                <group>
+                                    <field name="sent_date" readonly="1"/>
+                                    <field name="sent_email" readonly="1"/>
+                                </group>
+                            </page>
+                        </notebook>
+                    </sheet>
+                </form>
+            </field>
+        </record>
+
+        <!-- ============================================================ -->
+        <!-- FORM VIEW SUCURSAL                                           -->
+        <!-- ============================================================ -->
+        <record id="view_reporte_sucursal_form" model="ir.ui.view">
+            <field name="name">quimica.cristal.reporte.mensual.sucursal.form</field>
+            <field name="model">quimica.cristal.reporte.mensual.sucursal</field>
+            <field name="arch" type="xml">
+                <form string="Sucursal">
+                    <sheet>
+                        <h1>
+                            <field name="partner_shipping_id" readonly="1"/>
+                        </h1>
+                        <group>
+                            <group>
+                                <field name="reporte_id" readonly="1"/>
+                                <field name="amount_total" widget="monetary" readonly="1"/>
+                                <field name="pct_total" widget="percentage" readonly="1"/>
+                                <field name="pedidos" readonly="1"/>
+                                <field name="notas_credito" readonly="1"/>
+                                <field name="ticket_promedio" widget="monetary" readonly="1"/>
+                                <field name="vs_anterior_pct" widget="percentage" readonly="1"/>
+                                <field name="productos_distintos" readonly="1"/>
+                                <field name="currency_id" invisible="1"/>
+                            </group>
+                            <group string="Categorías">
+                                <field name="cat_liquidos" widget="monetary" readonly="1"/>
+                                <field name="cat_papeles" widget="monetary" readonly="1"/>
+                                <field name="cat_bolsas" widget="monetary" readonly="1"/>
+                                <field name="cat_accesorios" widget="monetary" readonly="1"/>
+                                <field name="cat_varios" widget="monetary" readonly="1"/>
+                            </group>
+                        </group>
+
+                        <notebook>
+                            <page string="Productos">
+                                <field name="line_ids" readonly="1">
+                                    <list>
+                                        <field name="product_default_code"/>
+                                        <field name="product_name"/>
+                                        <field name="categoria" widget="badge"/>
+                                        <field name="quantity"/>
+                                        <field name="amount_total" widget="monetary"/>
+                                        <field name="pct_mes" widget="percentage"/>
+                                        <field name="currency_id" column_invisible="True"/>
+                                    </list>
+                                </field>
+                            </page>
+                            <page string="Observación manual">
+                                <field name="observation" nolabel="1"/>
+                            </page>
+                        </notebook>
+                    </sheet>
+                </form>
+            </field>
+        </record>
+
+        <!-- ============================================================ -->
+        <!-- SEARCH VIEW                                                  -->
+        <!-- ============================================================ -->
+        <record id="view_reporte_mensual_search" model="ir.ui.view">
+            <field name="name">quimica.cristal.reporte.mensual.search</field>
+            <field name="model">quimica.cristal.reporte.mensual</field>
+            <field name="arch" type="xml">
+                <search>
+                    <field name="partner_id"/>
+                    <field name="period_year"/>
+                    <field name="period_month"/>
+                    <filter string="Borrador" name="draft" domain="[('state','=','draft')]"/>
+                    <filter string="Generado" name="generated" domain="[('state','=','generated')]"/>
+                    <filter string="Enviado" name="sent" domain="[('state','=','sent')]"/>
+                    <separator/>
+                    <filter string="Multi-sucursal" name="multi" domain="[('is_multi_sucursal','=',True)]"/>
+                    <separator/>
+                    <filter string="Año actual" name="this_year"
+                            domain="[('period_year', '=', context_today().year)]"/>
+                    <group expand="0" string="Agrupar por">
+                        <filter string="Cliente" name="gby_partner" context="{'group_by': 'partner_id'}"/>
+                        <filter string="Año" name="gby_year" context="{'group_by': 'period_year'}"/>
+                        <filter string="Mes" name="gby_month" context="{'group_by': 'period_month'}"/>
+                        <filter string="Estado" name="gby_state" context="{'group_by': 'state'}"/>
+                    </group>
+                </search>
+            </field>
+        </record>
+
+        <!-- ============================================================ -->
+        <!-- ACTIONS                                                      -->
+        <!-- ============================================================ -->
+        <record id="action_reporte_mensual" model="ir.actions.act_window">
+            <field name="name">Reportes mensuales</field>
+            <field name="res_model">quimica.cristal.reporte.mensual</field>
+            <field name="view_mode">list,form</field>
+            <field name="search_view_id" ref="view_reporte_mensual_search"/>
+            <field name="context">{'search_default_this_year': 1}</field>
+            <field name="help" type="html">
+                <p class="o_view_nocontent_smiling_face">
+                    Acá vas a ver todos los reportes mensuales generados.
+                </p>
+                <p>
+                    Los reportes se generan automáticamente el día 1 de cada mes
+                    para todos los clientes con la etiqueta "Plan Control".
+                    También podés generar uno manualmente desde el menú
+                    "Generar reporte manual".
+                </p>
+            </field>
+        </record>
+
+    </data>
+</odoo>

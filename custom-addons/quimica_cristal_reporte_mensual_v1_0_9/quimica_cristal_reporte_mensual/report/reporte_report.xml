@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <record id="action_report_reporte_mensual" model="ir.actions.report">
+            <field name="name">Reporte Mensual Plan Control</field>
+            <field name="model">quimica.cristal.reporte.mensual</field>
+            <field name="report_type">qweb-pdf</field>
+            <field name="report_name">quimica_cristal_reporte_mensual.report_reporte_mensual_template</field>
+            <field name="report_file">quimica_cristal_reporte_mensual.report_reporte_mensual_template</field>
+            <field name="print_report_name">'Reporte_%s_%s_%s' % (object.partner_id.name.replace(' ', '_'), object.get_mes_nombre(), object.period_year)</field>
+            <field name="binding_model_id" ref="model_quimica_cristal_reporte_mensual"/>
+            <field name="binding_type">report</field>
+            <field name="paperformat_id" ref="paperformat_qcr_reporte"/>
+        </record>
+    </data>
+</odoo>

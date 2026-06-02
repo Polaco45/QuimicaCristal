@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <!--
+            Etiqueta "Plan Control" para identificar a los clientes
+            que reciben el reporte mensual automático del cron.
+            noupdate="1" para que no se sobrescriba si el usuario la edita después.
+        -->
+        <record id="partner_category_plan_control" model="res.partner.category">
+            <field name="name">Plan Control</field>
+            <field name="color">2</field>
+        </record>
+    </data>
+</odoo>

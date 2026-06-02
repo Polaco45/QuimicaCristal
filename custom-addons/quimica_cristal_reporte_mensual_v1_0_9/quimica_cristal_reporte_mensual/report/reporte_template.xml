@@ -1,0 +1,1139 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+
+        <!-- ============================================================ -->
+        <!-- TEMPLATE PRINCIPAL                                            -->
+        <!-- Diseñado para wkhtmltopdf 0.12.x:                             -->
+        <!--  - Layout con <table>, NO display:grid                        -->
+        <!--  - Donut SVG inline, NO conic-gradient                        -->
+        <!--  - Barras tendencia con div width%                            -->
+        <!--  - Sin flexbox moderno, sin gap                               -->
+        <!-- ============================================================ -->
+        <template id="report_reporte_mensual_template">
+            <t t-call="web.html_container">
+                <t t-foreach="docs" t-as="doc">
+                    <t t-call="quimica_cristal_reporte_mensual.report_reporte_mensual_doc"
+                       t-lang="doc.partner_id.lang or 'es_AR'"/>
+                </t>
+            </t>
+        </template>
+
+        <!-- ============================================================ -->
+        <!-- DOCUMENTO INDIVIDUAL                                          -->
+        <!-- ============================================================ -->
+        <template id="report_reporte_mensual_doc">
+            <!-- Forzar UTF-8 explícito. wkhtmltopdf 0.12.x por defecto asume     -->
+            <!-- latin-1 si no encuentra meta charset. Aunque web.html_container -->
+            <!-- ya lo inyecta en el <head>, lo repito acá para asegurar.        -->
+            <meta charset="utf-8"/>
+            <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+
+            <!-- CSS INLINE - cero CSS3 moderno -->
+            <style>
+                * { margin: 0; padding: 0; }
+                body {
+                    font-family: 'Helvetica Neue', Arial, sans-serif;
+                    color: #1a1a1a;
+                    font-size: 10px;
+                    line-height: 1.4;
+                }
+                .qcr-page {
+                    padding: 0;
+                    width: 100%;
+                }
+                /* Cada sucursal arranca en hoja nueva, pero NO forzamos salto
+                   al final: si una tabla larga desborda, fluye limpio a la hoja
+                   siguiente sin generar hoja fantasma. */
+                .qcr-page-break { page-break-before: always; }
+
+                /* === RELLENO VERTICAL HASTA EL PIE ===
+                   Cada página es una tabla cuyo height funciona como MÍNIMO.
+                   - Con poca data, la tabla mide qcr-page-fill height y la fila
+                     spacer absorbe el sobrante → el contenido baja hacia el pie.
+                   - Con tabla larga, la tabla CRECE más allá del height, el
+                     spacer colapsa a 0 y desborda limpio a la hoja siguiente.
+
+                   CLAVE (bug de la v1.0.7): el spacer NO puede llevar height:100%.
+                   En el WebKit viejo de wkhtmltopdf, height:100% en una celda se
+                   interpreta como "100% del alto de la tabla" y se SUMA al
+                   contenido (tabla = contenido + 100% → ~420mm) → desbordaba a
+                   una hoja en blanco. La forma correcta: la celda de contenido
+                   encoge (height:0 = a su contenido) y el spacer va sin height;
+                   el motor reparte el sobrante al spacer hasta llegar al height
+                   de la tabla.
+
+                   El height es el DIAL. A4 = 297mm; menos 16mm de footer = ~281mm
+                   útiles. Pongo 258mm: colchón de sobra para que NUNCA desborde a
+                   una hoja extra (que es lo peor), aún con el redondeo de
+                   wkhtmltopdf. Si querés la hoja más llena, subilo (265/272). Si
+                   reaparece una hoja en blanco, bajalo. */
+                table.qcr-page-fill {
+                    width: 100%;
+                    border-collapse: collapse;
+                    height: 250mm;
+                }
+                table.qcr-page-fill > tbody > tr > td.qcr-fill-top {
+                    vertical-align: top;
+                    padding: 0;
+                    height: 0;
+                }
+                table.qcr-page-fill > tbody > tr.qcr-fill-rest > td {
+                    padding: 0;
+                    font-size: 0;
+                    line-height: 0;
+                }
+
+                /* Bloques que no deben partirse entre hojas (si no entran,
+                   pasan enteros a la hoja siguiente). Son chicos, así que esto
+                   no genera huecos grandes. */
+                .qcr-sucursal-banner,
+                .qcr-kpis-table,
+                .qcr-charts-table,
+                .qcr-sec-head { page-break-inside: avoid; }
+
+                /* El Top productos de la general pasa ENTERO a la hoja siguiente
+                   si no entra (en vez de partirse), para clientes con muchas
+                   sucursales donde la general ocupa 2 hojas (caso Coop). */
+                .qcr-sec-keep { page-break-inside: avoid; }
+
+                /* === HEADER === */
+                .qcr-header-table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    background: #1a1a1a;
+                    color: #fff;
+                }
+                .qcr-header-table td {
+                    padding: 12px 14px;
+                    vertical-align: middle;
+                }
+                .qcr-h-brand-cell { width: 60%; }
+                .qcr-h-brand-title {
+                    font-size: 14px;
+                    font-weight: bold;
+                    letter-spacing: 1px;
+                    color: #fff;
+                }
+                .qcr-h-brand-sub {
+                    font-size: 9px;
+                    color: #f5a44d;
+                    margin-top: 2px;
+                }
+                .qcr-h-meta-cell { width: 40%; text-align: right; }
+                .qcr-pag-ind {
+                    display: inline-block;
+                    background: #2a2a2a;
+                    color: #fff;
+                    font-size: 8px;
+                    padding: 3px 8px;
+                    border-radius: 9px;
+                    text-transform: uppercase;
+                    margin-right: 6px;
+                    font-weight: bold;
+                }
+                .qcr-h-tag {
+                    display: inline-block;
+                    background: #ee7b1f;
+                    color: #fff;
+                    font-size: 9px;
+                    font-weight: bold;
+                    padding: 4px 10px;
+                    border-radius: 13px;
+                    text-transform: uppercase;
+                }
+                .qcr-h-titulo-row td {
+                    padding: 4px 14px 14px;
+                    background: #1a1a1a;
+                }
+                .qcr-h-titulo {
+                    font-size: 20px;
+                    font-weight: bold;
+                    color: #fff;
+                }
+                .qcr-h-titulo-span { color: #ee7b1f; }
+
+                /* === CLIENT BAR === */
+                .qcr-client-table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    background: #fafafa;
+                    border-bottom: 2px solid #ee7b1f;
+                }
+                .qcr-client-table td {
+                    padding: 9px 14px;
+                    vertical-align: top;
+                }
+                .qcr-client-lbl {
+                    font-size: 7.5px;
+                    color: #888;
+                    font-weight: bold;
+                    text-transform: uppercase;
+                    letter-spacing: 1px;
+                }
+                .qcr-client-val {
+                    font-size: 11px;
+                    color: #1a1a1a;
+                    margin-top: 2px;
+                }
+                .qcr-client-val-strong { font-weight: bold; }
+
+                /* === SUCURSAL BANNER === */
+                .qcr-sucursal-banner {
+                    width: 100%;
+                    border-collapse: collapse;
+                    background: #ee7b1f;
+                    color: #fff;
+                }
+                .qcr-sucursal-banner td {
+                    padding: 9px 14px;
+                    vertical-align: middle;
+                }
+                .qcr-sucursal-banner .l {
+                    font-size: 8px;
+                    text-transform: uppercase;
+                    font-weight: bold;
+                    color: #fff;
+                    letter-spacing: 1px;
+                    display: block;
+                    margin-bottom: 1px;
+                }
+                .qcr-sucursal-banner .v {
+                    font-size: 13px;
+                    font-weight: bold;
+                    color: #fff;
+                }
+                .qcr-sucursal-banner .dir-mini {
+                    font-size: 9px;
+                    color: #fff;
+                    font-weight: normal;
+                    margin-left: 6px;
+                }
+                .qcr-sucursal-banner .pct {
+                    background: #d86b0f;
+                    padding: 5px 12px;
+                    border-radius: 14px;
+                    font-size: 10px;
+                    font-weight: bold;
+                    color: #fff;
+                }
+                .qcr-sucursal-banner .pct-cell {
+                    text-align: right;
+                    width: 30%;
+                }
+
+                /* === CONTENT === */
+                .qcr-content { padding: 14px; }
+
+                /* === KPIs === */
+                .qcr-kpis-table {
+                    width: 100%;
+                    border-collapse: separate;
+                    border-spacing: 6px 0;
+                    margin-bottom: 12px;
+                }
+                .qcr-kpis-table > tbody > tr > td {
+                    width: 25%;
+                    background: #fff;
+                    border: 1px solid #e5e5e5;
+                    border-left: 3px solid #ee7b1f;
+                    padding: 9px 11px;
+                    vertical-align: top;
+                }
+                .qcr-kpi-label {
+                    font-size: 7.5px;
+                    color: #888;
+                    font-weight: bold;
+                    text-transform: uppercase;
+                    letter-spacing: 1px;
+                    margin-bottom: 3px;
+                }
+                .qcr-kpi-value {
+                    font-size: 17px;
+                    font-weight: bold;
+                    color: #1a1a1a;
+                    line-height: 1.1;
+                }
+                .qcr-kpi-sub {
+                    font-size: 9px;
+                    color: #666;
+                    margin-top: 3px;
+                    font-weight: 600;
+                }
+
+                /* === SECTION === */
+                .qcr-sec { margin-bottom: 12px; }
+                .qcr-sec-head {
+                    width: 100%;
+                    border-bottom: 2px solid #ee7b1f;
+                    padding-bottom: 4px;
+                    margin-bottom: 6px;
+                }
+                .qcr-sec-head-table { width: 100%; }
+                .qcr-sec-title {
+                    font-size: 12px;
+                    font-weight: bold;
+                    color: #1a1a1a;
+                }
+                .qcr-sec-meta {
+                    font-size: 8px;
+                    color: #888;
+                    text-transform: uppercase;
+                    letter-spacing: 1px;
+                    font-weight: bold;
+                    text-align: right;
+                }
+
+                /* === TABLA DETALLE === */
+                table.qcr-detalle {
+                    width: 100%;
+                    border-collapse: collapse;
+                    font-size: 9.5px;
+                }
+                /* Si una tabla larga se parte entre hojas, repetir encabezados
+                   y no cortar una fila por la mitad. */
+                table.qcr-detalle thead { display: table-header-group; }
+                table.qcr-detalle tfoot { display: table-row-group; }
+                table.qcr-detalle tr { page-break-inside: avoid; }
+                table.qcr-detalle th {
+                    background: #1a1a1a;
+                    color: #fff;
+                    text-align: left;
+                    padding: 6px 9px;
+                    font-weight: bold;
+                    font-size: 8.5px;
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                }
+                table.qcr-detalle th.num { text-align: right; }
+                table.qcr-detalle td {
+                    padding: 5px 9px;
+                    border-bottom: 1px solid #e5e5e5;
+                    vertical-align: middle;
+                }
+                table.qcr-detalle td.num { text-align: right; }
+                table.qcr-detalle .p-name {
+                    font-weight: bold;
+                    color: #1a1a1a;
+                    font-size: 10px;
+                }
+                table.qcr-detalle .p-code {
+                    font-size: 8.5px;
+                    color: #888;
+                    margin-top: 1px;
+                }
+                table.qcr-detalle tfoot td {
+                    background: #fef3e8;
+                    font-weight: bold;
+                    color: #1a1a1a;
+                    padding: 7px 9px;
+                    border-top: 2px solid #ee7b1f;
+                }
+
+                /* === CAT TAG === */
+                .qcr-cat-tag {
+                    display: inline-block;
+                    font-size: 8px;
+                    font-weight: bold;
+                    padding: 2px 7px;
+                    border-radius: 8px;
+                }
+                .qcr-cat-tag-liquidos   { background: #fde7d2; color: #ee7b1f; }
+                .qcr-cat-tag-papeles    { background: #f5d4b2; color: #d86b0f; }
+                .qcr-cat-tag-bolsas     { background: #d4d4d4; color: #1a1a1a; }
+                .qcr-cat-tag-accesorios { background: #ebebeb; color: #7a7a7a; }
+                .qcr-cat-tag-varios     { background: #f0f0f0; color: #888; }
+
+                /* === CHARTS ROW === */
+                .qcr-charts-table {
+                    width: 100%;
+                    border-collapse: separate;
+                    border-spacing: 8px 0;
+                    margin-bottom: 12px;
+                }
+                .qcr-charts-table > tbody > tr > td {
+                    background: #fff;
+                    border: 1px solid #e5e5e5;
+                    padding: 10px 11px;
+                    vertical-align: top;
+                    width: 50%;
+                }
+                .qcr-chart-head {
+                    font-size: 10px;
+                    font-weight: bold;
+                    color: #1a1a1a;
+                    margin-bottom: 8px;
+                    padding-bottom: 5px;
+                    border-bottom: 1px solid #e5e5e5;
+                }
+
+                /* === DONUT === */
+                .qcr-donut-table { width: 100%; border-collapse: collapse; }
+                .qcr-donut-table td.donut-cell { width: 100px; vertical-align: middle; }
+                .qcr-donut-table td.leyenda-cell { vertical-align: middle; padding-left: 10px; }
+
+                .qcr-leyenda-table { width: 100%; border-collapse: collapse; }
+                .qcr-leyenda-table td {
+                    padding: 1px 0;
+                    vertical-align: middle;
+                    font-size: 9.5px;
+                }
+                .qcr-leyenda-dot {
+                    display: inline-block;
+                    width: 9px;
+                    height: 9px;
+                    border-radius: 2px;
+                    margin-right: 5px;
+                    vertical-align: middle;
+                }
+                .qcr-leyenda-name { font-weight: bold; color: #444; }
+                .qcr-leyenda-val {
+                    color: #666;
+                    font-size: 9px;
+                    text-align: right;
+                }
+                .qcr-leyenda-pct {
+                    color: #1a1a1a;
+                    font-weight: bold;
+                    text-align: right;
+                    font-size: 10px;
+                    padding-left: 4px;
+                }
+                .qcr-leyenda-separator td {
+                    border-bottom: 1px dashed #e5e5e5;
+                    padding: 0;
+                    height: 1px;
+                }
+                .qcr-leyenda-spacer td { height: 4px; padding: 0; }
+                .qcr-leyenda-secundaria .qcr-leyenda-name {
+                    font-weight: 600;
+                    color: #666;
+                }
+                .qcr-leyenda-secundaria .qcr-leyenda-pct {
+                    color: #444;
+                    font-weight: bold;
+                    font-size: 9px;
+                }
+
+                /* === TENDENCIA === */
+                .qcr-tend-table { width: 100%; border-collapse: collapse; }
+                .qcr-tend-table td {
+                    padding: 4px 0;
+                    vertical-align: middle;
+                    font-size: 9px;
+                }
+                .qcr-tend-mes {
+                    width: 55px;
+                    color: #888;
+                    text-transform: uppercase;
+                    font-weight: bold;
+                    font-size: 8.5px;
+                    letter-spacing: 1px;
+                }
+                .qcr-tend-bar-cell { padding: 0 8px; }
+                .qcr-tend-bar-wrap {
+                    background: #e5e5e5;
+                    height: 8px;
+                    border-radius: 4px;
+                    width: 100%;
+                }
+                .qcr-tend-bar {
+                    display: block;
+                    background: #7a7a7a;
+                    height: 8px;
+                    border-radius: 4px;
+                }
+                .qcr-tend-bar-actual { background: #ee7b1f; }
+                .qcr-tend-val {
+                    width: 85px;
+                    text-align: right;
+                    font-weight: bold;
+                    color: #1a1a1a;
+                }
+
+                /* === OBSERVACIÓN === */
+                .qcr-notas {
+                    background: #fef3e8;
+                    border-left: 3px solid #ee7b1f;
+                    padding: 9px 12px;
+                    margin: 8px 0;
+                    font-size: 10px;
+                    color: #444;
+                }
+                .qcr-notas-lbl {
+                    color: #d86b0f;
+                    display: block;
+                    font-size: 9px;
+                    text-transform: uppercase;
+                    letter-spacing: 1px;
+                    margin-bottom: 3px;
+                    font-weight: bold;
+                }
+
+                /* === FOOTER === */
+                .qcr-footer-table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    background: #1a1a1a;
+                    color: #9a9a9a;
+                    margin-top: 8px;
+                }
+                .qcr-footer-table td {
+                    padding: 8px 14px;
+                    font-size: 8.5px;
+                    vertical-align: top;
+                }
+                .qcr-footer-brand {
+                    color: #fff;
+                    font-weight: bold;
+                    display: block;
+                }
+                .qcr-footer-sub {
+                    color: #6a6a6a;
+                    font-size: 7.5px;
+                    display: block;
+                    margin-top: 1px;
+                }
+                .qcr-footer-right { text-align: right; }
+            </style>
+
+            <!-- CASO A: SINGLE-DIRECCIÓN -->
+            <t t-if="not doc.is_multi_sucursal">
+                <!-- Pocos productos: relleno hasta el pie. Muchos: flujo normal
+                     (div) para paginar limpio sin hoja en blanco. -->
+                <t t-set="usar_fill" t-value="len(doc.line_ids) &lt;= 10"/>
+                <t t-if="usar_fill">
+                    <table class="qcr-page-fill"><tr><td class="qcr-fill-top">
+                        <t t-call="quimica_cristal_reporte_mensual.qcr_body_single"/>
+                    </td></tr><tr class="qcr-fill-rest"><td></td></tr></table>
+                </t>
+                <t t-else="">
+                    <div class="qcr-page">
+                        <t t-call="quimica_cristal_reporte_mensual.qcr_body_single"/>
+                    </div>
+                </t>
+            </t>
+
+            <!-- CASO B: MULTI-SUCURSAL -->
+            <t t-if="doc.is_multi_sucursal">
+                <!-- PÁGINA 1: GENERAL -->
+                <!-- Hasta 4 sucursales entra en una hoja: relleno. Más (Coop 16):
+                     flujo normal para paginar limpio. -->
+                <t t-set="usar_fill_gen" t-value="doc.sucursales_count &lt;= 4"/>
+                <t t-if="usar_fill_gen">
+                    <table class="qcr-page-fill"><tr><td class="qcr-fill-top">
+                        <t t-call="quimica_cristal_reporte_mensual.qcr_body_general"/>
+                    </td></tr><tr class="qcr-fill-rest"><td></td></tr></table>
+                </t>
+                <t t-else="">
+                    <div class="qcr-page">
+                        <t t-call="quimica_cristal_reporte_mensual.qcr_body_general"/>
+                    </div>
+                </t>
+
+                <!-- PÁGINAS 2 a N: SUCURSAL (una por hoja) -->
+                <t t-set="suc_num" t-value="1"/>
+                <t t-foreach="doc.sucursal_ids" t-as="suc">
+                    <t t-set="suc_num" t-value="suc_num + 1"/>
+                    <t t-set="usar_fill_suc" t-value="len(suc.line_ids) &lt;= 8"/>
+                    <t t-if="usar_fill_suc">
+                        <table class="qcr-page-fill qcr-page-break"><tr><td class="qcr-fill-top">
+                            <t t-call="quimica_cristal_reporte_mensual.qcr_body_sucursal"/>
+                        </td></tr><tr class="qcr-fill-rest"><td></td></tr></table>
+                    </t>
+                    <t t-else="">
+                        <div class="qcr-page qcr-page-break">
+                            <t t-call="quimica_cristal_reporte_mensual.qcr_body_sucursal"/>
+                        </div>
+                    </t>
+                </t>
+            </t>
+
+            <!-- ============================================================ -->
+            <!-- FOOTER REAL DE WKHTMLTOPDF                                    -->
+            <!-- Odoo extrae el <div class="footer"> y lo pega al pie de CADA  -->
+            <!-- hoja física. Ventajas vs el footer in-body anterior:         -->
+            <!--  - No se parte nunca (adiós "Q\nUIMICA...")                   -->
+            <!--  - Aparece abajo aunque la página tenga poca data            -->
+            <!--  - No genera hojas fantasma                                  -->
+            <!-- OJO: este div se renderiza en un documento aparte que NO     -->
+            <!-- hereda el <style> de arriba, por eso TODO va con estilo      -->
+            <!-- inline.                                                      -->
+            <!-- ============================================================ -->
+            <div class="footer">
+                <table style="width:100%;border-collapse:collapse;background:#1a1a1a;color:#9a9a9a;font-family:'Helvetica Neue',Arial,sans-serif;">
+                    <tr>
+                        <td style="padding:8px 14px;font-size:8.5px;vertical-align:top;">
+                            <span style="color:#ffffff;font-weight:bold;display:block;">QUIMICA CRISTAL · Limpieza profesional</span>
+                            <span style="color:#6a6a6a;font-size:7.5px;display:block;margin-top:1px;">Río Cuarto, Córdoba · Reporte generado el <t t-out="doc.create_date.strftime('%d/%m/%Y') if doc.create_date else ''"/></span>
+                        </td>
+                        <td style="padding:8px 14px;font-size:8.5px;vertical-align:top;text-align:right;">
+                            Atención al cliente: <strong style="color:#ffffff">WhatsApp 358 548 1191</strong>
+                            <span style="color:#6a6a6a;font-size:7.5px;display:block;margin-top:1px;">cristal@quimicacristal.com.ar</span>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+        </template>
+
+        <template id="qcr_body_single">
+                    <t t-call="quimica_cristal_reporte_mensual.qcr_header_v2">
+                        <t t-set="num_pag" t-value="1"/>
+                        <t t-set="total_pag" t-value="1"/>
+                        <t t-set="tipo_pag">REPORTE MENSUAL</t>
+                    </t>
+
+                    <table class="qcr-client-table">
+                        <tr>
+                            <td>
+                                <div class="qcr-client-lbl">Cliente</div>
+                                <div class="qcr-client-val qcr-client-val-strong" t-out="doc.partner_id.name"/>
+                            </td>
+                            <td>
+                                <div class="qcr-client-lbl">Dirección</div>
+                                <div class="qcr-client-val">
+                                    <t t-out="doc.partner_id.street or ''"/>
+                                    <t t-if="doc.partner_id.city"> · <t t-out="doc.partner_id.city"/></t>
+                                </div>
+                            </td>
+                            <td>
+                                <div class="qcr-client-lbl">Período</div>
+                                <div class="qcr-client-val">
+                                    <t t-out="doc.date_from.strftime('%d/%m/%Y') if doc.date_from else ''"/>
+                                    — 
+                                    <t t-out="doc.date_to.strftime('%d/%m/%Y') if doc.date_to else ''"/>
+                                </div>
+                            </td>
+                            <td>
+                                <div class="qcr-client-lbl">Reporte N°</div>
+                                <div class="qcr-client-val">
+                                    #<t t-out="doc.period_year"/>-<t t-out="'%02d' % doc.period_month"/>-<t t-out="doc.id"/>
+                                </div>
+                            </td>
+                        </tr>
+                    </table>
+
+                    <div class="qcr-content">
+                        <t t-call="quimica_cristal_reporte_mensual.qcr_kpis_v2">
+                            <t t-set="kpi_total_label">Total del mes</t>
+                            <t t-set="kpi_total" t-value="doc.amount_total"/>
+                            <t t-set="kpi_pedidos" t-value="doc.pedidos"/>
+                            <t t-set="kpi_notas_credito" t-value="doc.notas_credito"/>
+                            <t t-set="kpi_productos" t-value="doc.productos_distintos"/>
+                            <t t-set="kpi_ticket" t-value="doc.ticket_promedio"/>
+                            <t t-set="kpi_vs_anterior" t-value="doc.vs_anterior_pct"/>
+                        </t>
+
+                        <table class="qcr-charts-table">
+                            <tr>
+                                <td>
+                                    <div class="qcr-chart-head">Consumo por categoría</div>
+                                    <t t-call="quimica_cristal_reporte_mensual.qcr_donut_v2">
+                                        <t t-set="donut_svg" t-value="doc.get_donut_svg()"/>
+                                        <t t-set="cat_liquidos" t-value="doc.cat_liquidos"/>
+                                        <t t-set="cat_papeles" t-value="doc.cat_papeles"/>
+                                        <t t-set="cat_bolsas" t-value="doc.cat_bolsas"/>
+                                        <t t-set="cat_accesorios" t-value="doc.cat_accesorios"/>
+                                        <t t-set="cat_varios" t-value="doc.cat_varios"/>
+                                        <t t-set="cat_liquidos_pct" t-value="doc.cat_liquidos_pct"/>
+                                        <t t-set="cat_papeles_pct" t-value="doc.cat_papeles_pct"/>
+                                        <t t-set="cat_bolsas_pct" t-value="doc.cat_bolsas_pct"/>
+                                        <t t-set="cat_accesorios_pct" t-value="doc.cat_accesorios_pct"/>
+                                        <t t-set="cat_varios_pct" t-value="doc.cat_varios_pct"/>
+                                    </t>
+                                </td>
+                                <td>
+                                    <div class="qcr-chart-head">Tendencia · últimos 4 meses</div>
+                                    <t t-call="quimica_cristal_reporte_mensual.qcr_tendencia_v2">
+                                        <t t-set="trend" t-value="doc.get_trend_data()"/>
+                                        <t t-set="mes_actual" t-value="doc.get_mes_nombre()"/>
+                                    </t>
+                                </td>
+                            </tr>
+                        </table>
+
+                        <div class="qcr-sec">
+                            <div class="qcr-sec-head">
+                                <table class="qcr-sec-head-table">
+                                    <tr>
+                                        <td class="qcr-sec-title">Detalle por producto</td>
+                                        <td class="qcr-sec-meta">Ordenado por monto</td>
+                                    </tr>
+                                </table>
+                            </div>
+                            <t t-call="quimica_cristal_reporte_mensual.qcr_tabla_productos_v2">
+                                <t t-set="lines" t-value="doc.line_ids"/>
+                                <t t-set="total_mes" t-value="doc.amount_total"/>
+                                <t t-set="cliente_label" t-value="doc.partner_id.name"/>
+                                <t t-set="mes_label" t-value="doc.get_mes_nombre()"/>
+                            </t>
+                        </div>
+
+                        <t t-if="doc.observation">
+                            <div class="qcr-notas">
+                                <span class="qcr-notas-lbl">Observación del mes</span>
+                                <span t-out="doc.observation"/>
+                            </div>
+                        </t>
+                    </div>
+        </template>
+
+        <template id="qcr_body_general">
+                    <t t-call="quimica_cristal_reporte_mensual.qcr_header_v2">
+                        <t t-set="num_pag" t-value="1"/>
+                        <t t-set="total_pag" t-value="1 + doc.sucursales_count"/>
+                        <t t-set="tipo_pag">GENERAL</t>
+                    </t>
+
+                    <table class="qcr-client-table">
+                        <tr>
+                            <td>
+                                <div class="qcr-client-lbl">Cliente</div>
+                                <div class="qcr-client-val qcr-client-val-strong" t-out="doc.partner_id.name"/>
+                            </td>
+                            <td>
+                                <div class="qcr-client-lbl">Sucursales</div>
+                                <div class="qcr-client-val"><t t-out="doc.sucursales_count"/> activas en el mes</div>
+                            </td>
+                            <td>
+                                <div class="qcr-client-lbl">Período</div>
+                                <div class="qcr-client-val">
+                                    <t t-out="doc.date_from.strftime('%d/%m/%Y') if doc.date_from else ''"/>
+                                    — 
+                                    <t t-out="doc.date_to.strftime('%d/%m/%Y') if doc.date_to else ''"/>
+                                </div>
+                            </td>
+                            <td>
+                                <div class="qcr-client-lbl">Reporte N°</div>
+                                <div class="qcr-client-val">
+                                    #<t t-out="doc.period_year"/>-<t t-out="'%02d' % doc.period_month"/>-<t t-out="doc.id"/>
+                                </div>
+                            </td>
+                        </tr>
+                    </table>
+
+                    <div class="qcr-content">
+                        <t t-call="quimica_cristal_reporte_mensual.qcr_kpis_v2">
+                            <t t-set="kpi_total_label">Total consolidado</t>
+                            <t t-set="kpi_total" t-value="doc.amount_total"/>
+                            <t t-set="kpi_pedidos" t-value="doc.pedidos"/>
+                            <t t-set="kpi_notas_credito" t-value="doc.notas_credito"/>
+                            <t t-set="kpi_productos" t-value="doc.productos_distintos"/>
+                            <t t-set="kpi_ticket" t-value="doc.ticket_promedio"/>
+                            <t t-set="kpi_vs_anterior" t-value="doc.vs_anterior_pct"/>
+                        </t>
+
+                        <div class="qcr-sec">
+                            <div class="qcr-sec-head">
+                                <table class="qcr-sec-head-table">
+                                    <tr>
+                                        <td class="qcr-sec-title">Consumo por sucursal</td>
+                                        <td class="qcr-sec-meta">Ordenado por monto</td>
+                                    </tr>
+                                </table>
+                            </div>
+                            <table class="qcr-detalle">
+                                <thead>
+                                    <tr>
+                                        <th>Sucursal</th>
+                                        <th class="num">Facturas</th>
+                                        <th class="num">Ticket prom.</th>
+                                        <th class="num">Total mes</th>
+                                        <th class="num">% total</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr t-foreach="doc.sucursal_ids" t-as="suc">
+                                        <td>
+                                            <div class="p-name" t-out="suc.partner_shipping_id.name"/>
+                                            <div class="p-code" t-out="suc.direccion or ''"/>
+                                        </td>
+                                        <td class="num" t-out="suc.pedidos"/>
+                                        <td class="num">
+                                            $<t t-out="'{:,.0f}'.format(suc.ticket_promedio).replace(',', '.')"/>
+                                        </td>
+                                        <td class="num">
+                                            <strong>$<t t-out="'{:,.0f}'.format(suc.amount_total).replace(',', '.')"/></strong>
+                                        </td>
+                                        <td class="num"><t t-out="'%.1f' % suc.pct_total"/>%</td>
+                                    </tr>
+                                </tbody>
+                                <tfoot>
+                                    <tr>
+                                        <td><strong>Total <t t-out="doc.partner_id.name"/> consolidado</strong></td>
+                                        <td class="num"><strong><t t-out="doc.pedidos"/></strong></td>
+                                        <td class="num"></td>
+                                        <td class="num"><strong>$<t t-out="'{:,.0f}'.format(doc.amount_total).replace(',', '.')"/></strong></td>
+                                        <td class="num"><strong>100%</strong></td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+
+                        <table class="qcr-charts-table">
+                            <tr>
+                                <td>
+                                    <div class="qcr-chart-head">Consumo por categoría · consolidado</div>
+                                    <t t-call="quimica_cristal_reporte_mensual.qcr_donut_v2">
+                                        <t t-set="donut_svg" t-value="doc.get_donut_svg()"/>
+                                        <t t-set="cat_liquidos" t-value="doc.cat_liquidos"/>
+                                        <t t-set="cat_papeles" t-value="doc.cat_papeles"/>
+                                        <t t-set="cat_bolsas" t-value="doc.cat_bolsas"/>
+                                        <t t-set="cat_accesorios" t-value="doc.cat_accesorios"/>
+                                        <t t-set="cat_varios" t-value="doc.cat_varios"/>
+                                        <t t-set="cat_liquidos_pct" t-value="doc.cat_liquidos_pct"/>
+                                        <t t-set="cat_papeles_pct" t-value="doc.cat_papeles_pct"/>
+                                        <t t-set="cat_bolsas_pct" t-value="doc.cat_bolsas_pct"/>
+                                        <t t-set="cat_accesorios_pct" t-value="doc.cat_accesorios_pct"/>
+                                        <t t-set="cat_varios_pct" t-value="doc.cat_varios_pct"/>
+                                    </t>
+                                </td>
+                                <td>
+                                    <div class="qcr-chart-head">Tendencia · últimos 4 meses</div>
+                                    <t t-call="quimica_cristal_reporte_mensual.qcr_tendencia_v2">
+                                        <t t-set="trend" t-value="doc.get_trend_data()"/>
+                                        <t t-set="mes_actual" t-value="doc.get_mes_nombre()"/>
+                                    </t>
+                                </td>
+                            </tr>
+                        </table>
+
+                        <!-- Top productos consolidado: llena la página general
+                             con dato real en vez de espacio vacío. El detalle
+                             completo por producto va en cada página de sucursal. -->
+                        <t t-if="doc.line_ids">
+                            <div class="qcr-sec qcr-sec-keep">
+                                <div class="qcr-sec-head">
+                                    <table class="qcr-sec-head-table">
+                                        <tr>
+                                            <td class="qcr-sec-title">Productos más consumidos · consolidado</td>
+                                            <td class="qcr-sec-meta">Top 12 · ordenado por monto</td>
+                                        </tr>
+                                    </table>
+                                </div>
+                                <table class="qcr-detalle">
+                                    <thead>
+                                        <tr>
+                                            <th>Producto</th>
+                                            <th>Categoría</th>
+                                            <th class="num">Cant.</th>
+                                            <th class="num">Total</th>
+                                            <th class="num">% mes</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr t-foreach="doc.line_ids.sorted(key=lambda l: l.amount_total, reverse=True)[:12]" t-as="line">
+                                            <td>
+                                                <div class="p-name" t-out="line.product_name"/>
+                                                <div class="p-code" t-if="line.product_default_code" t-out="line.product_default_code"/>
+                                            </td>
+                                            <td>
+                                                <span t-attf-class="qcr-cat-tag qcr-cat-tag-#{line.categoria}"
+                                                      t-out="line.get_categoria_label()"/>
+                                            </td>
+                                            <td class="num"><t t-out="'%.0f' % line.quantity"/></td>
+                                            <td class="num">
+                                                <strong>$<t t-out="'{:,.0f}'.format(line.amount_total).replace(',', '.')"/></strong>
+                                            </td>
+                                            <td class="num"><t t-out="'%.1f' % line.pct_mes"/>%</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                                <t t-if="doc.productos_distintos &gt; 12">
+                                    <div style="font-size:8px;color:#888;margin-top:5px;font-style:italic;">
+                                        Mostrando los 12 productos de mayor consumo de <t t-out="doc.productos_distintos"/> distintos. El detalle completo está en la página de cada sucursal.
+                                    </div>
+                                </t>
+                            </div>
+                        </t>
+
+                        <t t-if="doc.observation">
+                            <div class="qcr-notas">
+                                <span class="qcr-notas-lbl">Observación del mes</span>
+                                <span t-out="doc.observation"/>
+                            </div>
+                        </t>
+                    </div>
+        </template>
+
+        <template id="qcr_body_sucursal">
+                        <t t-call="quimica_cristal_reporte_mensual.qcr_header_v2">
+                            <t t-set="num_pag" t-value="suc_num"/>
+                            <t t-set="total_pag" t-value="1 + doc.sucursales_count"/>
+                            <t t-set="tipo_pag">SUCURSAL</t>
+                        </t>
+
+                        <table class="qcr-sucursal-banner">
+                            <tr>
+                                <td>
+                                    <span class="l">Sucursal</span>
+                                    <span class="v">
+                                        <t t-out="suc.partner_shipping_id.name"/>
+                                        <t t-if="suc.direccion">
+                                            <span class="dir-mini">· <t t-out="suc.direccion"/></span>
+                                        </t>
+                                    </span>
+                                </td>
+                                <td class="pct-cell">
+                                    <span class="pct"><t t-out="'%.1f' % suc.pct_total"/>% del consumo total</span>
+                                </td>
+                            </tr>
+                        </table>
+
+                        <div class="qcr-content">
+                            <t t-call="quimica_cristal_reporte_mensual.qcr_kpis_v2">
+                                <t t-set="kpi_total_label">Total sucursal</t>
+                                <t t-set="kpi_total" t-value="suc.amount_total"/>
+                                <t t-set="kpi_pedidos" t-value="suc.pedidos"/>
+                                <t t-set="kpi_notas_credito" t-value="suc.notas_credito"/>
+                                <t t-set="kpi_productos" t-value="suc.productos_distintos"/>
+                                <t t-set="kpi_ticket" t-value="suc.ticket_promedio"/>
+                                <t t-set="kpi_vs_anterior" t-value="suc.vs_anterior_pct"/>
+                            </t>
+
+                            <table class="qcr-charts-table">
+                                <tr>
+                                    <td>
+                                        <div class="qcr-chart-head">Consumo por categoría · <t t-out="suc.partner_shipping_id.name"/></div>
+                                        <t t-call="quimica_cristal_reporte_mensual.qcr_donut_v2">
+                                            <t t-set="donut_svg" t-value="suc.get_donut_svg()"/>
+                                            <t t-set="cat_liquidos" t-value="suc.cat_liquidos"/>
+                                            <t t-set="cat_papeles" t-value="suc.cat_papeles"/>
+                                            <t t-set="cat_bolsas" t-value="suc.cat_bolsas"/>
+                                            <t t-set="cat_accesorios" t-value="suc.cat_accesorios"/>
+                                            <t t-set="cat_varios" t-value="suc.cat_varios"/>
+                                            <t t-set="cat_liquidos_pct" t-value="suc.cat_liquidos_pct"/>
+                                            <t t-set="cat_papeles_pct" t-value="suc.cat_papeles_pct"/>
+                                            <t t-set="cat_bolsas_pct" t-value="suc.cat_bolsas_pct"/>
+                                            <t t-set="cat_accesorios_pct" t-value="suc.cat_accesorios_pct"/>
+                                            <t t-set="cat_varios_pct" t-value="suc.cat_varios_pct"/>
+                                        </t>
+                                    </td>
+                                    <td>
+                                        <div class="qcr-chart-head">Tendencia · últimos 4 meses</div>
+                                        <t t-call="quimica_cristal_reporte_mensual.qcr_tendencia_v2">
+                                            <t t-set="trend" t-value="suc.get_trend_data()"/>
+                                            <t t-set="mes_actual" t-value="doc.get_mes_nombre()"/>
+                                        </t>
+                                    </td>
+                                </tr>
+                            </table>
+
+                            <div class="qcr-sec">
+                                <div class="qcr-sec-head">
+                                    <table class="qcr-sec-head-table">
+                                        <tr>
+                                            <td class="qcr-sec-title">Detalle por producto · <t t-out="suc.partner_shipping_id.name"/></td>
+                                            <td class="qcr-sec-meta">Ordenado por monto</td>
+                                        </tr>
+                                    </table>
+                                </div>
+                                <t t-call="quimica_cristal_reporte_mensual.qcr_tabla_productos_v2">
+                                    <t t-set="lines" t-value="suc.line_ids"/>
+                                    <t t-set="total_mes" t-value="suc.amount_total"/>
+                                    <t t-set="cliente_label" t-value="suc.partner_shipping_id.name"/>
+                                    <t t-set="mes_label" t-value="doc.get_mes_nombre()"/>
+                                </t>
+                            </div>
+
+                            <t t-if="suc.observation">
+                                <div class="qcr-notas">
+                                    <span class="qcr-notas-lbl">Observación de la sucursal</span>
+                                    <span t-out="suc.observation"/>
+                                </div>
+                            </t>
+                        </div>
+        </template>
+
+        <!-- ============================================================ -->
+        <!-- COMPONENTES REUTILIZABLES                                     -->
+        <!-- ============================================================ -->
+
+        <template id="qcr_header_v2">
+            <table class="qcr-header-table">
+                <tr>
+                    <td class="qcr-h-brand-cell">
+                        <div class="qcr-h-brand-title">QUIMICA CRISTAL</div>
+                        <div class="qcr-h-brand-sub">Limpieza profesional · Río Cuarto</div>
+                    </td>
+                    <td class="qcr-h-meta-cell">
+                        <span class="qcr-pag-ind">Pág <t t-out="num_pag"/> de <t t-out="total_pag"/></span>
+                        <span class="qcr-h-tag"><t t-out="tipo_pag"/></span>
+                    </td>
+                </tr>
+                <tr class="qcr-h-titulo-row">
+                    <td colspan="2">
+                        <span class="qcr-h-titulo">
+                            Tu consumo de <span class="qcr-h-titulo-span"><t t-out="doc.get_mes_nombre()"/> <t t-out="doc.period_year"/></span>
+                        </span>
+                    </td>
+                </tr>
+            </table>
+        </template>
+
+        <template id="qcr_kpis_v2">
+            <table class="qcr-kpis-table">
+                <tr>
+                    <td>
+                        <div class="qcr-kpi-label"><t t-out="kpi_total_label"/></div>
+                        <div class="qcr-kpi-value">$<t t-out="'{:,.0f}'.format(kpi_total).replace(',', '.')"/></div>
+                        <div class="qcr-kpi-sub">
+                            <t t-if="kpi_vs_anterior &gt; 0">↑ +<t t-out="'%.1f' % kpi_vs_anterior"/>% vs mes anterior</t>
+                            <t t-elif="kpi_vs_anterior &lt; 0">↓ <t t-out="'%.1f' % kpi_vs_anterior"/>% vs mes anterior</t>
+                            <t t-else="">sin comparación previa</t>
+                        </div>
+                    </td>
+                    <td>
+                        <div class="qcr-kpi-label">Facturas</div>
+                        <div class="qcr-kpi-value"><t t-out="kpi_pedidos"/></div>
+                        <div class="qcr-kpi-sub">
+                            <t t-if="kpi_notas_credito">
+                                <t t-out="kpi_notas_credito"/> NC restada<t t-if="kpi_notas_credito != 1">s</t>
+                            </t>
+                            <t t-else="">en el mes</t>
+                        </div>
+                    </td>
+                    <td>
+                        <div class="qcr-kpi-label">Productos distintos</div>
+                        <div class="qcr-kpi-value"><t t-out="kpi_productos"/></div>
+                        <div class="qcr-kpi-sub">5 categorías</div>
+                    </td>
+                    <td>
+                        <div class="qcr-kpi-label">Ticket promedio</div>
+                        <div class="qcr-kpi-value">$<t t-out="'{:,.0f}'.format(kpi_ticket).replace(',', '.')"/></div>
+                        <div class="qcr-kpi-sub">por factura</div>
+                    </td>
+                </tr>
+            </table>
+        </template>
+
+        <template id="qcr_donut_v2">
+            <table class="qcr-donut-table">
+                <tr>
+                    <td class="donut-cell">
+                        <t t-out="donut_svg"/>
+                    </td>
+                    <td class="leyenda-cell">
+                        <table class="qcr-leyenda-table">
+                            <tr>
+                                <td style="width:14px"><span class="qcr-leyenda-dot" style="background:#ee7b1f"/></td>
+                                <td class="qcr-leyenda-name">Líquidos</td>
+                                <td class="qcr-leyenda-val">$<t t-out="'{:,.0f}'.format(cat_liquidos).replace(',', '.')"/></td>
+                                <td class="qcr-leyenda-pct"><t t-out="'%.1f' % cat_liquidos_pct"/>%</td>
+                            </tr>
+                            <tr>
+                                <td><span class="qcr-leyenda-dot" style="background:#d86b0f"/></td>
+                                <td class="qcr-leyenda-name">Papeles</td>
+                                <td class="qcr-leyenda-val">$<t t-out="'{:,.0f}'.format(cat_papeles).replace(',', '.')"/></td>
+                                <td class="qcr-leyenda-pct"><t t-out="'%.1f' % cat_papeles_pct"/>%</td>
+                            </tr>
+                            <tr>
+                                <td><span class="qcr-leyenda-dot" style="background:#1a1a1a"/></td>
+                                <td class="qcr-leyenda-name">Bolsas</td>
+                                <td class="qcr-leyenda-val">$<t t-out="'{:,.0f}'.format(cat_bolsas).replace(',', '.')"/></td>
+                                <td class="qcr-leyenda-pct"><t t-out="'%.1f' % cat_bolsas_pct"/>%</td>
+                            </tr>
+                            <tr class="qcr-leyenda-separator"><td colspan="4"/></tr>
+                            <tr class="qcr-leyenda-spacer"><td colspan="4"/></tr>
+                            <tr class="qcr-leyenda-secundaria">
+                                <td><span class="qcr-leyenda-dot" style="background:#7a7a7a"/></td>
+                                <td class="qcr-leyenda-name">Accesorios</td>
+                                <td class="qcr-leyenda-val">$<t t-out="'{:,.0f}'.format(cat_accesorios).replace(',', '.')"/></td>
+                                <td class="qcr-leyenda-pct"><t t-out="'%.1f' % cat_accesorios_pct"/>%</td>
+                            </tr>
+                            <tr class="qcr-leyenda-secundaria">
+                                <td><span class="qcr-leyenda-dot" style="background:#bababa"/></td>
+                                <td class="qcr-leyenda-name">Varios</td>
+                                <td class="qcr-leyenda-val">$<t t-out="'{:,.0f}'.format(cat_varios).replace(',', '.')"/></td>
+                                <td class="qcr-leyenda-pct"><t t-out="'%.1f' % cat_varios_pct"/>%</td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+            </table>
+        </template>
+
+        <template id="qcr_tendencia_v2">
+            <table class="qcr-tend-table">
+                <t t-set="max_total" t-value="max([t['total'] for t in trend] + [1])"/>
+                <t t-foreach="trend" t-as="t">
+                    <t t-set="bar_width_int" t-value="int(t['total'] / max_total * 100)"/>
+                    <t t-set="bar_cls" t-value="'qcr-tend-bar qcr-tend-bar-actual' if t['month_name'] == mes_actual else 'qcr-tend-bar'"/>
+                    <t t-set="bar_style" t-value="'width: ' + str(bar_width_int) + '%'"/>
+                    <tr>
+                        <td class="qcr-tend-mes" t-out="t['month_name']"/>
+                        <td class="qcr-tend-bar-cell">
+                            <div class="qcr-tend-bar-wrap">
+                                <span t-att-class="bar_cls" t-att-style="bar_style"/>
+                            </div>
+                        </td>
+                        <td class="qcr-tend-val">
+                            $<t t-out="'{:,.0f}'.format(t['total']).replace(',', '.')"/>
+                        </td>
+                    </tr>
+                </t>
+            </table>
+        </template>
+
+        <template id="qcr_tabla_productos_v2">
+            <table class="qcr-detalle">
+                <thead>
+                    <tr>
+                        <th>Producto</th>
+                        <th>Categoría</th>
+                        <th class="num">Cant.</th>
+                        <th class="num">Total</th>
+                        <th class="num">% mes</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr t-foreach="lines" t-as="line">
+                        <td>
+                            <div class="p-name" t-out="line.product_name"/>
+                            <div class="p-code" t-if="line.product_default_code" t-out="line.product_default_code"/>
+                        </td>
+                        <td>
+                            <span t-attf-class="qcr-cat-tag qcr-cat-tag-#{line.categoria}"
+                                  t-out="line.get_categoria_label()"/>
+                        </td>
+                        <td class="num"><t t-out="'%.0f' % line.quantity"/></td>
+                        <td class="num">
+                            <strong>$<t t-out="'{:,.0f}'.format(line.amount_total).replace(',', '.')"/></strong>
+                        </td>
+                        <td class="num"><t t-out="'%.1f' % line.pct_mes"/>%</td>
+                    </tr>
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <td colspan="3">
+                            <strong>Total <t t-out="cliente_label"/> · <t t-out="mes_label"/></strong>
+                        </td>
+                        <td class="num">
+                            <strong>$<t t-out="'{:,.0f}'.format(total_mes).replace(',', '.')"/></strong>
+                        </td>
+                        <td class="num"><strong>100%</strong></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </template>
+
+        <template id="qcr_footer_v2">
+            <table class="qcr-footer-table">
+                <tr>
+                    <td>
+                        <span class="qcr-footer-brand">QUIMICA CRISTAL · Limpieza profesional</span>
+                        <span class="qcr-footer-sub">
+                            Río Cuarto, Córdoba · Reporte generado el
+                            <t t-out="doc.create_date.strftime('%d/%m/%Y') if doc.create_date else ''"/>
+                        </span>
+                    </td>
+                    <td class="qcr-footer-right">
+                        Atención al cliente: <strong style="color:#fff">WhatsApp 358 548 1191</strong>
+                        <span class="qcr-footer-sub">cristal@quimicacristal.com.ar</span>
+                    </td>
+                </tr>
+            </table>
+        </template>
+
+    </data>
+</odoo>

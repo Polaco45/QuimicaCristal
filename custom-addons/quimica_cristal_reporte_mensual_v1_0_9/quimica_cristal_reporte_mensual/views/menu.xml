@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+
+        <!-- Menú raíz -->
+        <menuitem id="menu_reporte_root"
+                  name="Reporte Plan Control"
+                  web_icon="quimica_cristal_reporte_mensual,static/description/icon.png"
+                  sequence="50"/>
+
+        <!-- Submenú: Reportes generados -->
+        <menuitem id="menu_reporte_mensual"
+                  name="Reportes mensuales"
+                  parent="menu_reporte_root"
+                  action="action_reporte_mensual"
+                  sequence="10"/>
+
+        <!-- Submenú: Generar manual -->
+        <menuitem id="menu_reporte_descarga_wizard"
+                  name="Generar reporte manual"
+                  parent="menu_reporte_root"
+                  action="action_reporte_descarga_wizard"
+                  sequence="20"/>
+
+        <!-- Configuración -->
+        <menuitem id="menu_reporte_config"
+                  name="Configuración"
+                  parent="menu_reporte_root"
+                  sequence="100"/>
+
+    </data>
+</odoo>
