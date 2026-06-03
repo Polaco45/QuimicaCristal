@@ -1,0 +1,184 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- LIST -->
+    <record id="view_cristal_relevamiento_list" model="ir.ui.view">
+        <field name="name">cristal.relevamiento.list</field>
+        <field name="model">cristal.relevamiento</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="fecha_relevamiento"/>
+                <field name="partner_id"/>
+                <field name="rubro_ids" widget="many2many_tags" optional="show"/>
+                <field name="operador_id" optional="show"/>
+                <field name="es_remedicion" optional="hide"/>
+                <field name="promedio_limpieza" optional="show"/>
+                <field name="state" widget="badge"
+                       decoration-success="state == 'completado'"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- FORM -->
+    <record id="view_cristal_relevamiento_form" model="ir.ui.view">
+        <field name="name">cristal.relevamiento.form</field>
+        <field name="model">cristal.relevamiento</field>
+        <field name="arch" type="xml">
+            <form>
+                <header>
+                    <field name="state" widget="statusbar" statusbar_visible="borrador,completado"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1><field name="name" readonly="1"/></h1>
+                    </div>
+                    <group>
+                        <group string="Cliente">
+                            <field name="partner_id"/>
+                            <field name="nombre_fantasia"/>
+                            <field name="rubro_ids" widget="many2many_tags"/>
+                            <field name="canal_source_id"/>
+                        </group>
+                        <group string="Relevamiento">
+                            <field name="fecha_relevamiento"/>
+                            <field name="operador_id"/>
+                            <field name="lead_id"/>
+                            <field name="es_remedicion"/>
+                            <field name="relevamiento_origen_id"
+                                   invisible="not es_remedicion"
+                                   domain="[('partner_id','=',partner_id),('id','!=',id)]"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Infraestructura">
+                            <group>
+                                <group>
+                                    <field name="superficie_total"/>
+                                    <field name="cantidad_banos"/>
+                                    <field name="personal_total"/>
+                                    <field name="circulacion_dia"/>
+                                </group>
+                                <group>
+                                    <field name="dias_uso_semana"/>
+                                    <field name="horario_operacion"/>
+                                    <field name="frecuencia_limpieza"/>
+                                </group>
+                            </group>
+                            <group string="Características">
+                                <field name="sector_ids" widget="many2many_tags"/>
+                                <field name="piso_ids" widget="many2many_tags"/>
+                                <field name="superficie_dom_ids" widget="many2many_tags"/>
+                            </group>
+                            <group string="Personal de limpieza actual">
+                                <group>
+                                    <field name="personal_cantidad"/>
+                                    <field name="personal_relacion"/>
+                                </group>
+                                <group>
+                                    <field name="encargado_interno"/>
+                                    <field name="capacitacion_previa"/>
+                                </group>
+                            </group>
+                        </page>
+
+                        <page string="Insumos, equipos y herramientas">
+                            <field name="producto_ids">
+                                <list editable="bottom">
+                                    <field name="categoria"/>
+                                    <field name="marca"/>
+                                    <field name="volumen_mes"/>
+                                </list>
+                            </field>
+                            <group>
+                                <field name="calidad_general"/>
+                            </group>
+                            <group string="Equipamiento y herramientas">
+                                <field name="dispenser_ids" widget="many2many_tags"/>
+                                <field name="equipo_ids" widget="many2many_tags"/>
+                                <field name="herramienta_ids" widget="many2many_tags"/>
+                            </group>
+                        </page>
+
+                        <page string="Proveedor y situación comercial">
+                            <group>
+                                <group string="Proveedor y compra">
+                                    <field name="tiene_proveedor"/>
+                                    <field name="proveedor_actual" invisible="not tiene_proveedor"/>
+                                    <field name="proveedor_antiguedad" invisible="not tiene_proveedor"/>
+                                    <field name="quien_compra"/>
+                                    <field name="frecuencia_compra"/>
+                                    <field name="responsable_compras"/>
+                                    <field name="responsable_contacto"/>
+                                    <field name="presupuesto_estimado_mensual_actual"/>
+                                </group>
+                                <group string="Pago">
+                                    <field name="forma_pago_ids" widget="many2many_tags"/>
+                                    <field name="plazo_pago"/>
+                                </group>
+                            </group>
+                            <group string="Falencias, expectativas y prioridades">
+                                <field name="falencia_ids" widget="many2many_tags"/>
+                                <field name="mejora_ids" widget="many2many_tags"/>
+                                <field name="valora_ids" widget="many2many_tags"/>
+                                <field name="prioridad_1"/>
+                                <field name="conformidad_proveedor"/>
+                            </group>
+                        </page>
+
+                        <page string="Muestras">
+                            <field name="muestra_entregada"/>
+                            <field name="muestra_ids" invisible="not muestra_entregada">
+                                <list editable="bottom">
+                                    <field name="product_id"/>
+                                    <field name="producto_texto"/>
+                                    <field name="presentacion"/>
+                                    <field name="cantidad"/>
+                                </list>
+                            </field>
+                        </page>
+
+                        <page string="Cierre con el cliente">
+                            <div class="alert alert-info" role="status">
+                                Leé el guión al cliente y tildá lo que efectivamente comunicaste.
+                            </div>
+                            <group string="Comunicado al cliente">
+                                <field name="com_propuesta"/>
+                                <field name="com_reporte"/>
+                                <field name="com_revision"/>
+                                <field name="com_entrega"/>
+                                <field name="com_descuento"/>
+                                <field name="com_lista"/>
+                            </group>
+                        </page>
+
+                        <page string="Diagnóstico por sector (interno)">
+                            <div class="alert alert-warning" role="status">
+                                Uso interno. Calificá el estado de limpieza actual de cada sector
+                                (1 muy malo – 5 impecable). Es la línea de base para el reporte a 3 meses.
+                            </div>
+                            <field name="sector_diag_ids">
+                                <list editable="bottom">
+                                    <field name="sector_id"/>
+                                    <field name="puntaje"/>
+                                    <field name="observaciones"/>
+                                </list>
+                            </field>
+                            <group>
+                                <field name="promedio_limpieza"/>
+                            </group>
+                            <field name="observacion_general" placeholder="Observación general interna: urgencias, decisor real, algo que notaste..."/>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- ACTION -->
+    <record id="action_cristal_relevamiento" model="ir.actions.act_window">
+        <field name="name">Relevamientos</field>
+        <field name="res_model">cristal.relevamiento</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+</odoo>
