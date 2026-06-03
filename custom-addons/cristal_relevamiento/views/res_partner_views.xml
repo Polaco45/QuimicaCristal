@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_partner_form_relevamiento" model="ir.ui.view">
+        <field name="name">res.partner.form.relevamiento</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="base.view_partner_form"/>
+        <field name="arch" type="xml">
+            <!-- Botón inteligente -->
+            <div name="button_box" position="inside">
+                <button class="oe_stat_button" type="object"
+                        name="action_open_relevamientos" icon="fa-clipboard">
+                    <field name="relevamiento_count" widget="statinfo" string="Relevamientos"/>
+                </button>
+            </div>
+            <!-- Pestaña con los relevamientos del cliente -->
+            <notebook position="inside">
+                <page string="Relevamientos" name="relevamientos">
+                    <field name="relevamiento_ids" context="{'default_partner_id': id}">
+                        <list>
+                            <field name="fecha_relevamiento"/>
+                            <field name="operador_id"/>
+                            <field name="es_remedicion"/>
+                            <field name="promedio_limpieza"/>
+                            <field name="state" widget="badge"
+                                   decoration-success="state == 'completado'"/>
+                        </list>
+                    </field>
+                </page>
+            </notebook>
+        </field>
+    </record>
+</odoo>

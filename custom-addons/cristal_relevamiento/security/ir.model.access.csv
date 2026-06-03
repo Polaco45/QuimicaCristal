@@ -1,0 +1,8 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_cristal_relevamiento_user,cristal.relevamiento.user,model_cristal_relevamiento,base.group_user,1,1,1,0
+access_cristal_relevamiento_mgr,cristal.relevamiento.mgr,model_cristal_relevamiento,sales_team.group_sale_manager,1,1,1,1
+access_cristal_relevamiento_producto_user,cristal.relevamiento.producto.user,model_cristal_relevamiento_producto,base.group_user,1,1,1,1
+access_cristal_relevamiento_muestra_user,cristal.relevamiento.muestra.user,model_cristal_relevamiento_muestra,base.group_user,1,1,1,1
+access_cristal_relevamiento_sector_user,cristal.relevamiento.sector.user,model_cristal_relevamiento_sector,base.group_user,1,1,1,1
+access_cristal_relevamiento_opcion_user,cristal.relevamiento.opcion.user,model_cristal_relevamiento_opcion,base.group_user,1,0,0,0
+access_cristal_relevamiento_opcion_mgr,cristal.relevamiento.opcion.mgr,model_cristal_relevamiento_opcion,sales_team.group_sale_manager,1,1,1,1

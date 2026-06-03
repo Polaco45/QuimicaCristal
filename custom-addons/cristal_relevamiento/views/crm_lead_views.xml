@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_crm_lead_form_relevamiento" model="ir.ui.view">
+        <field name="name">crm.lead.form.relevamiento</field>
+        <field name="model">crm.lead</field>
+        <field name="inherit_id" ref="crm.crm_lead_view_form"/>
+        <field name="arch" type="xml">
+            <notebook position="inside">
+                <page string="Relevamiento" name="relevamiento"
+                      invisible="not rel_stage_ok">
+                    <field name="rel_stage_ok" invisible="1"/>
+                    <div class="alert alert-info" role="status"
+                         invisible="partner_id">
+                        Asigná primero el <b>cliente</b> (contacto) al lead para poder cargar el relevamiento.
+                        El relevamiento queda colgado del cliente, así no se pierde si la oportunidad se cae.
+                    </div>
+                    <field name="relevamiento_ids" invisible="not partner_id"
+                           context="{'default_partner_id': partner_id, 'default_lead_id': id}">
+                        <list>
+                            <field name="fecha_relevamiento"/>
+                            <field name="operador_id"/>
+                            <field name="es_remedicion"/>
+                            <field name="promedio_limpieza"/>
+                            <field name="state" widget="badge"
+                                   decoration-success="state == 'completado'"/>
+                        </list>
+                    </field>
+                </page>
+            </notebook>
+        </field>
+    </record>
+</odoo>

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <menuitem id="menu_cristal_relevamiento_root"
+              name="Relevamientos"
+              parent="crm.crm_menu_root"
+              action="action_cristal_relevamiento"
+              sequence="50"/>
+</odoo>

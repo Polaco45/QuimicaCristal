@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="report_relevamiento">
+        <t t-call="web.html_container">
+            <t t-foreach="docs" t-as="o">
+                <t t-call="web.external_layout">
+                    <div class="page" style="font-family:Arial,sans-serif;color:#2b3138;">
+                        <style>
+                            .rel-h{background:#1a1d21;color:#fff;padding:10px 14px;border-radius:6px;margin-bottom:12px;}
+                            .rel-h h2{margin:0;font-size:18px;}
+                            .rel-h .sub{color:#ef5d1e;font-size:11px;letter-spacing:.1em;text-transform:uppercase;}
+                            .rel-sec{margin:14px 0 4px;font-size:12px;font-weight:bold;color:#c8470f;border-bottom:2px solid #ef5d1e;padding-bottom:3px;text-transform:uppercase;letter-spacing:.04em;}
+                            table.rel{width:100%;border-collapse:collapse;font-size:11px;margin-top:4px;}
+                            table.rel td{padding:4px 6px;border-bottom:1px solid #e3e7eb;vertical-align:top;}
+                            table.rel td.k{color:#7d8893;width:32%;}
+                            .tagbox span{display:inline-block;border:1px solid #e3e7eb;border-radius:12px;padding:2px 8px;margin:2px;font-size:10px;}
+                            .interno{background:#fff7ed;border:1px solid #f5d8c4;border-radius:6px;padding:8px;margin-top:6px;}
+                        </style>
+
+                        <div class="rel-h">
+                            <div class="sub">Química Cristal · Plan Control · Confidencial</div>
+                            <h2>Relevamiento — <span t-field="o.partner_id.display_name"/></h2>
+                        </div>
+
+                        <table class="rel">
+                            <tr><td class="k">Fecha</td><td><span t-field="o.fecha_relevamiento"/></td>
+                                <td class="k">Operador</td><td><span t-field="o.operador_id"/></td></tr>
+                            <tr><td class="k">Nombre de fantasía</td><td><span t-field="o.nombre_fantasia"/></td>
+                                <td class="k">Canal</td><td><span t-field="o.canal_source_id"/></td></tr>
+                            <tr><td class="k">Rubros</td><td colspan="3" class="tagbox">
+                                <t t-foreach="o.rubro_ids" t-as="r"><span t-esc="r.name"/></t></td></tr>
+                        </table>
+
+                        <div class="rel-sec">Infraestructura</div>
+                        <table class="rel">
+                            <tr><td class="k">Superficie</td><td><span t-field="o.superficie_total"/></td>
+                                <td class="k">Baños</td><td><span t-field="o.cantidad_banos"/></td></tr>
+                            <tr><td class="k">Personal total</td><td><span t-field="o.personal_total"/></td>
+                                <td class="k">Circulación/día</td><td><span t-field="o.circulacion_dia"/></td></tr>
+                            <tr><td class="k">Días/semana</td><td><span t-field="o.dias_uso_semana"/></td>
+                                <td class="k">Horario</td><td><span t-field="o.horario_operacion"/></td></tr>
+                            <tr><td class="k">Frecuencia limpieza</td><td colspan="3"><span t-field="o.frecuencia_limpieza"/></td></tr>
+                            <tr><td class="k">Sectores</td><td colspan="3" class="tagbox">
+                                <t t-foreach="o.sector_ids" t-as="s"><span t-esc="s.name"/></t></td></tr>
+                            <tr><td class="k">Pisos</td><td colspan="3" class="tagbox">
+                                <t t-foreach="o.piso_ids" t-as="p"><span t-esc="p.name"/></t></td></tr>
+                            <tr><td class="k">Superficies</td><td colspan="3" class="tagbox">
+                                <t t-foreach="o.superficie_dom_ids" t-as="su"><span t-esc="su.name"/></t></td></tr>
+                        </table>
+
+                        <div class="rel-sec">Insumos, equipos y herramientas</div>
+                        <table class="rel">
+                            <tr><td class="k" style="font-weight:bold;">Producto</td><td style="font-weight:bold;">Marca / ref.</td><td style="font-weight:bold;" colspan="2">Lts-kg/mes</td></tr>
+                            <t t-foreach="o.producto_ids" t-as="pr">
+                                <tr><td class="k"><span t-field="pr.categoria"/></td>
+                                    <td><span t-field="pr.marca"/></td>
+                                    <td colspan="2"><span t-field="pr.volumen_mes"/></td></tr>
+                            </t>
+                            <tr><td class="k">Calidad (general)</td><td colspan="3"><span t-field="o.calidad_general"/></td></tr>
+                            <tr><td class="k">Dispensers</td><td colspan="3" class="tagbox">
+                                <t t-foreach="o.dispenser_ids" t-as="d"><span t-esc="d.name"/></t></td></tr>
+                            <tr><td class="k">Equipamiento</td><td colspan="3" class="tagbox">
+                                <t t-foreach="o.equipo_ids" t-as="e"><span t-esc="e.name"/></t></td></tr>
+                            <tr><td class="k">Herramientas</td><td colspan="3" class="tagbox">
+                                <t t-foreach="o.herramienta_ids" t-as="h"><span t-esc="h.name"/></t></td></tr>
+                        </table>
+
+                        <div class="rel-sec">Proveedor y situación comercial</div>
+                        <table class="rel">
+                            <tr><td class="k">Proveedor actual</td><td><span t-field="o.proveedor_actual"/></td>
+                                <td class="k">Antigüedad</td><td><span t-field="o.proveedor_antiguedad"/></td></tr>
+                            <tr><td class="k">Quién compra</td><td><span t-field="o.quien_compra"/></td>
+                                <td class="k">Frecuencia</td><td><span t-field="o.frecuencia_compra"/></td></tr>
+                            <tr><td class="k">Responsable</td><td><span t-field="o.responsable_compras"/></td>
+                                <td class="k">Contacto</td><td><span t-field="o.responsable_contacto"/></td></tr>
+                            <tr><td class="k">Presupuesto mensual actual</td><td><span t-field="o.presupuesto_estimado_mensual_actual"/></td>
+                                <td class="k">Plazo de pago</td><td><span t-field="o.plazo_pago"/></td></tr>
+                            <tr><td class="k">Forma de pago</td><td colspan="3" class="tagbox">
+                                <t t-foreach="o.forma_pago_ids" t-as="fp"><span t-esc="fp.name"/></t></td></tr>
+                            <tr><td class="k">Falencias</td><td colspan="3" class="tagbox">
+                                <t t-foreach="o.falencia_ids" t-as="fa"><span t-esc="fa.name"/></t></td></tr>
+                            <tr><td class="k">Qué mejoraría</td><td colspan="3" class="tagbox">
+                                <t t-foreach="o.mejora_ids" t-as="me"><span t-esc="me.name"/></t></td></tr>
+                            <tr><td class="k">Qué valora</td><td colspan="3" class="tagbox">
+                                <t t-foreach="o.valora_ids" t-as="va"><span t-esc="va.name"/></t></td></tr>
+                            <tr><td class="k">Prioridad #1</td><td><span t-field="o.prioridad_1"/></td>
+                                <td class="k">Conformidad</td><td><span t-field="o.conformidad_proveedor"/></td></tr>
+                        </table>
+
+                        <div class="interno">
+                            <div class="rel-sec" style="margin-top:0;">Diagnóstico por sector — INTERNO</div>
+                            <table class="rel">
+                                <tr><td class="k" style="font-weight:bold;">Sector</td><td style="font-weight:bold;">Estado (1-5)</td><td style="font-weight:bold;" colspan="2">Observaciones</td></tr>
+                                <t t-foreach="o.sector_diag_ids" t-as="sd">
+                                    <tr><td class="k"><span t-field="sd.sector_id"/></td>
+                                        <td><span t-field="sd.puntaje"/></td>
+                                        <td colspan="2"><span t-field="sd.observaciones"/></td></tr>
+                                </t>
+                                <tr><td class="k">Promedio inicial</td><td colspan="3"><span t-field="o.promedio_limpieza"/></td></tr>
+                            </table>
+                            <p style="font-size:10px;margin-top:6px;"><b>Obs. general:</b> <span t-field="o.observacion_general"/></p>
+                        </div>
+
+                    </div>
+                </t>
+            </t>
+        </t>
+    </template>
+</odoo>

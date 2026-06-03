@@ -1,0 +1,380 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <!-- sector -->
+        <record id="opcion_sector_banos" model="cristal.relevamiento.opcion">
+            <field name="name">Baños</field>
+            <field name="tipo">sector</field>
+            <field name="sequence">10</field>
+        </record>
+        <record id="opcion_sector_cocina_elaboracion" model="cristal.relevamiento.opcion">
+            <field name="name">Cocina / elaboración</field>
+            <field name="tipo">sector</field>
+            <field name="sequence">20</field>
+        </record>
+        <record id="opcion_sector_salon_atencion" model="cristal.relevamiento.opcion">
+            <field name="name">Salón / atención</field>
+            <field name="tipo">sector</field>
+            <field name="sequence">30</field>
+        </record>
+        <record id="opcion_sector_produccion_galpon" model="cristal.relevamiento.opcion">
+            <field name="name">Producción / galpón</field>
+            <field name="tipo">sector</field>
+            <field name="sequence">40</field>
+        </record>
+        <record id="opcion_sector_oficinas_administracion" model="cristal.relevamiento.opcion">
+            <field name="name">Oficinas / administración</field>
+            <field name="tipo">sector</field>
+            <field name="sequence">50</field>
+        </record>
+        <record id="opcion_sector_deposito" model="cristal.relevamiento.opcion">
+            <field name="name">Depósito</field>
+            <field name="tipo">sector</field>
+            <field name="sequence">60</field>
+        </record>
+        <record id="opcion_sector_exteriores_patio" model="cristal.relevamiento.opcion">
+            <field name="name">Exteriores / patio</field>
+            <field name="tipo">sector</field>
+            <field name="sequence">70</field>
+        </record>
+        <!-- piso -->
+        <record id="opcion_piso_ceramico" model="cristal.relevamiento.opcion">
+            <field name="name">Cerámico</field>
+            <field name="tipo">piso</field>
+            <field name="sequence">10</field>
+        </record>
+        <record id="opcion_piso_vinilico" model="cristal.relevamiento.opcion">
+            <field name="name">Vinílico</field>
+            <field name="tipo">piso</field>
+            <field name="sequence">20</field>
+        </record>
+        <record id="opcion_piso_alfombra" model="cristal.relevamiento.opcion">
+            <field name="name">Alfombra</field>
+            <field name="tipo">piso</field>
+            <field name="sequence">30</field>
+        </record>
+        <record id="opcion_piso_madera" model="cristal.relevamiento.opcion">
+            <field name="name">Madera</field>
+            <field name="tipo">piso</field>
+            <field name="sequence">40</field>
+        </record>
+        <record id="opcion_piso_hormigon" model="cristal.relevamiento.opcion">
+            <field name="name">Hormigón</field>
+            <field name="tipo">piso</field>
+            <field name="sequence">50</field>
+        </record>
+        <record id="opcion_piso_epoxi" model="cristal.relevamiento.opcion">
+            <field name="name">Epoxi</field>
+            <field name="tipo">piso</field>
+            <field name="sequence">60</field>
+        </record>
+        <!-- superficie -->
+        <record id="opcion_superficie_vidrio" model="cristal.relevamiento.opcion">
+            <field name="name">Vidrio</field>
+            <field name="tipo">superficie</field>
+            <field name="sequence">10</field>
+        </record>
+        <record id="opcion_superficie_melamina" model="cristal.relevamiento.opcion">
+            <field name="name">Melamina</field>
+            <field name="tipo">superficie</field>
+            <field name="sequence">20</field>
+        </record>
+        <record id="opcion_superficie_acero_inoxidable" model="cristal.relevamiento.opcion">
+            <field name="name">Acero inoxidable</field>
+            <field name="tipo">superficie</field>
+            <field name="sequence">30</field>
+        </record>
+        <record id="opcion_superficie_granito" model="cristal.relevamiento.opcion">
+            <field name="name">Granito</field>
+            <field name="tipo">superficie</field>
+            <field name="sequence">40</field>
+        </record>
+        <record id="opcion_superficie_marmol" model="cristal.relevamiento.opcion">
+            <field name="name">Mármol</field>
+            <field name="tipo">superficie</field>
+            <field name="sequence">50</field>
+        </record>
+        <!-- dispenser -->
+        <record id="opcion_dispenser_toalla_intercalada" model="cristal.relevamiento.opcion">
+            <field name="name">Toalla intercalada</field>
+            <field name="tipo">dispenser</field>
+            <field name="sequence">10</field>
+        </record>
+        <record id="opcion_dispenser_papel_higienico" model="cristal.relevamiento.opcion">
+            <field name="name">Papel higiénico</field>
+            <field name="tipo">dispenser</field>
+            <field name="sequence">20</field>
+        </record>
+        <record id="opcion_dispenser_bobina" model="cristal.relevamiento.opcion">
+            <field name="name">Bobina</field>
+            <field name="tipo">dispenser</field>
+            <field name="sequence">30</field>
+        </record>
+        <record id="opcion_dispenser_toalla" model="cristal.relevamiento.opcion">
+            <field name="name">Toalla</field>
+            <field name="tipo">dispenser</field>
+            <field name="sequence">40</field>
+        </record>
+        <record id="opcion_dispenser_jabon_liquido" model="cristal.relevamiento.opcion">
+            <field name="name">Jabón líquido</field>
+            <field name="tipo">dispenser</field>
+            <field name="sequence">50</field>
+        </record>
+        <record id="opcion_dispenser_alcohol_en_gel" model="cristal.relevamiento.opcion">
+            <field name="name">Alcohol en gel</field>
+            <field name="tipo">dispenser</field>
+            <field name="sequence">60</field>
+        </record>
+        <record id="opcion_dispenser_otro" model="cristal.relevamiento.opcion">
+            <field name="name">Otro</field>
+            <field name="tipo">dispenser</field>
+            <field name="sequence">70</field>
+        </record>
+        <record id="opcion_dispenser_no_usan" model="cristal.relevamiento.opcion">
+            <field name="name">No usan</field>
+            <field name="tipo">dispenser</field>
+            <field name="sequence">80</field>
+        </record>
+        <!-- equipo -->
+        <record id="opcion_equipo_lustradora" model="cristal.relevamiento.opcion">
+            <field name="name">Lustradora</field>
+            <field name="tipo">equipo</field>
+            <field name="sequence">10</field>
+        </record>
+        <record id="opcion_equipo_hidrolavadora" model="cristal.relevamiento.opcion">
+            <field name="name">Hidrolavadora</field>
+            <field name="tipo">equipo</field>
+            <field name="sequence">20</field>
+        </record>
+        <record id="opcion_equipo_aspiradora" model="cristal.relevamiento.opcion">
+            <field name="name">Aspiradora</field>
+            <field name="tipo">equipo</field>
+            <field name="sequence">30</field>
+        </record>
+        <record id="opcion_equipo_lavasecadora" model="cristal.relevamiento.opcion">
+            <field name="name">Lavasecadora</field>
+            <field name="tipo">equipo</field>
+            <field name="sequence">40</field>
+        </record>
+        <record id="opcion_equipo_equipo_a_vapor" model="cristal.relevamiento.opcion">
+            <field name="name">Equipo a vapor</field>
+            <field name="tipo">equipo</field>
+            <field name="sequence">50</field>
+        </record>
+        <record id="opcion_equipo_ninguno" model="cristal.relevamiento.opcion">
+            <field name="name">Ninguno</field>
+            <field name="tipo">equipo</field>
+            <field name="sequence">60</field>
+        </record>
+        <!-- herramienta -->
+        <record id="opcion_herramienta_mopas_lampazos" model="cristal.relevamiento.opcion">
+            <field name="name">Mopas / lampazos</field>
+            <field name="tipo">herramienta</field>
+            <field name="sequence">10</field>
+        </record>
+        <record id="opcion_herramienta_escobas_escobillones" model="cristal.relevamiento.opcion">
+            <field name="name">Escobas / escobillones</field>
+            <field name="tipo">herramienta</field>
+            <field name="sequence">20</field>
+        </record>
+        <record id="opcion_herramienta_baldes_escurridores" model="cristal.relevamiento.opcion">
+            <field name="name">Baldes / escurridores</field>
+            <field name="tipo">herramienta</field>
+            <field name="sequence">30</field>
+        </record>
+        <record id="opcion_herramienta_carro_de_limpieza" model="cristal.relevamiento.opcion">
+            <field name="name">Carro de limpieza</field>
+            <field name="tipo">herramienta</field>
+            <field name="sequence">40</field>
+        </record>
+        <record id="opcion_herramienta_secadores" model="cristal.relevamiento.opcion">
+            <field name="name">Secadores</field>
+            <field name="tipo">herramienta</field>
+            <field name="sequence">50</field>
+        </record>
+        <record id="opcion_herramienta_panos_microfibra" model="cristal.relevamiento.opcion">
+            <field name="name">Paños / microfibra</field>
+            <field name="tipo">herramienta</field>
+            <field name="sequence">60</field>
+        </record>
+        <record id="opcion_herramienta_guantes" model="cristal.relevamiento.opcion">
+            <field name="name">Guantes</field>
+            <field name="tipo">herramienta</field>
+            <field name="sequence">70</field>
+        </record>
+        <record id="opcion_herramienta_otro" model="cristal.relevamiento.opcion">
+            <field name="name">Otro</field>
+            <field name="tipo">herramienta</field>
+            <field name="sequence">80</field>
+        </record>
+        <!-- falencia -->
+        <record id="opcion_falencia_gasto_creciente" model="cristal.relevamiento.opcion">
+            <field name="name">Gasto creciente</field>
+            <field name="tipo">falencia</field>
+            <field name="sequence">10</field>
+        </record>
+        <record id="opcion_falencia_calidad_inconsistente" model="cristal.relevamiento.opcion">
+            <field name="name">Calidad inconsistente</field>
+            <field name="tipo">falencia</field>
+            <field name="sequence">20</field>
+        </record>
+        <record id="opcion_falencia_rotacion_de_personal" model="cristal.relevamiento.opcion">
+            <field name="name">Rotación de personal</field>
+            <field name="tipo">falencia</field>
+            <field name="sequence">30</field>
+        </record>
+        <record id="opcion_falencia_quejas_internas_externas" model="cristal.relevamiento.opcion">
+            <field name="name">Quejas internas/externas</field>
+            <field name="tipo">falencia</field>
+            <field name="sequence">40</field>
+        </record>
+        <record id="opcion_falencia_faltantes_de_stock" model="cristal.relevamiento.opcion">
+            <field name="name">Faltantes de stock</field>
+            <field name="tipo">falencia</field>
+            <field name="sequence">50</field>
+        </record>
+        <record id="opcion_falencia_productos_que_no_rinden" model="cristal.relevamiento.opcion">
+            <field name="name">Productos que no rinden</field>
+            <field name="tipo">falencia</field>
+            <field name="sequence">60</field>
+        </record>
+        <record id="opcion_falencia_demora_en_entregas" model="cristal.relevamiento.opcion">
+            <field name="name">Demora en entregas</field>
+            <field name="tipo">falencia</field>
+            <field name="sequence">70</field>
+        </record>
+        <record id="opcion_falencia_mala_atencion" model="cristal.relevamiento.opcion">
+            <field name="name">Mala atención</field>
+            <field name="tipo">falencia</field>
+            <field name="sequence">80</field>
+        </record>
+        <record id="opcion_falencia_sin_asesoramiento" model="cristal.relevamiento.opcion">
+            <field name="name">Sin asesoramiento</field>
+            <field name="tipo">falencia</field>
+            <field name="sequence">90</field>
+        </record>
+        <record id="opcion_falencia_dudas_seguridad_toxicidad" model="cristal.relevamiento.opcion">
+            <field name="name">Dudas seguridad/toxicidad</field>
+            <field name="tipo">falencia</field>
+            <field name="sequence">100</field>
+        </record>
+        <record id="opcion_falencia_financiacion_insuficiente" model="cristal.relevamiento.opcion">
+            <field name="name">Financiación insuficiente</field>
+            <field name="tipo">falencia</field>
+            <field name="sequence">110</field>
+        </record>
+        <record id="opcion_falencia_otro" model="cristal.relevamiento.opcion">
+            <field name="name">Otro</field>
+            <field name="tipo">falencia</field>
+            <field name="sequence">120</field>
+        </record>
+        <!-- mejora -->
+        <record id="opcion_mejora_precio" model="cristal.relevamiento.opcion">
+            <field name="name">Precio</field>
+            <field name="tipo">mejora</field>
+            <field name="sequence">10</field>
+        </record>
+        <record id="opcion_mejora_plazo_financiacion" model="cristal.relevamiento.opcion">
+            <field name="name">Plazo / financiación</field>
+            <field name="tipo">mejora</field>
+            <field name="sequence">20</field>
+        </record>
+        <record id="opcion_mejora_rapidez_de_entrega" model="cristal.relevamiento.opcion">
+            <field name="name">Rapidez de entrega</field>
+            <field name="tipo">mejora</field>
+            <field name="sequence">30</field>
+        </record>
+        <record id="opcion_mejora_atencion_postventa" model="cristal.relevamiento.opcion">
+            <field name="name">Atención / postventa</field>
+            <field name="tipo">mejora</field>
+            <field name="sequence">40</field>
+        </record>
+        <record id="opcion_mejora_calidad_de_producto" model="cristal.relevamiento.opcion">
+            <field name="name">Calidad de producto</field>
+            <field name="tipo">mejora</field>
+            <field name="sequence">50</field>
+        </record>
+        <record id="opcion_mejora_variedad_stock" model="cristal.relevamiento.opcion">
+            <field name="name">Variedad / stock</field>
+            <field name="tipo">mejora</field>
+            <field name="sequence">60</field>
+        </record>
+        <record id="opcion_mejora_asesoramiento_tecnico" model="cristal.relevamiento.opcion">
+            <field name="name">Asesoramiento técnico</field>
+            <field name="tipo">mejora</field>
+            <field name="sequence">70</field>
+        </record>
+        <record id="opcion_mejora_nada_esta_conforme" model="cristal.relevamiento.opcion">
+            <field name="name">Nada, está conforme</field>
+            <field name="tipo">mejora</field>
+            <field name="sequence">80</field>
+        </record>
+        <!-- valora -->
+        <record id="opcion_valora_precio" model="cristal.relevamiento.opcion">
+            <field name="name">Precio</field>
+            <field name="tipo">valora</field>
+            <field name="sequence">10</field>
+        </record>
+        <record id="opcion_valora_calidad" model="cristal.relevamiento.opcion">
+            <field name="name">Calidad</field>
+            <field name="tipo">valora</field>
+            <field name="sequence">20</field>
+        </record>
+        <record id="opcion_valora_entrega_rapida" model="cristal.relevamiento.opcion">
+            <field name="name">Entrega rápida</field>
+            <field name="tipo">valora</field>
+            <field name="sequence">30</field>
+        </record>
+        <record id="opcion_valora_financiacion" model="cristal.relevamiento.opcion">
+            <field name="name">Financiación</field>
+            <field name="tipo">valora</field>
+            <field name="sequence">40</field>
+        </record>
+        <record id="opcion_valora_asesoramiento" model="cristal.relevamiento.opcion">
+            <field name="name">Asesoramiento</field>
+            <field name="tipo">valora</field>
+            <field name="sequence">50</field>
+        </record>
+        <record id="opcion_valora_marca_confianza" model="cristal.relevamiento.opcion">
+            <field name="name">Marca / confianza</field>
+            <field name="tipo">valora</field>
+            <field name="sequence">60</field>
+        </record>
+        <record id="opcion_valora_atencion_personalizada" model="cristal.relevamiento.opcion">
+            <field name="name">Atención personalizada</field>
+            <field name="tipo">valora</field>
+            <field name="sequence">70</field>
+        </record>
+        <record id="opcion_valora_rendimiento" model="cristal.relevamiento.opcion">
+            <field name="name">Rendimiento</field>
+            <field name="tipo">valora</field>
+            <field name="sequence">80</field>
+        </record>
+        <!-- forma_pago -->
+        <record id="opcion_forma_pago_efectivo" model="cristal.relevamiento.opcion">
+            <field name="name">Efectivo</field>
+            <field name="tipo">forma_pago</field>
+            <field name="sequence">10</field>
+        </record>
+        <record id="opcion_forma_pago_transferencia" model="cristal.relevamiento.opcion">
+            <field name="name">Transferencia</field>
+            <field name="tipo">forma_pago</field>
+            <field name="sequence">20</field>
+        </record>
+        <record id="opcion_forma_pago_cheque" model="cristal.relevamiento.opcion">
+            <field name="name">Cheque</field>
+            <field name="tipo">forma_pago</field>
+            <field name="sequence">30</field>
+        </record>
+        <record id="opcion_forma_pago_cuenta_corriente" model="cristal.relevamiento.opcion">
+            <field name="name">Cuenta corriente</field>
+            <field name="tipo">forma_pago</field>
+            <field name="sequence">40</field>
+        </record>
+        <record id="opcion_forma_pago_tarjeta" model="cristal.relevamiento.opcion">
+            <field name="name">Tarjeta</field>
+            <field name="tipo">forma_pago</field>
+            <field name="sequence">50</field>
+        </record>
+    </data>
+</odoo>
