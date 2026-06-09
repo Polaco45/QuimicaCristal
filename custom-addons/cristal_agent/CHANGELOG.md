@@ -7,6 +7,74 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.10.5] — 2026-06-09
+
+### Fixed
+
+- **Cierre atómico institucional fallaba con AccessError (rollback total).** El
+  agente entra como usuario público (id 715, sin permisos CRM). Los `.sudo()` de
+  las tools alcanzaban, pero al pasar el lead a stage 14 (Calificado) un
+  side-effect del framework tocaba `crm.lead` bajo el público y rebotaba contra
+  una record rule, haciendo rollback de todo el cierre: el bot mandaba el mensaje
+  pero el lead quedaba en "Contactado", sin empresa/contacto/actividad, y el
+  takeover quedaba con `takeover_reason = "Cierre atómico falló…"`. Ahora los
+  dispatchers (`_for_message`, `_for_cron`, `_for_activity`,
+  `_for_internal_message`) rebindean el env a `SUPERUSER_ID` al inicio, así todo
+  el árbol (ClaudeClient → tools → cierre atómico) corre con permisos plenos.
+
+- **Falso `WINDOW_CLOSED` al responder un inbound.** El chequeo de ventana 24hs
+  de `send_whatsapp` rebotaba contra el mismo mensaje entrante recién recibido,
+  bloqueando la respuesta (caso real: Silvia Bazán, partner 80526, run 1269).
+  Ahora, si el run lo disparó un inbound (`trigger='whatsapp_message'`), se
+  saltea el chequeo: la ventana está abierta por definición. Los envíos
+  proactivos del cron siguen respetando el chequeo.
+
+- **Mensaje de cierre se mandaba aunque la calificación fallara.** El prompt
+  institucional disparaba el cierre y mandaba "¡Listo, {nombre}! Tomé nota de
+  todo…" sin importar el resultado de `complete_institutional_qualification`.
+  Endurecido en `claudio_institutional_v2.md`: el mensaje de cierre se manda
+  SOLO si la tool devuelve `ok=true`; si devuelve `ok=false`/error, el bot manda
+  una línea neutra, escala a Joaco con el error y pausa con `pause_bot(2h)`.
+
+### Changed — Optimización de costos (API Anthropic)
+
+Diagnóstico sobre 60 runs recientes en producción (Haiku 4.5): el **62.8% del
+costo era cache WRITE** — se pagaba un write de ~17k tokens en *casi todos* los
+runs, incluso en mensajes seguidos del mismo cliente con 1 minuto de diferencia.
+
+- **Causa raíz: prefijo cacheado inestable.** El system prompt embebía el
+  timestamp con precisión de minuto (`%H:%M`) dentro del bloque cacheado, así que
+  el texto cambiaba cada minuto y el cache se invalidaba en cada mensaje. Se sacó
+  el minuto del bloque cacheado (queda fecha + día, estable todo el día); la hora
+  exacta ahora va en el `user_message` (que no se cachea). Esto convierte el grueso
+  de los cache WRITE en lecturas baratas. **Este era el verdadero driver del costo
+  — sin esto, el cache de 1h no servía de nada.**
+- **Cache de 1h (beta).** Header `anthropic-beta: extended-cache-ttl-2025-04-11` y
+  `cache_control` con `ttl="1h"` en el system, la última tool y el último mensaje
+  del historial. El prefijo (estable) sobrevive 1h, así los mensajes del mismo
+  cliente reusan el cache aunque lleguen con minutos/decenas de minutos de
+  diferencia.
+- **Prompt institucional achicado** ~24% (≈3.6k → ≈2.7k tokens): se sacó el bloque
+  "RESUMEN DEL ORDEN OPERATIVO" (duplicaba STEP 0-4) y redundancias entre
+  secciones, conservando STEP 0/1/2/3/4, las burbujas de copy y la tabla de rubros.
+- **Trim de historial:** `read_message_history` baja su default de 15 → 10 mensajes
+  y el cap por mensaje de 1000 → 600 chars; el prompt interno baja `limit=20 → 10`.
+- **Modo híbrido opcional (TODO activable):** nuevo campo `anthropic_model_complex`
+  en la config. Vacío por default (todo en Haiku). Si Haiku patina con el cierre,
+  cargá ahí un Sonnet y se usa SOLO en tareas complejas (`joaco_command` / cron),
+  dejando el grueso del tráfico WhatsApp en Haiku.
+
+Ahorro estimado sobre el ya-Haiku: ~40-45% adicional (de ~$62 a ~$35/mes a este
+volumen). Combinado con el switch previo a Haiku, el recorte total vs. el baseline
+Sonnet supera el 70%.
+
+### Migration
+
+- `migrations/18.0.1.10.5/post-migration.py` recarga el prompt institucional
+  achicado + cierre endurecido en la config activa.
+
+---
+
 ## [18.0.1.10.4] — 2026-06-01
 
 ### Fixed — Lead/contacto mal etiquetado con el nombre del perfil de WhatsApp

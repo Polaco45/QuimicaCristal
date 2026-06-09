@@ -17,6 +17,8 @@ import json
 import logging
 import time
 
+from odoo import SUPERUSER_ID
+
 _logger = logging.getLogger(__name__)
 
 
@@ -27,6 +29,20 @@ def dispatch_agent_for_message(env, wa_message, partner, memory, plain_text):
     Esta es la función pública que se llama desde models/whatsapp_message.py.
     """
     from .prompt_builder import build_system_prompt, build_user_message_for_whatsapp
+
+    # ── Fix 1.10.5: el agente entra como usuario público (id 715, sin permisos
+    # CRM). Los .sudo() de las tools zafan, pero el cierre atómico toca crm.lead
+    # y un side-effect del framework rebota contra una record rule del público,
+    # haciendo rollback de TODO el cierre. Rebindeamos el env a superusuario acá,
+    # al principio, así todo el árbol (ClaudeClient → tools → cierre atómico)
+    # corre con permisos plenos. ──
+    if env.uid != SUPERUSER_ID:
+        env = env(user=SUPERUSER_ID)
+        partner = partner.with_env(env)
+        if wa_message:
+            wa_message = wa_message.with_env(env)
+        if memory:
+            memory = memory.with_env(env)
 
     Run = env['cristal.agent.run'].sudo()
 
@@ -73,6 +89,13 @@ def dispatch_agent_for_cron(env, trigger, partner, cron_type, extra_context=None
     """Dispara el agente para una activación por cron."""
     from .prompt_builder import build_system_prompt, build_user_message_for_cron
 
+    # Fix 1.10.5: mismo rebind a superusuario que en _for_message (el cron
+    # también corre bajo el público y puede disparar side-effects sobre CRM).
+    if env.uid != SUPERUSER_ID:
+        env = env(user=SUPERUSER_ID)
+        if partner:
+            partner = partner.with_env(env)
+
     Run = env['cristal.agent.run'].sudo()
     run = Run.create({
         'trigger': trigger,
@@ -84,7 +107,7 @@ def dispatch_agent_for_cron(env, trigger, partner, cron_type, extra_context=None
         system_prompt = build_system_prompt(env, partner=partner)
         user_message = build_user_message_for_cron(env, partner, cron_type, extra_context)
 
-        client = ClaudeClient(env, run=run)
+        client = ClaudeClient(env, run=run, complex_task=True)
         result = client.run_conversation(
             system_prompt=system_prompt,
             user_message=user_message,
@@ -113,6 +136,16 @@ def dispatch_agent_for_activity(env, partner, lead, activity):
     mark_activity_done, y agendar la siguiente con schedule_activity.
     """
     from .prompt_builder import build_system_prompt
+
+    # Fix 1.10.5: rebind a superusuario (ver _for_message).
+    if env.uid != SUPERUSER_ID:
+        env = env(user=SUPERUSER_ID)
+        if partner:
+            partner = partner.with_env(env)
+        if lead:
+            lead = lead.with_env(env)
+        if activity:
+            activity = activity.with_env(env)
 
     Run = env['cristal.agent.run'].sudo()
     run = Run.create({
@@ -204,7 +237,7 @@ def dispatch_agent_for_activity(env, partner, lead, activity):
             "Tono natural de vendedor. NO sobreactuar. Máximo 3 líneas."
         )
 
-        client = ClaudeClient(env, run=run)
+        client = ClaudeClient(env, run=run, complex_task=True)
         result = client.run_conversation(
             system_prompt=system_prompt,
             user_message=user_message,
@@ -231,6 +264,12 @@ def dispatch_agent_for_internal_message(env, channel, plain_text, mail_message_i
     """
     from .prompt_builder import build_system_prompt
 
+    # Fix 1.10.5: rebind a superusuario (ver _for_message).
+    if env.uid != SUPERUSER_ID:
+        env = env(user=SUPERUSER_ID)
+        if channel:
+            channel = channel.with_env(env)
+
     Run = env['cristal.agent.run'].sudo()
     run = Run.create({
         'trigger': 'joaco_command',
@@ -252,7 +291,7 @@ def dispatch_agent_for_internal_message(env, channel, plain_text, mail_message_i
             f"Joaco te escribió en el canal interno:\n"
             f'"{plain_text}"\n\n'
             "OBLIGATORIO: lo PRIMERO que hacés es leer el historial reciente del canal "
-            f"con read_message_history(channel_id={channel.id}, limit=20). "
+            f"con read_message_history(channel_id={channel.id}, limit=10). "
             "Necesitás CONTEXTO antes de actuar — quizás Joaco se está refiriendo a una "
             "escalación anterior tuya, a un cliente puntual, etc.\n\n"
             "Después decidís qué hacer:\n"
@@ -275,7 +314,7 @@ def dispatch_agent_for_internal_message(env, channel, plain_text, mail_message_i
             "como fallback usá escalate_to_joaco con un mensaje de status."
         )
 
-        client = ClaudeClient(env, run=run)
+        client = ClaudeClient(env, run=run, complex_task=True)
         result = client.run_conversation(
             system_prompt=system_prompt,
             user_message=user_message,
@@ -298,11 +337,14 @@ class ClaudeClient:
     su run (para loguear todo).
     """
 
-    def __init__(self, env, run=None, client_type=None):
+    def __init__(self, env, run=None, client_type=None, complex_task=False):
         self.env = env
         self.run = run
         # v1.9.0 — Filtra tools por client_type. Si None, todas las tools.
         self.client_type = client_type
+        # v1.10.5 — Modo híbrido: en tareas complejas usa anthropic_model_complex
+        # si está cargado; si no, cae al modelo base.
+        self.complex_task = complex_task
         self.config = env['cristal.agent.config'].sudo().get_active()
         self.api_key = self.env['cristal.agent.config'].sudo().get_api_key()
 
@@ -465,30 +507,56 @@ class ClaudeClient:
             "content-type": "application/json",
         }
 
+        # v1.10.5 — Cache de 1h (beta). Por default Anthropic cachea 5 min; con
+        # este header + ttl="1h" el prefijo (system + tools) sobrevive 1 hora,
+        # así los mensajes seguidos del mismo cliente (que suelen llegar con
+        # minutos/decenas de minutos de diferencia) REUSAN el cache en vez de
+        # reescribirlo. Combinado con el prefijo estable (timestamp sacado del
+        # bloque cacheado), esto convierte el ~60% del costo (cache WRITE) en
+        # lecturas baratas.
+        cache_ttl = {"type": "ephemeral", "ttl": "1h"} if self.config.enable_prompt_caching else None
+        if cache_ttl:
+            headers["anthropic-beta"] = "extended-cache-ttl-2025-04-11"
+
         # System con cache control si está habilitado
         if self.config.enable_prompt_caching:
             system_param = [
                 {
                     "type": "text",
                     "text": system_prompt,
-                    "cache_control": {"type": "ephemeral"},
+                    "cache_control": cache_ttl,
                 }
             ]
         else:
             system_param = system_prompt
 
         # Tools: si caching está prendido, marcamos la ÚLTIMA tool con cache_control.
+        # El bloque de tools es idéntico para todos los clientes del mismo
+        # client_type, así que con 1h TTL se cachea una vez y lo reusa todo el
+        # tráfico (las tools van ANTES del system en la jerarquía de cache).
         # v1.9.0 — Filtramos por client_type si aplica.
         tools_param = self.tool_registry.schemas_for_anthropic(client_type=self.client_type)
         if self.config.enable_prompt_caching and tools_param:
             # Copiar la última tool y agregarle cache_control
             tools_param = list(tools_param)
             last_tool = dict(tools_param[-1])
-            last_tool['cache_control'] = {"type": "ephemeral"}
+            last_tool['cache_control'] = cache_ttl
             tools_param[-1] = last_tool
 
+        # v1.10.5 — Encadenar el cache hasta el final del historial: marcamos el
+        # último bloque de contenido del último mensaje con cache_control. Así,
+        # en las iteraciones del loop tool_use, el historial acumulado también
+        # entra al cache y no se reprocesa entero en cada vuelta.
+        if self.config.enable_prompt_caching and messages:
+            messages = self._mark_last_message_cacheable(messages, cache_ttl)
+
+        # v1.10.5 — Modelo: híbrido si es tarea compleja y hay modelo complejo cargado.
+        model = self.config.anthropic_model
+        if self.complex_task and getattr(self.config, 'anthropic_model_complex', None):
+            model = self.config.anthropic_model_complex
+
         body = {
-            "model": self.config.anthropic_model,
+            "model": model,
             "max_tokens": self.config.max_tokens,
             "system": system_param,
             "messages": messages,
@@ -553,6 +621,39 @@ class ClaudeClient:
             f"Último error: {last_error}. "
             f"Considerá subir tier en console.anthropic.com → Settings → Limits."
         )
+
+    @staticmethod
+    def _mark_last_message_cacheable(messages, cache_ctl):
+        """
+        Devuelve una copia de `messages` con cache_control en el último bloque
+        de contenido del último mensaje, para encadenar el cache hasta el final
+        del historial. Maneja contenido string (lo convierte a bloque text) y
+        contenido en lista (marca el último bloque). No muta la entrada.
+
+        Anthropic permite hasta 4 breakpoints de cache; usamos 3 (tools, system,
+        último mensaje), así que estamos dentro del límite.
+        """
+        if not messages or not cache_ctl:
+            return messages
+        msgs = list(messages)
+        last = dict(msgs[-1])
+        content = last.get('content')
+        if isinstance(content, str):
+            last['content'] = [{
+                "type": "text",
+                "text": content,
+                "cache_control": cache_ctl,
+            }]
+        elif isinstance(content, list) and content:
+            new_content = list(content)
+            last_block = dict(new_content[-1])
+            last_block['cache_control'] = cache_ctl
+            new_content[-1] = last_block
+            last['content'] = new_content
+        else:
+            return messages
+        msgs[-1] = last
+        return msgs
 
     def _execute_tool(self, tool_name, tool_input):
         """Despacha la ejecución de un tool al registry."""

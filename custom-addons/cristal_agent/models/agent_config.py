@@ -44,6 +44,17 @@ class CristalAgentConfig(models.Model):
         required=True,
         help="Identificador del modelo. Ej: claude-sonnet-4-6, claude-opus-4-7",
     )
+    # v1.10.5 — Modo híbrido OPCIONAL. Si se carga un modelo acá, el agente lo usa
+    # SOLO en tareas complejas (comandos de Joaco, cron proactivo). Para el grueso
+    # del tráfico (mensajes WhatsApp de calificación) sigue usando anthropic_model
+    # (Haiku). Vacío = usa siempre anthropic_model. Default vacío: dejamos todo en
+    # Haiku hasta confirmar que aguanta el cierre; si patina, cargá acá un Sonnet.
+    anthropic_model_complex = fields.Char(
+        string="Modelo Claude (tareas complejas)",
+        default="",
+        help="Modelo a usar solo en tareas complejas (joaco_command / cron). "
+             "Vacío = usar el modelo base para todo. Ej: claude-sonnet-4-6.",
+    )
     anthropic_version = fields.Char(
         string="Versión API",
         default="2023-06-01",

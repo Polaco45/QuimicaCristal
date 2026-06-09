@@ -58,11 +58,18 @@ def build_system_prompt(env, partner=None, base_prompt=None, client_type=None):
             )
 
     # ─── 2. Contexto temporal ───
+    # v1.10.5 — IMPORTANTE PARA COSTOS: el system prompt se cachea entero. Si acá
+    # metemos la hora con minuto (%H:%M), el texto cacheado cambia cada minuto y
+    # el cache se INVALIDA en cada mensaje → cada run reescribe el prompt (cache
+    # WRITE) en vez de reusarlo (cache READ). Eso era ~60% del costo. Dejamos
+    # SOLO la fecha + día (estable todo el día), y la hora exacta va en el
+    # user_message (que no se cachea). Así el prefijo es estable por cliente/día.
     now = datetime.now()
     weekdays = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo']
     parts.append(f"\n\n## CONTEXTO TEMPORAL\n"
-                 f"- Ahora: {now.strftime('%Y-%m-%d %H:%M')} ({weekdays[now.weekday()]})\n"
-                 f"- Horario de atención: lunes a viernes 8:30 - 21:00")
+                 f"- Fecha de hoy: {now.strftime('%Y-%m-%d')} ({weekdays[now.weekday()]})\n"
+                 f"- Horario de atención: lunes a viernes 8:30 - 21:00\n"
+                 f"- (La hora exacta del mensaje viene en el bloque del mensaje entrante.)")
 
     # ─── 3. Capacidades habilitadas (feature flags) ───
     parts.append(_build_capabilities_status(env, config))
@@ -354,6 +361,9 @@ def build_user_message_for_whatsapp(env, wa_message, partner, plain_text):
     parts = []
     parts.append("MENSAJE WHATSAPP ENTRANTE")
     parts.append("")
+    # v1.10.5 — la hora exacta va acá (no en el system prompt cacheado).
+    _now = datetime.now()
+    parts.append(f"Hora de recepción: {_now.strftime('%Y-%m-%d %H:%M')}")
     parts.append(f"Datos técnicos del mensaje:")
     parts.append(f"- partner_id del cliente: {partner.id}")
     parts.append(f"- name: {partner.name}")
@@ -420,6 +430,7 @@ def build_user_message_for_cron(env, partner, cron_type, extra_context=None):
     """
     parts = [f"DISPARO POR CRON: {cron_type.upper()}"]
     parts.append("")
+    parts.append(f"Hora actual: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     parts.append(f"Cliente target: {partner.name} (id={partner.id})")
     if partner.mobile:
         parts.append(f"Mobile: {partner.mobile}")

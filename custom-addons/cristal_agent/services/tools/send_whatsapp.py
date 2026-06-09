@@ -96,7 +96,16 @@ class SendWhatsApp(AgentTool):
             return {"error": "Para enviar a un cliente WA externo, wa_account_id y mobile_number son obligatorios"}
 
         # ═════════ CHECK VENTANA 24HS (solo para clientes externos) ═════════
-        if not is_internal_channel:
+        # Fix 1.10.5: si este run lo disparó un mensaje ENTRANTE del cliente
+        # (trigger='whatsapp_message'), la ventana de 24hs está abierta POR
+        # DEFINICIÓN — el cliente acaba de escribir. El chequeo de ventana
+        # miraba el último inbound y a veces rebotaba con WINDOW_CLOSED contra
+        # ese mismo inbound recién entrado (timing/índice), bloqueando la
+        # respuesta. Caso real: Silvia Bazán (partner 80526), run 1269.
+        # Saltamos el check solo en ese caso; los envíos proactivos del cron
+        # (otros triggers) lo siguen respetando.
+        skip_window_check = bool(run and getattr(run, 'trigger', None) == 'whatsapp_message')
+        if not is_internal_channel and not skip_window_check:
             from ..helpers import is_24h_window_open, hours_since_last_inbound
             # v1.10.1 FIX: el partner para el chequeo de ventana es el que
             # disparó este run (el remitente REAL), no un miembro adivinado del

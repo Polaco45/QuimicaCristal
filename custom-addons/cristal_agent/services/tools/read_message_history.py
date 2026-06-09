@@ -27,7 +27,7 @@ class ReadMessageHistory(AgentTool):
     description = (
         "Lee los últimos mensajes de un canal de WhatsApp (mail.message en un discuss.channel). "
         "Te da el contexto completo de la conversación con el cliente. "
-        "Por defecto trae 15 mensajes; podés pedir más si hace falta. "
+        "Por defecto trae 10 mensajes; podés pedir más si hace falta. "
         "Cada mensaje incluye: id, autor, fecha, tipo (entrante/saliente), y texto limpio."
     )
     input_schema = {
@@ -39,18 +39,18 @@ class ReadMessageHistory(AgentTool):
             },
             "limit": {
                 "type": "integer",
-                "description": "Cantidad de mensajes a traer (default 15, máx 50).",
-                "default": 15,
+                "description": "Cantidad de mensajes a traer (default 10, máx 30).",
+                "default": 10,
             },
         },
         "required": ["channel_id"],
     }
 
-    def _execute(self, env, run=None, channel_id=None, limit=15, **kwargs):
+    def _execute(self, env, run=None, channel_id=None, limit=10, **kwargs):
         if not channel_id:
             return {"error": "channel_id es obligatorio"}
 
-        limit = max(1, min(50, int(limit or 15)))
+        limit = max(1, min(30, int(limit or 10)))
 
         Channel = env['discuss.channel'].sudo()
         channel = Channel.browse(channel_id)
@@ -88,7 +88,7 @@ class ReadMessageHistory(AgentTool):
                 'author_id': author.id if author else 0,
                 'direction': direction,
                 'message_type': m.message_type,
-                'body': _clean(m.body or '')[:1000],  # Limitar largo por mensaje
+                'body': _clean(m.body or '')[:600],  # Limitar largo por mensaje
             })
 
         # Devolvemos en orden cronológico (oldest first) para que sea más fácil de leer

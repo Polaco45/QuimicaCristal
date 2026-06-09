@@ -43,6 +43,7 @@
                                 <field name="anthropic_api_key" password="True"/>
                                 <field name="anthropic_api_url"/>
                                 <field name="anthropic_model"/>
+                                <field name="anthropic_model_complex" placeholder="vacío = usar modelo base para todo"/>
                                 <field name="anthropic_version"/>
                             </group>
                             <group string="Parámetros del modelo">
