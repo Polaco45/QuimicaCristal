@@ -14,6 +14,16 @@
             <field name="active" eval="True"/>
         </record>
 
+        <record id="cron_process_debounced" model="ir.cron">
+            <field name="name">Cristal Agent: Procesar ráfagas (debounce)</field>
+            <field name="model_id" ref="model_cristal_agent_memory"/>
+            <field name="state">code</field>
+            <field name="code">model.cron_process_debounced()</field>
+            <field name="interval_number">1</field>
+            <field name="interval_type">minutes</field>
+            <field name="active" eval="True"/>
+        </record>
+
         <record id="cron_deactivate_expired_knowledge" model="ir.cron">
             <field name="name">Cristal Agent: Desactivar conocimiento vencido</field>
             <field name="model_id" ref="model_cristal_agent_knowledge"/>

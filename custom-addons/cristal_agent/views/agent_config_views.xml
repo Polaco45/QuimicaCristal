@@ -51,7 +51,17 @@
                                 <field name="max_iterations"/>
                                 <field name="temperature"/>
                                 <field name="enable_prompt_caching"/>
+                                <field name="debounce_seconds"/>
+                                <field name="escalate_client_msgs_to_strong" widget="boolean_toggle"/>
                             </group>
+                            <div class="alert alert-info">
+                                <strong>Costo/calidad:</strong> el <b>debounce</b> (10s) junta los
+                                mensajes de una ráfaga en una sola respuesta — baja costo y corta el
+                                "manda muchos mensajes". El switch <b>modelo fuerte para clientes</b>
+                                (apagado por default) usa el "Modelo Claude (tareas complejas)" solo
+                                para redactar mensajes a clientes: prendelo si querés mejores formas
+                                a costo algo mayor.
+                            </div>
                             <div class="alert alert-info">
                                 <strong>Tip:</strong> después de pegar la API key, hacé click en
                                 "🔌 Test de conexión Anthropic" arriba para verificar que funciona.
@@ -60,7 +70,7 @@
 
                         <page string="🧠 System prompts">
                             <notebook>
-                                <page string="📦 Mayorista (Claudio v3.1)">
+                                <page string="📦 Mayorista (Claudio v3.2)">
                                     <field name="prompt_version"/>
                                     <field name="system_prompt"
                                            options="{'resizable': true}"

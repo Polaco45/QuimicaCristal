@@ -43,11 +43,14 @@ def post_init_load_prompt(env):
             'name': 'Configuración principal',
         })
 
-    # 1. Cargar el prompt completo (v3.1 con fallback a v3, después a v2)
+    # 1. Cargar el prompt completo (v3.2 con fallback a v3.1, v3, v2)
     try:
         module_path = os.path.dirname(os.path.realpath(__file__))
-        prompt_path = os.path.join(module_path, 'data', 'prompts', 'claudio_v3_1.md')
-        version = 'claudio_v3_1'
+        prompt_path = os.path.join(module_path, 'data', 'prompts', 'claudio_v3_2.md')
+        version = 'claudio_v3_2'
+        if not os.path.exists(prompt_path):
+            prompt_path = os.path.join(module_path, 'data', 'prompts', 'claudio_v3_1.md')
+            version = 'claudio_v3_1'
         if not os.path.exists(prompt_path):
             prompt_path = os.path.join(module_path, 'data', 'prompts', 'claudio_v3.md')
             version = 'claudio_v3'

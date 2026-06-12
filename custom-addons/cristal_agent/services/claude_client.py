@@ -64,14 +64,16 @@ def dispatch_agent_for_message(env, wa_message, partner, memory, plain_text):
         # el pipeline en whatsapp_message.py antes de llegar acá).
         client_type = memory.client_type if memory and memory.client_type else None
 
-        # Construir prompts
-        system_prompt = build_system_prompt(env, partner=partner, client_type=client_type)
+        # Construir prompts (system partido en bloque estable cacheable + dinámico)
+        stable_system, dynamic_system = build_system_prompt(
+            env, partner=partner, client_type=client_type)
         user_message = build_user_message_for_whatsapp(env, wa_message, partner, plain_text)
 
         # Ejecutar el loop
         client = ClaudeClient(env, run=run, client_type=client_type)
         result = client.run_conversation(
-            system_prompt=system_prompt,
+            stable_system=stable_system,
+            dynamic_system=dynamic_system,
             user_message=user_message,
         )
 
@@ -104,12 +106,13 @@ def dispatch_agent_for_cron(env, trigger, partner, cron_type, extra_context=None
     })
 
     try:
-        system_prompt = build_system_prompt(env, partner=partner)
+        stable_system, dynamic_system = build_system_prompt(env, partner=partner)
         user_message = build_user_message_for_cron(env, partner, cron_type, extra_context)
 
         client = ClaudeClient(env, run=run, complex_task=True)
         result = client.run_conversation(
-            system_prompt=system_prompt,
+            stable_system=stable_system,
+            dynamic_system=dynamic_system,
             user_message=user_message,
         )
 
@@ -156,7 +159,7 @@ def dispatch_agent_for_activity(env, partner, lead, activity):
     })
 
     try:
-        system_prompt = build_system_prompt(env, partner=partner)
+        stable_system, dynamic_system = build_system_prompt(env, partner=partner)
 
         # ═══ Resolver channel_id, wa_account_id y mobile del cliente ═══
         # Antes el bot tenía que buscarlos solo y a veces no los encontraba.
@@ -239,7 +242,8 @@ def dispatch_agent_for_activity(env, partner, lead, activity):
 
         client = ClaudeClient(env, run=run, complex_task=True)
         result = client.run_conversation(
-            system_prompt=system_prompt,
+            stable_system=stable_system,
+            dynamic_system=dynamic_system,
             user_message=user_message,
         )
 
@@ -281,42 +285,48 @@ def dispatch_agent_for_internal_message(env, channel, plain_text, mail_message_i
 
     try:
         # System prompt sin partner_id (porque es chat interno, no de un cliente)
-        system_prompt = build_system_prompt(env, partner=None)
+        stable_system, dynamic_system = build_system_prompt(env, partner=None)
 
-        # Construimos el user message con instrucciones específicas para modo interno
+        # Construimos el user message con instrucciones específicas para modo interno.
+        # v1.11.0 — Joaco se quejó de que el bot le mandaba demasiados mensajes,
+        # largos y con tablas markdown que en WhatsApp/Discuss se ven mal. Acá
+        # endurecemos: respuesta de UNA línea, texto plano, y SOLO si hay algo
+        # que confirmar. Nada de tablas, nada de emojis decorativos, nada de
+        # repetir lo que ya hizo en detalle.
         user_message = (
-            "MODO: CHAT INTERNO CON JOACO\n\n"
-            f"channel_id (canal interno Joaco↔Claudio): {channel.id}\n"
+            "MODO: CHAT INTERNO CON JOACO (es Joaco, no un cliente)\n\n"
+            f"channel_id (canal interno): {channel.id}\n"
             f"mail_message_id del mensaje de Joaco: {mail_message_id or 'N/A'}\n\n"
-            f"Joaco te escribió en el canal interno:\n"
-            f'"{plain_text}"\n\n'
-            "OBLIGATORIO: lo PRIMERO que hacés es leer el historial reciente del canal "
-            f"con read_message_history(channel_id={channel.id}, limit=10). "
-            "Necesitás CONTEXTO antes de actuar — quizás Joaco se está refiriendo a una "
-            "escalación anterior tuya, a un cliente puntual, etc.\n\n"
-            "Después decidís qué hacer:\n"
-            "1. Si es una ENSEÑANZA (anotate que X, a partir de hoy Y, recordá Z) → "
-            "guardala con add_knowledge en la categoría apropiada.\n"
-            "2. Si es un COMANDO sobre un cliente (comunicate vos, mandale X a Y) → "
-            "identificá al cliente (search_partners por nombre o usá el partner_id "
-            "del mensaje anterior tuyo), y ejecutá la acción (típicamente send_whatsapp "
-            "al cliente). Joaco confía en vos, no le pidas confirmación.\n"
-            "3. Si es una PREGUNTA → respondele en el canal interno con send_internal_message "
-            "(usá send_whatsapp con channel_id=" + str(channel.id) + " — el módulo lo trata "
-            "como mensaje interno automáticamente).\n"
-            "4. Si NO entendés la intención → preguntale a Joaco UNA cosa puntual.\n\n"
-            "IMPORTANTE: Cuando termines de actuar, postea un resumen breve en el canal "
-            "interno para que Joaco vea qué hiciste (ej: 'Hecho — le mandé a Franco la "
-            "pregunta sobre productos y litros, y guardé la regla en KB.'). "
+            f'Joaco escribió: "{plain_text}"\n\n'
+            "PASO 1 — Leé contexto: read_message_history(channel_id="
+            + str(channel.id) + ", limit=6) UNA sola vez.\n\n"
+            "PASO 2 — Identificá qué es y actuá:\n"
+            "• ENSEÑANZA ('anotate que…', 'a partir de hoy…') → add_knowledge. NO "
+            "respondas nada más que 'Anotado.'\n"
+            "• COMANDO sobre un cliente ('mandale X a Y', 'comunicate con Z') → "
+            "search_partners → read_partner → ejecutá la acción (send_whatsapp al "
+            "cliente). Joaco confía en vos: NO le pidas confirmación ni datos que "
+            "ya están en la base.\n"
+            "• PREGUNTA → contestá en el canal interno, directo y corto.\n\n"
+            "REGLAS DE RESPUESTA EN EL CANAL INTERNO (estrictas):\n"
+            "- Máximo UNA línea. Nada de tablas markdown, nada de '✅ Resumen', nada "
+            "de listas con pipes. Texto plano de vendedor.\n"
+            "- Ejemplo bueno: 'Listo, le mandé la lista a Romi y agendé seguimiento "
+            "a Lidia.' Ejemplo MALO: una tabla con columnas Cliente/Acción/Estado.\n"
+            "- Si lo único que hiciste fue lo que Joaco pidió y no hay nada que "
+            "aclarar, una confirmación de 3-5 palabras alcanza ('Hecho.', 'Anotado.', "
+            "'Le avisé a Franco.').\n"
+            "- Si NO hay ninguna acción que tomar (Joaco solo comentó algo, o no te "
+            "está hablando a vos), NO respondas: terminá sin mandar mensaje.\n\n"
             "Para postear en el canal interno usá send_whatsapp con channel_id="
-            + str(channel.id) + " y wa_account_id=0 (o cualquier valor — el canal es "
-            "interno, no requiere cuenta WA real). Si send_whatsapp falla por wa_account, "
-            "como fallback usá escalate_to_joaco con un mensaje de status."
+            + str(channel.id) + " (el módulo lo trata como interno; no requiere "
+            "cuenta WA real)."
         )
 
         client = ClaudeClient(env, run=run, complex_task=True)
         result = client.run_conversation(
-            system_prompt=system_prompt,
+            stable_system=stable_system,
+            dynamic_system=dynamic_system,
             user_message=user_message,
         )
 
@@ -369,9 +379,14 @@ class ClaudeClient:
         from .tool_registry import ToolRegistry
         self.tool_registry = ToolRegistry
 
-    def run_conversation(self, system_prompt, user_message):
+    def run_conversation(self, stable_system, dynamic_system="", user_message=None):
         """
         Ejecuta el loop de conversación con Claude hasta que termine.
+
+        v1.11.0 — el system ahora viene partido:
+        - stable_system: bloque compartido + cacheado (cache_control).
+        - dynamic_system: bloque por-cliente, sin cachear (va después del
+          breakpoint). Si está vacío, se manda solo el estable.
 
         Returns:
             dict: {'final_text': str, 'iterations': int, 'tool_calls': int, 'usage': dict}
@@ -391,7 +406,7 @@ class ClaudeClient:
             _logger.debug("🔄 Iteración %s. Mensajes en contexto: %s", iterations, len(messages))
 
             # Llamada a Claude
-            response = self._call_claude_api(system_prompt, messages)
+            response = self._call_claude_api(stable_system, dynamic_system, messages)
 
             # Sumar tokens
             usage = response.get('usage', {})
@@ -474,7 +489,7 @@ class ClaudeClient:
 
         # Loguear en el run final
         if self.run:
-            self.run.write({
+            run_vals = {
                 'iterations': iterations,
                 'total_tool_calls': total_tool_calls,
                 'input_tokens': total_input_tokens,
@@ -483,7 +498,12 @@ class ClaudeClient:
                 'cache_read_input_tokens': total_cache_read,
                 'duration_seconds': round(duration, 2),
                 'final_response': final_text,
-            })
+            }
+            # v1.11.0 — guardamos el modelo realmente usado para que el cálculo
+            # de costo (agent_run._compute_cost) aplique los precios correctos.
+            if 'model_used' in self.run._fields:
+                run_vals['model_used'] = self._resolve_model()
+            self.run.write(run_vals)
             self.run.set_full_messages(messages)
 
         return {
@@ -499,7 +519,30 @@ class ClaudeClient:
             'duration_seconds': duration,
         }
 
-    def _call_claude_api(self, system_prompt, messages):
+    def _resolve_model(self):
+        """
+        Decide qué modelo usar para esta conversación.
+
+        - Base: config.anthropic_model (Haiku) para el grueso del tráfico.
+        - Tareas complejas (cron / comando interno de Joaco): si hay
+          anthropic_model_complex cargado, lo usa.
+        - Mensajes a cliente (mayorista/institucional): si el flag
+          escalate_client_msgs_to_strong está ON y hay modelo complejo cargado,
+          escala SOLO esos mensajes a ese modelo (mejores "formas"). Apagado por
+          default → todo Haiku, costo mínimo.
+        """
+        model = self.config.anthropic_model
+        strong = getattr(self.config, 'anthropic_model_complex', None)
+        if not strong:
+            return model
+        if self.complex_task:
+            return strong
+        if (self.client_type in ('mayorista', 'institucional')
+                and getattr(self.config, 'escalate_client_msgs_to_strong', False)):
+            return strong
+        return model
+
+    def _call_claude_api(self, stable_system, dynamic_system, messages):
         """Hace una llamada HTTP a la API de Claude, con retry en caso de 429."""
         headers = {
             "x-api-key": self.api_key,
@@ -507,28 +550,27 @@ class ClaudeClient:
             "content-type": "application/json",
         }
 
-        # v1.10.5 — Cache de 1h (beta). Por default Anthropic cachea 5 min; con
-        # este header + ttl="1h" el prefijo (system + tools) sobrevive 1 hora,
-        # así los mensajes seguidos del mismo cliente (que suelen llegar con
-        # minutos/decenas de minutos de diferencia) REUSAN el cache en vez de
-        # reescribirlo. Combinado con el prefijo estable (timestamp sacado del
-        # bloque cacheado), esto convierte el ~60% del costo (cache WRITE) en
-        # lecturas baratas.
+        # v1.10.5 — Cache de 1h (beta). v1.11.0 — ahora SÍ rinde: el bloque
+        # cacheado (stable_system + tools) es idéntico para TODOS los clientes
+        # del mismo client_type, así que se escribe una vez y lo reusan los ~120
+        # runs/día durante la hora. El contexto por-cliente (dynamic_system) va
+        # después del breakpoint, sin cachear → no invalida el prefijo.
         cache_ttl = {"type": "ephemeral", "ttl": "1h"} if self.config.enable_prompt_caching else None
         if cache_ttl:
             headers["anthropic-beta"] = "extended-cache-ttl-2025-04-11"
 
-        # System con cache control si está habilitado
+        # System: bloque estable (cacheado) + bloque dinámico (sin cachear).
         if self.config.enable_prompt_caching:
-            system_param = [
-                {
-                    "type": "text",
-                    "text": system_prompt,
-                    "cache_control": cache_ttl,
-                }
-            ]
+            system_param = [{
+                "type": "text",
+                "text": stable_system,
+                "cache_control": cache_ttl,
+            }]
+            if dynamic_system:
+                system_param.append({"type": "text", "text": dynamic_system})
         else:
-            system_param = system_prompt
+            system_param = stable_system + (
+                ("\n" + dynamic_system) if dynamic_system else "")
 
         # Tools: si caching está prendido, marcamos la ÚLTIMA tool con cache_control.
         # El bloque de tools es idéntico para todos los clientes del mismo
@@ -550,10 +592,9 @@ class ClaudeClient:
         if self.config.enable_prompt_caching and messages:
             messages = self._mark_last_message_cacheable(messages, cache_ttl)
 
-        # v1.10.5 — Modelo: híbrido si es tarea compleja y hay modelo complejo cargado.
-        model = self.config.anthropic_model
-        if self.complex_task and getattr(self.config, 'anthropic_model_complex', None):
-            model = self.config.anthropic_model_complex
+        # v1.11.0 — modelo resuelto por _resolve_model (Haiku base, escalado
+        # opcional a modelo fuerte en tareas complejas o mensajes a cliente).
+        model = self._resolve_model()
 
         body = {
             "model": model,

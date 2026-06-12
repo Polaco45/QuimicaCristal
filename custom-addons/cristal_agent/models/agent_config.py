@@ -85,6 +85,33 @@ class CristalAgentConfig(models.Model):
         help="Cachea el system prompt para bajar costos en 90% en mensajes seguidos del mismo cliente.",
     )
 
+    # v1.11.0 — Debounce de mensajes entrantes. Cuando un cliente manda varios
+    # mensajes seguidos (una ráfaga), el bot espera N segundos de silencio y los
+    # procesa TODOS en UN solo run, en vez de disparar un run por mensaje. Esto
+    # corta el "manda muchos mensajes" + baja el costo (menos runs) + la
+    # respuesta sale más completa y coherente. 0 = desactivado (modo viejo).
+    debounce_seconds = fields.Integer(
+        string="Debounce de ráfaga (segundos)",
+        default=10,
+        help="Segundos de silencio que el bot espera antes de responder, para "
+             "juntar los mensajes de una ráfaga en una sola respuesta. "
+             "10 = buen balance inmediatez/costo. 0 = responde a cada mensaje (caro).",
+    )
+
+    # v1.11.0 — Escalado opcional del modelo SOLO para mensajes a clientes.
+    # Apagado por default: todo el tráfico corre en anthropic_model (Haiku),
+    # costo mínimo. Si las "formas" con Haiku no convencen, prendé esto y cargá
+    # un modelo fuerte en anthropic_model_complex (ej. claude-sonnet-4-6): el bot
+    # usará ese modelo SOLO para redactar mensajes a clientes mayoristas/
+    # institucionales, dejando lo interno y los cron en Haiku.
+    escalate_client_msgs_to_strong = fields.Boolean(
+        string="Usar modelo fuerte para mensajes a clientes",
+        default=False,
+        help="Si está ON y hay un modelo cargado en 'Modelo Claude (tareas "
+             "complejas)', el bot usa ESE modelo para redactar mensajes a "
+             "clientes (mejores formas). Default OFF = todo en Haiku (más barato).",
+    )
+
     # ─────────── System prompt ───────────
     system_prompt = fields.Text(
         string="System prompt activo (mayorista)",

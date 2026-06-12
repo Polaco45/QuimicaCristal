@@ -45,6 +45,20 @@ class ResPartner(models.Model):
              "Se actualiza automáticamente.",
     )
 
+    # ─────────── Segmentación geográfica (v1.11.0) ───────────
+    # El bot captura SIEMPRE de qué ciudad/zona es el cliente durante la
+    # calificación. La ciudad va al campo nativo `city`; acá guardamos la zona
+    # de reparto normalizada para poder segmentar y planificar expansión.
+    agent_zone = fields.Selection([
+        ('rio_cuarto', 'Río Cuarto'),
+        ('las_higueras', 'Las Higueras'),
+        ('fuera_zona', 'Fuera de zona (expansión futura)'),
+        ('other', 'Otra (sin clasificar)'),
+        ('unknown', 'No relevada'),
+    ], string="Zona de reparto", default='unknown', index=True, tracking=True,
+        help="Zona del cliente para segmentar reparto. 'Fuera de zona' = lead "
+             "para cuando expandamos. Se completa durante la calificación.")
+
     # ─────────── Sistema de niveles (Fase 4 de la estrategia mayorista) ───────────
     agent_level = fields.Selection([
         ('none', 'Sin nivel asignado'),

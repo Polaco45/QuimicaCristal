@@ -164,12 +164,33 @@ class WhatsAppMessage(models.Model):
         # 7) Actualizar timestamp de último inbound
         partner.sudo().write({'agent_last_inbound_at': fields.Datetime.now()})
 
-        # 8) Disparar el agente (en otro contexto, idealmente async)
-        _logger.info("🚀 Disparando agente para mensaje de %s: %r", partner.name, plain_body[:120])
+        # 8) Disparar el agente — con DEBOUNCE (v1.11.0).
+        # Antes se disparaba un run completo por CADA mensaje entrante, de forma
+        # sincrónica dentro del create(). Cuando el cliente mandaba una ráfaga
+        # (típico: 5-9 mensajes en pocos minutos durante la calificación) eso
+        # generaba 5-9 runs caros y 5-9 burbujas de respuesta. Ahora juntamos la
+        # ráfaga: encolamos el texto y procesamos todo en UN run tras N segundos
+        # de silencio. Resultado: menos costo + respuesta más completa y menos
+        # "manda muchos mensajes".
+        debounce = config.debounce_seconds or 0
+        if debounce <= 0:
+            _logger.info("🚀 Disparando agente (sin debounce) para %s: %r",
+                         partner.name, plain_body[:120])
+            from ..services.claude_client import dispatch_agent_for_message
+            dispatch_agent_for_message(self.env, wa_message, partner, memory, plain_body)
+            return
 
-        # Importamos acá para evitar circular imports
-        from ..services.claude_client import dispatch_agent_for_message
-        dispatch_agent_for_message(self.env, wa_message, partner, memory, plain_body)
+        _logger.info("⏳ Encolando mensaje de %s (debounce %ss): %r",
+                     partner.name, debounce, plain_body[:80])
+        memory.enqueue_pending(plain_body, wa_message=wa_message)
+        # Programar el procesamiento one-shot apenas pase la ventana de silencio.
+        # (Además hay un cron cada 1 min de fallback por si el trigger falla.)
+        try:
+            cron = self.env.ref('cristal_agent.cron_process_debounced', raise_if_not_found=False)
+            if cron:
+                cron.sudo()._trigger(at=fields.Datetime.now() + timedelta(seconds=debounce + 1))
+        except Exception as e:
+            _logger.warning("No se pudo programar el trigger de debounce: %s", e)
 
     def _notify_joaco_institutional_bypass(self, wa_message, partner, reason, plain_body):
         """

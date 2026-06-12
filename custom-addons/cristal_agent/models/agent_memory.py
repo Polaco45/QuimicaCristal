@@ -161,6 +161,25 @@ class CristalAgentMemory(models.Model):
     )
     takeover_reason = fields.Char(string="Motivo del takeover")
 
+    # ─────────── Cola de debounce (v1.11.0) ───────────
+    # Cuando el cliente manda una ráfaga, los mensajes se acumulan acá y se
+    # procesan todos juntos en UN run después de N segundos de silencio.
+    pending_text = fields.Text(
+        string="Mensajes pendientes (debounce)",
+        help="Buffer de mensajes entrantes sin procesar todavía. Se vacía cuando "
+             "el bot los responde en un único run.",
+    )
+    pending_since = fields.Datetime(
+        string="Primer mensaje pendiente",
+        help="Cuándo llegó el primer mensaje de la ráfaga actual.",
+    )
+    pending_wa_message_id = fields.Many2one(
+        'whatsapp.message',
+        string="Último WA pendiente",
+        help="El último whatsapp.message de la ráfaga, para resolver canal/cuenta "
+             "al procesar.",
+    )
+
     # ─────────── Counters ───────────
     total_messages_received = fields.Integer(string="Mensajes recibidos", default=0)
     total_messages_sent = fields.Integer(string="Mensajes enviados", default=0)
@@ -266,6 +285,70 @@ class CristalAgentMemory(models.Model):
             WHERE id = %s
         """, (self.id,))
         self.invalidate_recordset(['total_escalations'])
+
+    # ─────────── Debounce de ráfagas (v1.11.0) ───────────
+    def enqueue_pending(self, text, wa_message=None):
+        """Acumula un mensaje entrante en el buffer de debounce."""
+        self.ensure_one()
+        prev = (self.pending_text or "").strip()
+        new_text = (text or "").strip()
+        combined = (prev + "\n" + new_text).strip() if prev else new_text
+        vals = {
+            'pending_text': combined,
+            'pending_since': self.pending_since or fields.Datetime.now(),
+        }
+        if wa_message:
+            vals['pending_wa_message_id'] = wa_message.id
+        self.write(vals)  # write() actualiza last_interaction_at (silencio)
+
+    def _clear_pending(self):
+        self.ensure_one()
+        self.write({
+            'pending_text': False,
+            'pending_since': False,
+            'pending_wa_message_id': False,
+        })
+
+    @api.model
+    def cron_process_debounced(self):
+        """
+        Procesa las ráfagas que ya tuvieron N segundos de silencio: junta todos
+        los mensajes pendientes del cliente y dispara UN solo run.
+
+        Se invoca cada minuto (fallback) y además por _trigger one-shot apenas
+        entra un mensaje (para la latencia de ~debounce_seconds).
+        """
+        from ..services.claude_client import dispatch_agent_for_message
+        config = self.env['cristal.agent.config'].sudo().get_active()
+        if not config or not config.enabled:
+            return
+        debounce = config.debounce_seconds or 0
+        now = fields.Datetime.now()
+
+        pending = self.search([('pending_text', '!=', False)])
+        for mem in pending:
+            try:
+                ref_time = mem.last_interaction_at or mem.pending_since
+                # Todavía dentro de la ventana de silencio → esperar (puede
+                # llegar otro mensaje de la ráfaga).
+                if debounce and ref_time and (now - ref_time).total_seconds() < debounce:
+                    continue
+
+                if mem.is_takeover_active():
+                    mem._clear_pending()
+                    continue
+
+                text = mem.pending_text
+                wa = mem.pending_wa_message_id
+                partner = mem.partner_id
+                # Limpiar ANTES de disparar para no reprocesar si entra otro run.
+                mem._clear_pending()
+
+                if not partner or not partner.exists():
+                    continue
+                dispatch_agent_for_message(self.env, wa, partner, mem, text)
+            except Exception as e:
+                _logger.exception("cron_process_debounced falló para memoria %s: %s", mem.id, e)
 
     @api.model
     def cron_reactivate_expired_takeovers(self):

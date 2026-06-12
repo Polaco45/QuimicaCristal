@@ -96,6 +96,11 @@ class CristalAgentRun(models.Model):
     output_tokens = fields.Integer(string="Tokens output acumulados")
     cache_creation_input_tokens = fields.Integer(string="Tokens cache write")
     cache_read_input_tokens = fields.Integer(string="Tokens cache read")
+    model_used = fields.Char(
+        string="Modelo usado",
+        help="Modelo de Claude con el que se corrió este run. Determina los "
+             "precios que usa el cálculo de costo.",
+    )
     cost_usd = fields.Float(
         string="Costo USD",
         digits=(10, 6),
@@ -127,26 +132,36 @@ class CristalAgentRun(models.Model):
             date_str = rec.create_date.strftime('%Y-%m-%d %H:%M') if rec.create_date else ''
             rec.display_name = f"[{trig}] {partner} — {date_str}"
 
-    @api.depends('input_tokens', 'output_tokens', 'cache_creation_input_tokens', 'cache_read_input_tokens')
+    # Precios por 1M tokens (USD). cache_write = TTL 1h (2x input), que es el que
+    # usa el módulo. cache_read = 0.1x input. v1.11.0 — antes se cobraba TODO con
+    # precios de Sonnet aunque el tráfico corre en Haiku 4.5, inflando el costo
+    # reportado ~3x. Ahora el precio depende del modelo realmente usado.
+    MODEL_PRICES = {
+        'haiku': {'in': 1.0, 'out': 5.0, 'cw': 2.0, 'cr': 0.10},
+        'sonnet': {'in': 3.0, 'out': 15.0, 'cw': 6.0, 'cr': 0.30},
+        'opus': {'in': 15.0, 'out': 75.0, 'cw': 30.0, 'cr': 1.50},
+    }
+
+    @classmethod
+    def _prices_for_model(cls, model_name):
+        m = (model_name or '').lower()
+        if 'sonnet' in m:
+            return cls.MODEL_PRICES['sonnet']
+        if 'opus' in m:
+            return cls.MODEL_PRICES['opus']
+        # default: Haiku (el modelo base del tráfico)
+        return cls.MODEL_PRICES['haiku']
+
+    @api.depends('input_tokens', 'output_tokens', 'cache_creation_input_tokens',
+                 'cache_read_input_tokens', 'model_used')
     def _compute_cost(self):
-        """
-        Cálculo de costos para Claude Sonnet 4.6 (precios al 2026):
-        - Input: $3 / 1M tokens
-        - Output: $15 / 1M tokens
-        - Cache write (5min TTL): $3.75 / 1M (1.25x input)
-        - Cache read: $0.30 / 1M (0.1x input)
-        """
-        # Precios por 1M tokens, en USD
-        PRICE_INPUT = 3.0
-        PRICE_OUTPUT = 15.0
-        PRICE_CACHE_WRITE = 3.75
-        PRICE_CACHE_READ = 0.30
         for rec in self:
+            p = rec._prices_for_model(rec.model_used)
             cost = (
-                (rec.input_tokens / 1_000_000) * PRICE_INPUT
-                + (rec.output_tokens / 1_000_000) * PRICE_OUTPUT
-                + (rec.cache_creation_input_tokens / 1_000_000) * PRICE_CACHE_WRITE
-                + (rec.cache_read_input_tokens / 1_000_000) * PRICE_CACHE_READ
+                (rec.input_tokens / 1_000_000) * p['in']
+                + (rec.output_tokens / 1_000_000) * p['out']
+                + (rec.cache_creation_input_tokens / 1_000_000) * p['cw']
+                + (rec.cache_read_input_tokens / 1_000_000) * p['cr']
             )
             rec.cost_usd = round(cost, 6)
 

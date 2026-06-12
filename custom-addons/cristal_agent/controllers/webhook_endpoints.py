@@ -77,10 +77,11 @@ class CristalAgentController(http.Controller):
         })
 
         try:
-            system_prompt = build_system_prompt(request.env, partner=partner)
+            stable_system, dynamic_system = build_system_prompt(request.env, partner=partner)
             client = ClaudeClient(request.env, run=run)
             result = client.run_conversation(
-                system_prompt=system_prompt,
+                stable_system=stable_system,
+                dynamic_system=dynamic_system,
                 user_message=f"SIMULACIÓN INTERACTIVA — partner_id={partner.id}\n\nCliente dice: \"{message}\"",
             )
             run.mark_done(final_response=result.get('final_text', ''))

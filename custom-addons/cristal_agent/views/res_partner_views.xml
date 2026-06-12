@@ -32,6 +32,16 @@
                         </group>
                     </group>
 
+                    <group>
+                        <group string="📍 Ubicación / zona de reparto">
+                            <field name="city"/>
+                            <field name="agent_zone" widget="badge"
+                                   decoration-success="agent_zone in ['rio_cuarto', 'las_higueras']"
+                                   decoration-warning="agent_zone == 'fuera_zona'"
+                                   decoration-muted="agent_zone in ['unknown', 'other']"/>
+                        </group>
+                    </group>
+
                     <separator string="📋 Observaciones acumuladas del agente"/>
                     <field name="agent_observations" readonly="1"
                            placeholder="A medida que Claudio interactúe con este cliente, va a ir registrando acá lo que aprende: preferencias, datos comerciales, episodios destacados."/>
@@ -43,6 +53,32 @@
                     </group>
 
                 </page>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- Filtros y agrupación por zona de reparto (segmentación geográfica) -->
+    <record id="view_partner_filter_inherit_cristal_agent" model="ir.ui.view">
+        <field name="name">res.partner.search.inherit.cristal.agent</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="base.view_res_partner_filter"/>
+        <field name="arch" type="xml">
+            <xpath expr="//search" position="inside">
+                <separator/>
+                <filter name="zone_rio_cuarto" string="Zona: Río Cuarto"
+                        domain="[('agent_zone', '=', 'rio_cuarto')]"/>
+                <filter name="zone_las_higueras" string="Zona: Las Higueras"
+                        domain="[('agent_zone', '=', 'las_higueras')]"/>
+                <filter name="zone_fuera" string="Fuera de zona (expansión)"
+                        domain="[('agent_zone', '=', 'fuera_zona')]"/>
+                <filter name="zone_unknown" string="Zona sin relevar"
+                        domain="[('agent_zone', 'in', ['unknown', 'other', False])]"/>
+                <group expand="0" string="Agrupar por zona/ciudad">
+                    <filter name="group_agent_zone" string="Zona de reparto"
+                            context="{'group_by': 'agent_zone'}"/>
+                    <filter name="group_city" string="Ciudad"
+                            context="{'group_by': 'city'}"/>
+                </group>
             </xpath>
         </field>
     </record>

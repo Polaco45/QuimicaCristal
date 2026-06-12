@@ -15,7 +15,7 @@ _logger = logging.getLogger(__name__)
 ALLOWED_FIELDS = {
     'name', 'mobile', 'phone', 'email', 'street', 'street2', 'city',
     'state_id', 'country_id', 'vat', 'comment', 'website',
-    'agent_strategy_phase', 'agent_observations',
+    'agent_strategy_phase', 'agent_observations', 'agent_zone',
 }
 
 
@@ -36,7 +36,14 @@ class UpdatePartner(AgentTool):
             "mobile": {"type": "string"},
             "email": {"type": "string"},
             "street": {"type": "string"},
-            "city": {"type": "string"},
+            "city": {"type": "string", "description": "Ciudad/localidad del cliente. Guardala SIEMPRE que la sepas."},
+            "agent_zone": {
+                "type": "string",
+                "enum": ['rio_cuarto', 'las_higueras', 'fuera_zona', 'other', 'unknown'],
+                "description": "Zona de reparto. 'rio_cuarto'/'las_higueras' = entregamos; "
+                               "'fuera_zona' = lead para expansión futura (auto-etiqueta "
+                               "'Fuera de zona'). Clasificá SIEMPRE durante la calificación.",
+            },
             "vat": {"type": "string"},
             "category_to_add": {
                 "type": "string",
@@ -96,6 +103,15 @@ class UpdatePartner(AgentTool):
             )
             if tag:
                 vals['category_id'] = vals.get('category_id', []) + [(3, tag.id)]
+
+        # Auto-etiqueta "Fuera de zona" cuando se marca agent_zone=fuera_zona
+        # (para que aparezca en filtros y se excluya de broadcasts).
+        if kwargs.get('agent_zone') == 'fuera_zona':
+            fz_tag = env['res.partner.category'].sudo().search(
+                [('name', '=', 'Fuera de zona')], limit=1
+            )
+            if fz_tag:
+                vals['category_id'] = vals.get('category_id', []) + [(4, fz_tag.id)]
 
         # Pricelist
         if kwargs.get('pricelist_name'):

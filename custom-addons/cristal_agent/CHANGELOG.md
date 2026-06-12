@@ -7,6 +7,72 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.11.0] — 2026-06-12
+
+Revisión integral de costo + "formas" + canal interno + segmentación geográfica.
+Diagnóstico sobre datos reales de producción (839 runs en 7 días, ~120/día; 0
+errores técnicos — los problemas eran de calidad/costo, no crashes).
+
+### Changed — Costo (la palanca grande)
+
+- **System prompt partido en bloque ESTABLE (cacheado) + bloque DINÁMICO (sin
+  cachear).** Causa raíz del costo: el contexto por-cliente (ficha +
+  observaciones) vivía DENTRO del bloque cacheado, y como el bot actualiza
+  observaciones casi en cada charla (R8), el prefijo cambiaba y el cache se
+  reescribía en ~todos los runs (cache WRITE a 2x de la TTL 1h = lo más caro).
+  Ahora `build_system_prompt` devuelve `(stable, dynamic)`: el estable (prompt +
+  reglas + KB global + ofertas) es idéntico para todos los clientes → se escribe
+  una vez por hora y lo reusan los ~120 runs/día; el dinámico (ficha del cliente)
+  va después del breakpoint, como input barato. Recorte estimado ~70-80% del
+  componente de system.
+- **Debounce de ráfagas (10s, configurable).** Antes se disparaba un run completo
+  por CADA mensaje entrante, sincrónico dentro de `whatsapp.message.create()`
+  (caso real: 9 mensajes/9 runs en 5 min para una sola calificación). Ahora los
+  mensajes de una ráfaga se encolan en la memoria y se procesan TODOS en un único
+  run tras N segundos de silencio (`cron_process_debounced` + `_trigger` one-shot,
+  con cron de 1 min de fallback). Menos runs, menos costo y respuesta más
+  completa/menos "spam".
+- **Cálculo de costo correcto por modelo.** `agent_run._compute_cost` cobraba TODO
+  con precios de Sonnet aunque el tráfico corre en **Haiku 4.5** → inflaba el
+  costo reportado ~3x. Ahora hay tabla de precios por modelo (haiku/sonnet/opus,
+  con cache write a 1h = 2x) y un campo `model_used` que se graba en cada run.
+
+### Changed — Formas (calidad de los mensajes al cliente)
+
+- **Prompt mayorista reescrito a `claudio_v3_2.md`.** Las reglas de tono estaban
+  enterradas en 488 líneas y Haiku no las respetaba (decía "Perfecto", "Genial",
+  emojis en cadena, saludos de animador). v3.2: el tono va PRIMERO, con lista de
+  palabras prohibidas y la regla "si vas a escribir una, borrala y reescribí";
+  preguntas AGRUPADAS (nombre+email juntos, etc.) para cortar la fragmentación;
+  consciente del debounce ("te llegan los mensajes juntos, respondé una vez").
+- **Switch opcional de modelo fuerte para clientes** (`escalate_client_msgs_to_strong`,
+  OFF por default). Si las formas con Haiku no alcanzan, prendelo y cargá un
+  Sonnet en `anthropic_model_complex`: se usa SOLO para redactar mensajes a
+  clientes, dejando lo interno y los cron en Haiku. Costo-primero por default.
+
+### Changed — Canal interno con Joaco
+
+- Respuestas endurecidas: **máximo 1 línea, texto plano, sin tablas markdown ni
+  "✅ Resumen"**, y **no responde si no hay acción que tomar**. Antes contestaba
+  con tablas markdown (se ven mal en WhatsApp/Discuss) y mensajes largos.
+
+### Added — Segmentación geográfica
+
+- Campo `agent_zone` en `res.partner` (Río Cuarto / Las Higueras / Fuera de zona /
+  Otra / No relevada), indexado y con tracking. La ciudad va al campo nativo
+  `city`. `update_partner` acepta `city` + `agent_zone` y auto-etiqueta "Fuera de
+  zona". El prompt v3.2 obliga a capturar ciudad+zona en la calificación.
+- Vista de partner con sección "Ubicación / zona" + filtros y group-by por zona y
+  ciudad para segmentar la base mayorista (preparación para armar zonas de reparto).
+
+### Migration
+
+- `migrations/18.0.1.11.0/post-migration.py`: recarga el prompt v3.2, fija
+  defaults (`debounce_seconds=10`, `escalate_client_msgs_to_strong=False`) y
+  asegura la etiqueta "Fuera de zona".
+
+---
+
 ## [18.0.1.10.5] — 2026-06-09
 
 ### Fixed

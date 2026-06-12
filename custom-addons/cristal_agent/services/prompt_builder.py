@@ -23,7 +23,24 @@ _logger = logging.getLogger(__name__)
 
 def build_system_prompt(env, partner=None, base_prompt=None, client_type=None):
     """
-    Construye el system prompt completo para Claude.
+    Construye el system prompt para Claude, partido en DOS bloques:
+
+        (stable_text, dynamic_text)
+
+    - stable_text: idéntico para TODOS los clientes del mismo client_type
+      (prompt base + temporal del día + capacidades + KB global + ofertas +
+      reglas duras). claude_client lo marca con cache_control → se escribe UNA
+      vez por hora y lo REUSAN los ~120 runs/día. Este es el gran ahorro de
+      costo: antes el contexto por-cliente vivía dentro del bloque cacheado, así
+      que cada run reescribía ~14k tokens (cache WRITE a 2x). Ahora el prefijo es
+      compartido y estable.
+    - dynamic_text: lo único que cambia por cliente (su ficha + observaciones +
+      ciudad/zona). Va DESPUÉS del breakpoint de cache, sin cachear: se procesa
+      como input barato (~$1/M) en vez de invalidar el cache.
+
+    v1.11.0 — antes esta función devolvía un único string. Sigue aceptando las
+    mismas firmas; ahora retorna una tupla (stable, dynamic). Los call sites en
+    claude_client fueron actualizados.
 
     v1.9.0: si client_type='institucional' y hay system_prompt_institutional
     configurado, lo usa entero. Si no, usa el mayorista de siempre.
@@ -31,11 +48,11 @@ def build_system_prompt(env, partner=None, base_prompt=None, client_type=None):
     Config = env['cristal.agent.config'].sudo()
     config = Config.get_active()
 
-    parts = []
+    stable_parts = []
 
     # ─── 1. Base prompt — switch por client_type (v1.9.0) ───
     if base_prompt:
-        parts.append(base_prompt)
+        stable_parts.append(base_prompt)
     elif client_type == 'institucional' and config.system_prompt_institutional:
         inst_prompt = config.system_prompt_institutional
         # v1.10.0 — inyectar el ID del reporte de muestra (PDF) que el bot
@@ -47,47 +64,47 @@ def build_system_prompt(env, partner=None, base_prompt=None, client_type=None):
             "{{REPORTE_MUESTRA_ATTACHMENT_ID}}",
             str(report_id) if report_id else "NO_CONFIGURADO",
         )
-        parts.append(inst_prompt)
+        stable_parts.append(inst_prompt)
         _logger.info("📝 Usando system prompt INSTITUCIONAL (reporte_id=%s)", report_id)
     else:
-        parts.append(config.system_prompt or "")
+        stable_parts.append(config.system_prompt or "")
         if client_type == 'institucional':
             _logger.warning(
                 "⚠️ client_type=institucional pero no hay system_prompt_institutional "
                 "configurado. Usando el mayorista como fallback."
             )
 
-    # ─── 2. Contexto temporal ───
-    # v1.10.5 — IMPORTANTE PARA COSTOS: el system prompt se cachea entero. Si acá
-    # metemos la hora con minuto (%H:%M), el texto cacheado cambia cada minuto y
-    # el cache se INVALIDA en cada mensaje → cada run reescribe el prompt (cache
-    # WRITE) en vez de reusarlo (cache READ). Eso era ~60% del costo. Dejamos
-    # SOLO la fecha + día (estable todo el día), y la hora exacta va en el
-    # user_message (que no se cachea). Así el prefijo es estable por cliente/día.
+    # ─── 2. Contexto temporal (estable durante el día) ───
+    # La hora exacta del mensaje va en el user_message (sin cachear). Acá solo
+    # fecha + día → el prefijo cacheado solo cambia una vez por día.
     now = datetime.now()
     weekdays = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo']
-    parts.append(f"\n\n## CONTEXTO TEMPORAL\n"
-                 f"- Fecha de hoy: {now.strftime('%Y-%m-%d')} ({weekdays[now.weekday()]})\n"
-                 f"- Horario de atención: lunes a viernes 8:30 - 21:00\n"
-                 f"- (La hora exacta del mensaje viene en el bloque del mensaje entrante.)")
+    stable_parts.append(f"\n\n## CONTEXTO TEMPORAL\n"
+                        f"- Fecha de hoy: {now.strftime('%Y-%m-%d')} ({weekdays[now.weekday()]})\n"
+                        f"- Horario de atención: lunes a viernes 8:30 - 21:00\n"
+                        f"- (La hora exacta del mensaje viene en el bloque del mensaje entrante.)")
 
-    # ─── 3. Capacidades habilitadas (feature flags) ───
-    parts.append(_build_capabilities_status(env, config))
+    # ─── 3. Capacidades habilitadas (feature flags) — global ───
+    stable_parts.append(_build_capabilities_status(env, config))
 
-    # ─── 4. Contexto del cliente actual ───
+    # ─── 4. Conocimiento GLOBAL de la KB (no targeteado por cliente) ───
+    # Se consulta sin partner/level para que sea idéntico para todos → cacheable.
+    stable_parts.append(_build_knowledge_context(env, partner=None, client_type=client_type))
+
+    # ─── 5. Ofertas vigentes (globales) ───
+    stable_parts.append(_build_offers_context(env, partner=None))
+
+    # ─── 6. REGLAS DURAS (siempre al final del bloque estable) ───
+    stable_parts.append(_build_hard_rules())
+
+    stable_text = "\n".join(p for p in stable_parts if p)
+
+    # ─── Bloque DINÁMICO (por cliente, SIN cachear) ───
+    dynamic_text = ""
     if partner:
-        parts.append(_build_partner_context(env, partner))
+        dynamic_text = _build_partner_context(env, partner)
 
-    # ─── 5. Conocimiento relevante de la KB ───
-    parts.append(_build_knowledge_context(env, partner, client_type=client_type))
-
-    # ─── 6. Ofertas vigentes ───
-    parts.append(_build_offers_context(env, partner))
-
-    # ─── 7. REGLAS DURAS (siempre al final, máxima prioridad) ───
-    parts.append(_build_hard_rules())
-
-    return "\n".join(parts)
+    return stable_text, dynamic_text
 
 
 def _build_capabilities_status(env, config):
@@ -168,6 +185,16 @@ def _build_partner_context(env, partner):
     lines.append(f"- name: {partner.name or '(sin nombre)'}")
     lines.append(f"- mobile: {partner.mobile or partner.phone or '(sin tel)'}")
     lines.append(f"- email: {partner.email or '(sin email)'}")
+
+    # Ciudad / zona (v1.11.0 — segmentación geográfica)
+    zone_label = dict(partner._fields['agent_zone'].selection).get(
+        partner.agent_zone, partner.agent_zone
+    ) if 'agent_zone' in partner._fields and partner.agent_zone else None
+    if partner.city or zone_label:
+        loc = partner.city or '(sin ciudad)'
+        if zone_label and partner.agent_zone != 'unknown':
+            loc += f" — zona: {zone_label}"
+        lines.append(f"- ubicación: {loc}")
 
     # Etiquetas
     tags = [t.name for t in partner.category_id]
