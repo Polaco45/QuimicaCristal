@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <!--
+        Acción "Enviar campaña WhatsApp" (v1.11.1).
+        Aparece en el menú "Acciones" de la lista/ficha de CRM (crm.lead).
+        Recorre los leads SELECCIONADOS y manda el template configurado en
+        cristal.agent.config.campaign_template_id, server-side (sin el límite
+        de iteraciones del bot). Flujo: filtrar por etiqueta de campaña →
+        seleccionar todo → Acciones → Enviar campaña WhatsApp.
+        -->
+        <record id="action_send_campaign_whatsapp" model="ir.actions.server">
+            <field name="name">Enviar campaña WhatsApp</field>
+            <field name="model_id" ref="crm.model_crm_lead"/>
+            <field name="binding_model_id" ref="crm.model_crm_lead"/>
+            <field name="binding_type">action</field>
+            <field name="binding_view_types">list,form</field>
+            <field name="state">code</field>
+            <field name="code">action = records.action_send_campaign_whatsapp()</field>
+        </record>
+    </data>
+</odoo>

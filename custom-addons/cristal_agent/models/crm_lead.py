@@ -96,3 +96,91 @@ class CrmLead(models.Model):
         if leads_to_sync:
             leads_to_sync._sync_agent_phase_to_stage()
         return leads
+
+    # ─────────── Broadcast de campaña (v1.11.1) ───────────
+    def action_send_campaign_whatsapp(self):
+        """
+        Envía el template de campaña configurado (config.campaign_template_id)
+        a TODOS los leads seleccionados, server-side (sin el límite de
+        iteraciones del bot). Flujo semanal: filtrás el segmento por etiqueta
+        en la lista de CRM, seleccionás todo y corrés esta acción desde el
+        menú "Acciones".
+
+        - Dedup por partner (no manda dos veces al mismo cliente aunque tenga
+          varias oportunidades seleccionadas).
+        - Saltea partners con takeover humano activo.
+        - Reusa el envío nativo (whatsapp.composer vía SendWhatsappTemplate),
+          que resuelve solo el header de imagen y las variables del template.
+        """
+        from odoo.exceptions import UserError
+        config = self.env['cristal.agent.config'].sudo().get_active()
+        template = config.campaign_template_id if config else False
+        if not template:
+            raise UserError(
+                "Configurá el 'Template de campaña' en Cristal Agent → "
+                "Configuración (pestaña Habilidades) antes de enviar."
+            )
+        if template.status != 'approved':
+            raise UserError(
+                "El template de campaña '%s' no está aprobado por Meta "
+                "(estado: %s). No se puede enviar." % (template.name, template.status)
+            )
+
+        from ..services.tools.send_whatsapp_template import SendWhatsappTemplate
+        sender = SendWhatsappTemplate()
+        Memory = self.env['cristal.agent.memory'].sudo()
+
+        # ¿El body del template tiene variable de texto libre {{1}}?
+        has_free_text = '{{1}}' in (template.body or '')
+
+        sent, errors, skipped = 0, 0, 0
+        seen_partners = set()
+        for lead in self:
+            partner = lead.partner_id
+            if not partner:
+                skipped += 1
+                continue
+            if partner.id in seen_partners:
+                skipped += 1
+                continue
+            seen_partners.add(partner.id)
+            try:
+                memory = Memory.get_or_create(partner)
+                if memory and memory.is_takeover_active():
+                    skipped += 1
+                    continue
+                variables = []
+                if has_free_text:
+                    first = (partner.name or '').split(' ')[0] if partner.name else ''
+                    variables = [first]
+                result = sender._execute(
+                    env=self.env,
+                    partner_id=partner.id,
+                    template_name=template.name,
+                    variables=variables,
+                    wa_account_id=template.wa_account_id.id if template.wa_account_id else None,
+                )
+                if result and result.get('ok'):
+                    sent += 1
+                else:
+                    errors += 1
+                    _logger.warning(
+                        "Campaña: falló envío a %s: %s",
+                        partner.name, (result or {}).get('error', 'sin resultado'))
+            except Exception as e:
+                errors += 1
+                _logger.exception("Campaña: error enviando a %s: %s", partner.name, e)
+
+        msg = ("Campaña '%s': enviados %s, errores %s, salteados %s "
+               "(de %s seleccionados)." % (template.name, sent, errors, skipped, len(self)))
+        _logger.info("📣 %s", msg)
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'type': 'success' if errors == 0 else 'warning',
+                'title': 'Envío de campaña WhatsApp',
+                'message': msg,
+                'sticky': True,
+            },
+        }

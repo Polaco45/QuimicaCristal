@@ -7,6 +7,31 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.11.1] — 2026-06-15
+
+### Added — Broadcast de campaña a seleccionados (server-side)
+
+Odoo estándar NO tiene envío masivo de WhatsApp desde la lista (sí email/SMS), y
+el bot no puede mandar 67+ en una corrida por el límite de iteraciones. Para las
+ofertas semanales a un segmento puntual (ej: mayoristas de Río Cuarto sin compras):
+
+- **Acción de servidor "Enviar campaña WhatsApp"** (`data/campaign_broadcast.xml`)
+  sobre `crm.lead`, visible en el menú **Acciones** de la lista/ficha. Recorre los
+  leads SELECCIONADOS y manda el template configurado, **server-side, sin el límite
+  de iteraciones del bot**. Dedup por partner, saltea takeovers, reusa el envío
+  nativo (`whatsapp.composer` vía `SendWhatsappTemplate`), que resuelve solo el
+  header de imagen y las variables.
+- Campo `campaign_template_id` en `cristal.agent.config`: el template que envía la
+  acción; se cambia cada semana por la oferta de turno.
+- Flujo semanal: CRM → filtrar por etiqueta de campaña → seleccionar → Acciones →
+  Enviar campaña WhatsApp.
+
+### Migration
+- `migrations/18.0.1.11.1/post-migration.py`: setea `campaign_template_id` al
+  template `combo_mayorista_hoy` (si existe y está aprobado).
+
+---
+
 ## [18.0.1.11.0] — 2026-06-12
 
 Revisión integral de costo + "formas" + canal interno + segmentación geográfica.

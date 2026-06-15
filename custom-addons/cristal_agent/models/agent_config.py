@@ -351,6 +351,20 @@ class CristalAgentConfig(models.Model):
              "Variables esperadas: {{1}}=nombre cliente, {{2}}=descripción oferta vigente.",
     )
 
+    # v1.11.1 — Template que usa la acción "Enviar campaña WhatsApp" (server-side)
+    # sobre los leads seleccionados en CRM. Cambialo cada semana por el template
+    # de la oferta de turno. La acción manda ESTE template a todos los leads
+    # seleccionados (típicamente filtrados por una etiqueta de campaña).
+    campaign_template_id = fields.Many2one(
+        'whatsapp.template',
+        string="Template de campaña (envío manual a seleccionados)",
+        domain="[('status', '=', 'approved')]",
+        help="Template aprobado que envía la acción 'Enviar campaña WhatsApp' "
+             "(menú Acciones en la lista de CRM). Filtrás el segmento por etiqueta, "
+             "seleccionás los leads y corrés la acción. Cambialo por el template de "
+             "la oferta de cada semana.",
+    )
+
     # ─────────── Filtrado por cuenta WhatsApp ───────────
     restricted_wa_account_ids = fields.Many2many(
         'whatsapp.account',

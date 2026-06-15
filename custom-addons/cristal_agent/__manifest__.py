@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 {
     'name': "Cristal Agent — Claudio (Mayorista)",
-    'version': '18.0.1.11.0',
+    'version': '18.0.1.11.1',
     'summary': "Agente comercial autónomo (Claude AI) para Cristal Mayorista",
     'description': """
 Cristal Agent — Claudio
@@ -61,6 +61,7 @@ Características principales
         'data/cron_jobs.xml',
         'data/default_knowledge.xml',
         'data/default_cadences.xml',
+        'data/campaign_broadcast.xml',
 
         # views (los que definen acciones primero, menu al final)
         'views/agent_config_views.xml',

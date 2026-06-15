@@ -175,6 +175,19 @@
                                 vigente del sistema (mayor prioridad).
                             </div>
 
+                            <group string="🚀 Campaña a seleccionados (acción manual)">
+                                <field name="campaign_template_id"
+                                       options="{'no_create': True}"/>
+                            </group>
+                            <div class="alert alert-info">
+                                Para mandar una oferta a un <b>segmento puntual</b> (ej: mayoristas
+                                de Río Cuarto sin compras): en <b>CRM → Leads</b>, filtrá por la
+                                etiqueta de campaña, seleccioná los leads y andá a
+                                <b>Acciones → Enviar campaña WhatsApp</b>. Manda <b>este template</b>
+                                a todos los seleccionados (server-side, sin límite). Cambiá el
+                                template cada semana por el de la oferta de turno.
+                            </div>
+
                             <group string="📱 Cuentas WhatsApp activas">
                                 <field name="restricted_wa_account_ids"
                                        widget="many2many_tags"
