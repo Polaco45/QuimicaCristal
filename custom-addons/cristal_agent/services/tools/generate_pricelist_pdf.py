@@ -373,9 +373,15 @@ class GeneratePricelistPdf(AgentTool):
                 return 'x litro'
             return 'x unidad'
 
-        def _price_str(variant):
-            p = _get_pricelist_price(pricelist, variant)
-            return f"${p:,.0f}" if p and p > 0 else 'a consultar'
+        def _prices(variant):
+            base = _get_pricelist_price(pricelist, variant)
+            if not base or base <= 0:
+                return ('a consultar', '', '')
+            return (
+                f"${base * (1 - LEVEL_DISCOUNTS['bronce']):,.0f}",
+                f"${base * (1 - LEVEL_DISCOUNTS['plata']):,.0f}",
+                f"${base * (1 - LEVEL_DISCOUNTS['oro']):,.0f}",
+            )
 
         # Agrupar: sección → línea (nombre hoja) → [templates]
         groups = {'liquidos': defaultdict(list), 'distribucion': defaultdict(list)}
@@ -385,11 +391,14 @@ class GeneratePricelistPdf(AgentTool):
             line = tmpl.categ_id.name if tmpl.categ_id else 'Otros'
             groups[_section_of(tmpl)][line].append(tmpl)
 
+        st_hdr_r = ParagraphStyle('hr', parent=st_hdr, alignment=TA_RIGHT)
         header_row = [
             Paragraph('CÓDIGO', st_hdr),
             Paragraph('PRODUCTO', st_hdr),
             Paragraph('UNIDAD', ParagraphStyle('hu', parent=st_hdr, alignment=TA_CENTER)),
-            Paragraph('PRECIO MAYORISTA', ParagraphStyle('hp', parent=st_hdr, alignment=TA_RIGHT)),
+            Paragraph('BRONCE', st_hdr_r),
+            Paragraph('PLATA −5%', st_hdr_r),
+            Paragraph('ORO −10%', st_hdr_r),
         ]
         rows = [header_row]
         row_meta = []
@@ -403,7 +412,7 @@ class GeneratePricelistPdf(AgentTool):
             lines = groups[sec_key]
             if not lines:
                 continue
-            rows.append([Paragraph(sec_title, st_section), '', '', ''])
+            rows.append([Paragraph(sec_title, st_section), '', '', '', '', ''])
             row_meta.append('section')
 
             def _line_key(l):
@@ -411,7 +420,7 @@ class GeneratePricelistPdf(AgentTool):
                 return (LIQUID_LINE_ORDER.get(ll, 99), ll) if sec_key == 'liquidos' else (0, ll)
 
             for line in sorted(lines.keys(), key=_line_key):
-                rows.append([Paragraph(line.upper(), st_line), '', '', ''])
+                rows.append([Paragraph(line.upper(), st_line), '', '', '', '', ''])
                 row_meta.append('line')
 
                 tmpls = sorted(
@@ -422,7 +431,7 @@ class GeneratePricelistPdf(AgentTool):
                     variants = tmpl.product_variant_ids.filtered(lambda v: v.sale_ok)
                     multi = len(variants) > 1
                     if multi:
-                        rows.append([Paragraph(tmpl.name, st_tmpl), '', '', ''])
+                        rows.append([Paragraph(tmpl.name, st_tmpl), '', '', '', '', ''])
                         row_meta.append('tmpl')
                     for v in variants:
                         if multi:
@@ -432,16 +441,19 @@ class GeneratePricelistPdf(AgentTool):
                             name_para = Paragraph(f"↳ {label}", st_variant)
                         else:
                             name_para = Paragraph(v.display_name, st_simple)
+                        pb, pp, po = _prices(v)
                         rows.append([
                             Paragraph(v.default_code or '—', st_code),
                             name_para,
                             Paragraph(_unit_of(v), st_unit),
-                            Paragraph(_price_str(v), st_price),
+                            Paragraph(pb, st_price),
+                            Paragraph(pp, st_price),
+                            Paragraph(po, st_price),
                         ])
                         row_meta.append('variant' if multi else 'simple')
 
-        # Anchos: total 190mm
-        col_widths = [22 * mm, 110 * mm, 28 * mm, 30 * mm]
+        # Anchos: total 190mm (6 columnas con Bronce/Plata/Oro)
+        col_widths = [18 * mm, 78 * mm, 20 * mm, 24 * mm, 24 * mm, 26 * mm]
         products_table = Table(rows, colWidths=col_widths, repeatRows=1)
 
         style_cmds = [

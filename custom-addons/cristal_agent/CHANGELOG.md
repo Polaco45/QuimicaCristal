@@ -7,6 +7,17 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.11.3] — 2026-06-15
+
+### Changed — Lista de Precios: 3 columnas de nivel por producto
+
+Sobre el rediseño 1.11.2, se reponen las **3 columnas de precio por nivel**
+(BRONCE / PLATA −5% / ORO −10%) en cada fila, manteniendo todo lo demás
+(líquidos primero, líneas visibles, columna UNIDAD, "a consultar" si no hay
+precio). Encabezados con el % de descuento para que se entienda de una.
+
+---
+
 ## [18.0.1.11.2] — 2026-06-15
 
 ### Changed — Rediseño de la Lista de Precios Mayorista (PDF)
