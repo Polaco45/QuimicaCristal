@@ -302,161 +302,186 @@ class GeneratePricelistPdf(AgentTool):
         elements.append(levels_table)
         elements.append(Spacer(1, 12))
 
-        # ═══ Tabla de productos ═══
-        elements.append(Paragraph('PRODUCTOS', section_label))
-        elements.append(Spacer(1, 4))
+        # ═══ Tabla de productos (segmentada) ═══
+        # v1.11: rediseño. Dos secciones grandes:
+        #   1) LÍQUIDOS A GRANEL (Fabricación + Fraccionado) — PRIMERO
+        #   2) DISTRIBUCIÓN (reventa / línea seca)
+        # Dentro de cada sección, sub-headers por LÍNEA (nombre de categoría hoja
+        # visible). Columna de UNIDAD (litro/unidad) + 1 precio claro por fila.
+        from collections import defaultdict
 
-        product_styles = {
-            'category_header': ParagraphStyle(
-                'CategoryHeader', parent=styles['Normal'],
-                fontSize=11, textColor=colors.white, fontName='Helvetica-Bold', leading=14,
-                alignment=TA_LEFT,
-            ),
-            'tmpl_header': ParagraphStyle(
-                'TmplHeader', parent=styles['Normal'],
-                fontSize=10, textColor=DARK, fontName='Helvetica-Bold', leading=12,
-            ),
-            'variant': ParagraphStyle(
-                'Variant', parent=styles['Normal'],
-                fontSize=9, textColor=DARK, leading=11, leftIndent=12,
-            ),
-            'simple': ParagraphStyle(
-                'Simple', parent=styles['Normal'],
-                fontSize=9.5, textColor=DARK, leading=11,
-            ),
-            'code': ParagraphStyle(
-                'Code', parent=styles['Normal'],
-                fontSize=8, textColor=GREY, alignment=TA_CENTER, leading=10,
-            ),
-            'price': ParagraphStyle(
-                'Price', parent=styles['Normal'],
-                fontSize=9, textColor=DARK, alignment=TA_RIGHT,
-                fontName='Helvetica-Bold', leading=11,
-            ),
-            'perliter': ParagraphStyle(
-                'PerLiter', parent=styles['Normal'],
-                fontSize=8, textColor=GREY, alignment=TA_RIGHT, leading=10,
-            ),
-        }
+        NAVY = colors.HexColor('#1F2A44')        # banner de sección
+        LINE_BG = colors.HexColor('#FFE7C2')     # header de línea (naranja suave)
 
-        header_row = [
-            Paragraph('<b>CÓDIGO</b>', product_styles['code']),
-            Paragraph('<b>PRODUCTO</b>', ParagraphStyle(
-                'h', parent=product_styles['simple'],
-                fontName='Helvetica-Bold', textColor=colors.white,
-            )),
-            Paragraph('<b>BRONCE</b>', ParagraphStyle(
-                'h', parent=product_styles['price'], textColor=colors.white,
-            )),
-            Paragraph('<b>PLATA</b>', ParagraphStyle(
-                'h', parent=product_styles['price'], textColor=colors.white,
-            )),
-            Paragraph('<b>ORO</b>', ParagraphStyle(
-                'h', parent=product_styles['price'], textColor=colors.white,
-            )),
-        ]
-
-        rows = [header_row]
-        row_meta = []  # 'category_header', 'tmpl_header', 'variant_row', 'simple'
-
-        # Agrupar templates por categoría (categ_id) ordenados por nombre de categoría
-        # Dentro de cada categoría, los templates van por prioridad mayorista desc + nombre asc
-        templates_sorted = templates.sorted(
-            key=lambda t: (
-                (t.categ_id.name or 'Sin categoría').lower(),
-                -(t.mayorista_priority or 0),
-                t.name,
-            )
+        st_section = ParagraphStyle(
+            'Sec', parent=styles['Normal'], fontSize=12, textColor=colors.white,
+            fontName='Helvetica-Bold', leading=15, alignment=TA_LEFT,
+        )
+        st_line = ParagraphStyle(
+            'Line', parent=styles['Normal'], fontSize=10.5, textColor=ORANGE_DARK,
+            fontName='Helvetica-Bold', leading=13, alignment=TA_LEFT,
+        )
+        st_tmpl = ParagraphStyle(
+            'Tmpl', parent=styles['Normal'], fontSize=9.5, textColor=DARK,
+            fontName='Helvetica-Bold', leading=12,
+        )
+        st_variant = ParagraphStyle(
+            'Var', parent=styles['Normal'], fontSize=9, textColor=DARK,
+            leading=11, leftIndent=12,
+        )
+        st_simple = ParagraphStyle(
+            'Simp', parent=styles['Normal'], fontSize=9.5, textColor=DARK, leading=11,
+        )
+        st_code = ParagraphStyle(
+            'Cod', parent=styles['Normal'], fontSize=7.5, textColor=GREY,
+            alignment=TA_CENTER, leading=9,
+        )
+        st_unit = ParagraphStyle(
+            'Unit', parent=styles['Normal'], fontSize=8.5, textColor=GREY,
+            alignment=TA_CENTER, leading=10,
+        )
+        st_price = ParagraphStyle(
+            'Prc', parent=styles['Normal'], fontSize=10, textColor=DARK,
+            alignment=TA_RIGHT, fontName='Helvetica-Bold', leading=12,
+        )
+        st_hdr = ParagraphStyle(
+            'Hdr', parent=styles['Normal'], fontSize=8.5, textColor=colors.white,
+            fontName='Helvetica-Bold', leading=10,
         )
 
-        current_category = None  # para detectar cuando cambia
-        for tmpl in templates_sorted:
-            variants = tmpl.product_variant_ids.filtered(lambda v: v.sale_ok)
-            if not variants:
+        LIQUID_ROOTS = {'fabricación', 'fabricacion', 'fraccionado'}
+        LIQUID_LINE_ORDER = {
+            'linea lavandería': 1, 'linea lavanderia': 1,
+            'detergente': 2,
+            'desengrasante': 3,
+            'lavandina': 4,
+            'cloro': 5,
+            'bases concentradas': 6,
+            'mantenimiento de pisos': 7,
+            'perfumeria/higiene personal': 8, 'perfumería/higiene personal': 8,
+        }
+
+        def _section_of(t):
+            cn = (t.categ_id.complete_name or t.categ_id.name or '').lower()
+            root = cn.split('/')[0].strip()
+            return 'liquidos' if root in LIQUID_ROOTS else 'distribucion'
+
+        def _unit_of(variant):
+            name = (variant.name or '').lower()
+            uom = (variant.uom_id.name or '').strip().lower()
+            if 'granel' in name or uom in ('l', 'lt', 'litro', 'litros') or 'lit' in uom:
+                return 'x litro'
+            return 'x unidad'
+
+        def _price_str(variant):
+            p = _get_pricelist_price(pricelist, variant)
+            return f"${p:,.0f}" if p and p > 0 else 'a consultar'
+
+        # Agrupar: sección → línea (nombre hoja) → [templates]
+        groups = {'liquidos': defaultdict(list), 'distribucion': defaultdict(list)}
+        for tmpl in templates:
+            if not tmpl.product_variant_ids.filtered(lambda v: v.sale_ok):
                 continue
+            line = tmpl.categ_id.name if tmpl.categ_id else 'Otros'
+            groups[_section_of(tmpl)][line].append(tmpl)
 
-            # Insertar header de categoría cuando cambia
-            tmpl_category = tmpl.categ_id.name if tmpl.categ_id else 'Sin categoría'
-            if tmpl_category != current_category:
-                current_category = tmpl_category
-                rows.append([
-                    '',
-                    Paragraph(tmpl_category.upper(), product_styles['category_header']),
-                    '', '', '',
-                ])
-                row_meta.append('category_header')
+        header_row = [
+            Paragraph('CÓDIGO', st_hdr),
+            Paragraph('PRODUCTO', st_hdr),
+            Paragraph('UNIDAD', ParagraphStyle('hu', parent=st_hdr, alignment=TA_CENTER)),
+            Paragraph('PRECIO MAYORISTA', ParagraphStyle('hp', parent=st_hdr, alignment=TA_RIGHT)),
+        ]
+        rows = [header_row]
+        row_meta = []
 
-            has_multiple = len(variants) > 1
+        SECTIONS = [
+            ('liquidos', 'LÍQUIDOS A GRANEL · FABRICACIÓN PROPIA'),
+            ('distribucion', 'DISTRIBUCIÓN · LÍNEA SECA Y REVENTA'),
+        ]
 
-            if has_multiple:
-                rows.append([
-                    '',
-                    Paragraph(tmpl.name, product_styles['tmpl_header']),
-                    '', '', '',
-                ])
-                row_meta.append('tmpl_header')
+        for sec_key, sec_title in SECTIONS:
+            lines = groups[sec_key]
+            if not lines:
+                continue
+            rows.append([Paragraph(sec_title, st_section), '', '', ''])
+            row_meta.append('section')
 
-            for variant in variants:
-                base_price = _get_pricelist_price(pricelist, variant)
-                p_bronce = base_price * (1 - LEVEL_DISCOUNTS['bronce'])
-                p_plata = base_price * (1 - LEVEL_DISCOUNTS['plata'])
-                p_oro = base_price * (1 - LEVEL_DISCOUNTS['oro'])
+            def _line_key(l):
+                ll = l.lower()
+                return (LIQUID_LINE_ORDER.get(ll, 99), ll) if sec_key == 'liquidos' else (0, ll)
 
-                if has_multiple:
-                    attribute_label = variant.product_template_attribute_value_ids.mapped(
-                        'name'
-                    )
-                    label = ' / '.join(attribute_label) if attribute_label else (
-                        variant.display_name.replace(tmpl.name, '').strip().lstrip('(').rstrip(')').strip()
-                        or variant.display_name
-                    )
-                    name_para = Paragraph(f"↳ {label}", product_styles['variant'])
-                else:
-                    name_para = Paragraph(variant.display_name, product_styles['simple'])
+            for line in sorted(lines.keys(), key=_line_key):
+                rows.append([Paragraph(line.upper(), st_line), '', '', ''])
+                row_meta.append('line')
 
-                rows.append([
-                    Paragraph(variant.default_code or '—', product_styles['code']),
-                    name_para,
-                    Paragraph(f"${p_bronce:,.0f}", product_styles['price']),
-                    Paragraph(f"${p_plata:,.0f}", product_styles['price']),
-                    Paragraph(f"${p_oro:,.0f}", product_styles['price']),
-                ])
-                row_meta.append('variant_row' if has_multiple else 'simple')
+                tmpls = sorted(
+                    lines[line],
+                    key=lambda t: (-(t.mayorista_priority or 0), t.name),
+                )
+                for tmpl in tmpls:
+                    variants = tmpl.product_variant_ids.filtered(lambda v: v.sale_ok)
+                    multi = len(variants) > 1
+                    if multi:
+                        rows.append([Paragraph(tmpl.name, st_tmpl), '', '', ''])
+                        row_meta.append('tmpl')
+                    for v in variants:
+                        if multi:
+                            attrs = v.product_template_attribute_value_ids.mapped('name')
+                            label = ' / '.join(attrs) if attrs else (
+                                v.display_name.replace(tmpl.name, '').strip(' ()') or v.display_name)
+                            name_para = Paragraph(f"↳ {label}", st_variant)
+                        else:
+                            name_para = Paragraph(v.display_name, st_simple)
+                        rows.append([
+                            Paragraph(v.default_code or '—', st_code),
+                            name_para,
+                            Paragraph(_unit_of(v), st_unit),
+                            Paragraph(_price_str(v), st_price),
+                        ])
+                        row_meta.append('variant' if multi else 'simple')
 
-        # Anchos: total 190mm. Sin columna $/L queda más holgado
-        col_widths = [25 * mm, 95 * mm, 23 * mm, 23 * mm, 24 * mm]
+        # Anchos: total 190mm
+        col_widths = [22 * mm, 110 * mm, 28 * mm, 30 * mm]
         products_table = Table(rows, colWidths=col_widths, repeatRows=1)
 
         style_cmds = [
+            # header
             ('BACKGROUND', (0, 0), (-1, 0), ORANGE),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 9),
-            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
-            ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
+            ('LINEBELOW', (0, 0), (-1, 0), 1, ORANGE_DARK),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
             ('TOPPADDING', (0, 0), (-1, 0), 6),
             ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
-            ('VALIGN', (0, 1), (-1, -1), 'MIDDLE'),
             ('TOPPADDING', (0, 1), (-1, -1), 4),
             ('BOTTOMPADDING', (0, 1), (-1, -1), 4),
-            ('LEFTPADDING', (0, 0), (-1, -1), 4),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 4),
-            ('LINEBELOW', (0, 0), (-1, 0), 1, ORANGE_DARK),
+            ('LEFTPADDING', (0, 0), (-1, -1), 5),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 5),
         ]
 
         for idx, meta in enumerate(row_meta, start=1):
-            if meta == 'category_header':
-                style_cmds.append(('BACKGROUND', (0, idx), (-1, idx), ORANGE))
-                style_cmds.append(('SPAN', (0, idx), (-1, idx)))
-                style_cmds.append(('TOPPADDING', (0, idx), (-1, idx), 8))
-                style_cmds.append(('BOTTOMPADDING', (0, idx), (-1, idx), 8))
-                style_cmds.append(('LEFTPADDING', (0, idx), (-1, idx), 10))
-            elif meta == 'tmpl_header':
-                style_cmds.append(('BACKGROUND', (0, idx), (-1, idx), colors.HexColor('#FFF5E6')))
-                style_cmds.append(('SPAN', (1, idx), (4, idx)))
-                style_cmds.append(('TOPPADDING', (0, idx), (-1, idx), 6))
-                style_cmds.append(('BOTTOMPADDING', (0, idx), (-1, idx), 2))
-            elif meta == 'variant_row':
+            if meta == 'section':
+                style_cmds += [
+                    ('SPAN', (0, idx), (-1, idx)),
+                    ('BACKGROUND', (0, idx), (-1, idx), NAVY),
+                    ('TOPPADDING', (0, idx), (-1, idx), 9),
+                    ('BOTTOMPADDING', (0, idx), (-1, idx), 9),
+                    ('LEFTPADDING', (0, idx), (-1, idx), 10),
+                ]
+            elif meta == 'line':
+                style_cmds += [
+                    ('SPAN', (0, idx), (-1, idx)),
+                    ('BACKGROUND', (0, idx), (-1, idx), LINE_BG),
+                    ('TOPPADDING', (0, idx), (-1, idx), 6),
+                    ('BOTTOMPADDING', (0, idx), (-1, idx), 6),
+                    ('LEFTPADDING', (0, idx), (-1, idx), 10),
+                ]
+            elif meta == 'tmpl':
+                style_cmds += [
+                    ('SPAN', (0, idx), (-1, idx)),
+                    ('BACKGROUND', (0, idx), (-1, idx), colors.HexColor('#FBFBFB')),
+                    ('TOPPADDING', (0, idx), (-1, idx), 5),
+                    ('BOTTOMPADDING', (0, idx), (-1, idx), 1),
+                ]
+            elif meta == 'variant':
                 style_cmds.append(('LINEBELOW', (0, idx), (-1, idx), 0.25, colors.HexColor('#EFEFEF')))
             else:  # simple
                 if idx % 2 == 0:
@@ -469,15 +494,17 @@ class GeneratePricelistPdf(AgentTool):
         # ═══ Footer ═══
         elements.append(Spacer(1, 12))
         elements.append(Paragraph(
+            '<b>Precios BRONCE (base).</b> Tu nivel define el descuento: PLATA −5% · ORO −10%. '
+            'Granel = precio por litro · Envasados = precio por unidad.',
+            footer_style
+        ))
+        elements.append(Paragraph(
             'Precios en pesos argentinos · IVA incluido · Sujetos a modificación sin previo aviso',
             footer_style
         ))
         elements.append(Paragraph(
-            '<b>Compra mínima mayorista:</b> $50.000',
-            footer_style
-        ))
-        elements.append(Paragraph(
-            '<b>Compra mínima de producto a granel:</b> 20 litros',
+            '<b>Compra mínima mayorista:</b> $50.000 &nbsp;·&nbsp; '
+            '<b>Mínimo de producto a granel:</b> 20 litros',
             footer_style
         ))
 

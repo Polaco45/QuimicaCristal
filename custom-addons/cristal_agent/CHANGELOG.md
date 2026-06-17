@@ -7,6 +7,26 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.11.2] — 2026-06-15
+
+### Changed — Rediseño de la Lista de Precios Mayorista (PDF)
+
+`generate_pricelist_pdf` rediseñado, más claro y mejor segmentado:
+
+- **Líquidos primero:** dos secciones con banner — *"LÍQUIDOS A GRANEL ·
+  Fabricación propia"* (Fabricación + Fraccionado) arriba, *"DISTRIBUCIÓN · Línea
+  seca y reventa"* abajo.
+- **Nombres de línea visibles:** sub-header por línea (Línea Lavandería,
+  Detergente, Desengrasante, Lavandina, etc.), ordenadas comercialmente.
+- **Precios más claros:** columna UNIDAD ("x litro" / "x unidad") + un único
+  precio mayorista (base) por fila; las tarifas por nivel se explican en el box y
+  el footer. Productos sin precio cargado muestran "a consultar" en vez de $0.
+- Estética: banners, headers de línea, filas alternadas, tipografía legible.
+
+Sin cambios de esquema ni migración (solo el generador del PDF).
+
+---
+
 ## [18.0.1.11.1] — 2026-06-15
 
 ### Added — Broadcast de campaña a seleccionados (server-side)
