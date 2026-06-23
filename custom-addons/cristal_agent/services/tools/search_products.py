@@ -65,9 +65,11 @@ class SearchProducts(AgentTool):
         else:
             products = exact
 
-        # Pricelist del partner
-        pricelist = None
-        if partner_id:
+        # Pricelist: este bot es mayorista, así que el precio que cotizamos es el
+        # de 'Lista Mayorista'. Si no existe, caemos a la del partner / list_price.
+        pricelist = env['product.pricelist'].sudo().search(
+            [('name', '=', 'Lista Mayorista')], limit=1)
+        if not pricelist and partner_id:
             partner = env['res.partner'].sudo().browse(int(partner_id))
             if partner.exists() and partner.property_product_pricelist:
                 pricelist = partner.property_product_pricelist

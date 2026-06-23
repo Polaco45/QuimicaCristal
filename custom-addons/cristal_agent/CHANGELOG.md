@@ -7,6 +7,36 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.11.4] — 2026-06-15
+
+### Changed — Fase 1: vendedor que cotiza, sin muestras (prompt v4)
+
+Cambio estratégico del flujo comercial. Se elimina la entrega de muestras y el
+bot pasa a comportarse como vendedor que asesora, dice precios y cotiza.
+
+- **Sin muestras:** se quita todo el flujo de muestras (kit fijo, detección de
+  confirmación, cadencia post-muestra). Si piden muestra, el bot reorienta al
+  gancho nuevo. Flag `enable_confirm_sample=False`.
+- **Gancho = 20% OFF primera compra** (reemplaza la muestra como gancho).
+- **El bot dice precios y cotiza:** prompt `claudio_v4.md`. Puede consultar
+  precios (`search_products` sobre Lista Mayorista) y armar cotizaciones
+  (`create_sale_order`) en **BORRADOR**; la venta la **confirma Joaco**.
+- **`create_sale_order`** acepta `discount_percent` (20 para el gancho de primera
+  compra, aplicado a todas las líneas). **`search_products`** ahora calcula el
+  precio sobre la Lista Mayorista (no la del partner) para cotizar bien.
+- **KB:** se da vuelta la regla "PROHIBIDO pasar precios" (ahora el bot cotiza en
+  borrador y Joaco confirma) y se desactivan las entradas de KB de muestras.
+- Flags `enable_create_sale_orders` y `enable_generate_quote_pdf` en True.
+
+Pendiente Fase 2: "Combo Emprendedor" (combo fijo configurable) para los que
+arrancan.
+
+### Migration
+- `migrations/18.0.1.11.4/post-migration.py`: recarga prompt v4, ajusta flags,
+  reescribe la KB de precios y desactiva la KB de muestras.
+
+---
+
 ## [18.0.1.11.3] — 2026-06-15
 
 ### Changed — Lista de Precios: 3 columnas de nivel por producto

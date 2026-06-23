@@ -24,7 +24,8 @@ class CreateSaleOrder(AgentTool):
         "Pasale partner_id y una lista de líneas: cada línea con product_id+qty o product_name+qty "
         "(la tool busca el producto por nombre con fuzzy match). "
         "Devuelve order_id para luego generar PDF con generate_quote_pdf y mandar por WA. "
-        "La cotización queda en draft — Joaco la revisa antes de confirmar."
+        "Pasá discount_percent=20 para el 20% OFF de PRIMERA COMPRA (se aplica a todas las líneas). "
+        "La cotización queda en draft — Joaco la revisa y confirma antes de cerrarla."
     )
     input_schema = {
         "type": "object",
@@ -54,12 +55,18 @@ class CreateSaleOrder(AgentTool):
                 "type": "string",
                 "description": "(Opcional) Nota interna que se agrega a la cotización.",
             },
+            "discount_percent": {
+                "type": "number",
+                "description": "Descuento % a aplicar a TODAS las líneas. Usá 20 para el "
+                               "20% OFF de primera compra. Default: sin descuento.",
+            },
         },
         "required": ["partner_id", "lines"],
     }
 
     def _execute(self, env, run=None, partner_id=None, lines=None,
-                 pricelist_name='Lista Mayorista', note=None, **kwargs):
+                 pricelist_name='Lista Mayorista', note=None,
+                 discount_percent=None, **kwargs):
         if not (partner_id and lines):
             return {"error": "partner_id y lines son obligatorios"}
 
@@ -133,10 +140,16 @@ class CreateSaleOrder(AgentTool):
                 )
                 continue
 
-            order_lines.append((0, 0, {
+            line_vals = {
                 'product_id': product.id,
                 'product_uom_qty': qty,
-            }))
+            }
+            if discount_percent:
+                try:
+                    line_vals['discount'] = float(discount_percent)
+                except (TypeError, ValueError):
+                    pass
+            order_lines.append((0, 0, line_vals))
 
         if not order_lines:
             return {
