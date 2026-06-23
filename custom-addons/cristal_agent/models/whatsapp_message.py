@@ -72,13 +72,30 @@ class WhatsAppMessage(models.Model):
         # 2) Tiene contenido?
         plain_body = _clean_html(wa_message.body or "")
         phone_raw = wa_message.mobile_number or getattr(wa_message, 'phone', '') or ""
-        if not (plain_body and phone_raw):
+        if not phone_raw:
             return
 
         # 3) Está habilitado el agente?
         config = self.env['cristal.agent.config'].sudo().get_active()
         if not config.enabled:
             _logger.info("⏸️  Agente deshabilitado (config). Ignorando mensaje %s.", wa_message.id)
+            return
+
+        # 3.1) v1.13 — ¿Es una nota de voz? (sin texto pero con audio adjunto).
+        # La API de Claude no entiende audio: lo transcribimos con OpenAI y usamos
+        # el texto como si el cliente lo hubiera escrito. Si la transcripción está
+        # apagada o falla, avisamos a Joaco para que lo escuche a mano (no corremos
+        # a Claudio "a ciegas" ni perdemos el mensaje en silencio).
+        if not plain_body:
+            audio_att = self._get_audio_attachment(wa_message)
+            if audio_att:
+                plain_body = self._transcribe_voice_note(wa_message, audio_att, config)
+                # Si no se pudo transcribir, el helper ya avisó a Joaco.
+                if not plain_body:
+                    return
+
+        # 2.b) Sin texto (ni audio transcribible) → nada que procesar
+        if not plain_body:
             return
 
         # 3.5) ¿Esta cuenta WA está en la lista de cuentas permitidas?
@@ -191,6 +208,73 @@ class WhatsAppMessage(models.Model):
                 cron.sudo()._trigger(at=fields.Datetime.now() + timedelta(seconds=debounce + 1))
         except Exception as e:
             _logger.warning("No se pudo programar el trigger de debounce: %s", e)
+
+    # ─────────── Notas de voz / transcripción (v1.13) ───────────
+    def _get_audio_attachment(self, wa_message):
+        """Devuelve el primer ir.attachment de audio colgado del mensaje, o False.
+        En Odoo, el media entrante de WhatsApp queda en mail_message_id.attachment_ids."""
+        mm = wa_message.mail_message_id
+        if not mm:
+            return False
+        for att in mm.attachment_ids:
+            if (att.mimetype or '').lower().startswith('audio/'):
+                return att
+        return False
+
+    def _transcribe_voice_note(self, wa_message, attachment, config):
+        """Transcribe una nota de voz a texto. Devuelve el texto (con prefijo
+        [nota de voz]) o False. Si no se puede, avisa a Joaco por canal interno."""
+        ConfigModel = self.env['cristal.agent.config'].sudo()
+        api_key = ConfigModel.get_openai_key()
+        if not (config.enable_audio_transcription and api_key):
+            _logger.info("🎙️ Nota de voz de %s: transcripción desactivada o sin key.",
+                         wa_message.mobile_number)
+            self._notify_joaco_audio(wa_message, "Transcripción de audio desactivada o sin API key")
+            return False
+
+        from ..services.transcription import transcribe_audio_attachment
+        text = transcribe_audio_attachment(
+            attachment, api_key,
+            model=config.transcription_model or 'gpt-4o-transcribe',
+            language=config.transcription_language or 'es',
+        )
+        if not text:
+            self._notify_joaco_audio(wa_message, "No se pudo transcribir el audio")
+            return False
+
+        _logger.info("🎙️ Nota de voz de %s transcripta: %r",
+                     wa_message.mobile_number, text[:120])
+        # Prefijo: que Claudio sepa que vino de un audio (la transcripción puede
+        # tener errores menores; le permite ser flexible o pedir aclaración).
+        return "[nota de voz] " + text
+
+    def _notify_joaco_audio(self, wa_message, reason):
+        """Avisa a Joaco por canal interno cuando llega una nota de voz que el bot
+        no procesó (transcripción apagada o fallida)."""
+        try:
+            config = self.env['cristal.agent.config'].sudo().get_active()
+            channel_id = config.internal_channel_id.id if config.internal_channel_id else 969
+            channel = self.env['discuss.channel'].sudo().browse(channel_id)
+            if not channel.exists():
+                _logger.warning("Canal interno %s no existe — skip aviso de audio", channel_id)
+                return
+            phone = wa_message.mobile_number or '?'
+            wa_account_name = wa_message.wa_account_id.name if wa_message.wa_account_id else "?"
+            msg = (
+                f"🎙️ Nota de voz recibida (el bot no la procesó)\n"
+                f"📞 WhatsApp: {phone}\n"
+                f"🏷️ Cuenta WA: {wa_account_name}\n"
+                f"⚠️ Motivo: {reason}\n"
+                f"Escuchala y respondé vos."
+            )
+            channel.message_post(
+                body=msg.replace('\n', '<br/>'),
+                message_type='comment',
+                subtype_xmlid='mail.mt_comment',
+            )
+            _logger.info("📣 Aviso de nota de voz enviado a canal %s", channel_id)
+        except Exception as e:
+            _logger.exception("Error notificando nota de voz a Joaco: %s", e)
 
     def _notify_joaco_institutional_bypass(self, wa_message, partner, reason, plain_body):
         """

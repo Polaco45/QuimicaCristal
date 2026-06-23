@@ -61,6 +61,35 @@ class CristalAgentConfig(models.Model):
         required=True,
     )
 
+    # ─────────── Transcripción de audio (v1.13) ───────────
+    # La API de Claude no acepta audio: las notas de voz de WhatsApp se
+    # transcriben primero con OpenAI (gpt-4o-transcribe) y el TEXTO entra al loop
+    # normal. La key se guarda en ir.config_parameter (igual que la de Anthropic).
+    enable_audio_transcription = fields.Boolean(
+        string="Transcribir notas de voz (audio)",
+        default=False,
+        help="Si está ON, cuando un cliente manda una nota de voz el bot la "
+             "transcribe con OpenAI y la procesa como si fuera texto. Si está "
+             "OFF (o falla la transcripción), el bot avisa a Joaco para que "
+             "escuche el audio a mano. Requiere cargar la OpenAI API Key.",
+    )
+    openai_api_key = fields.Char(
+        string="OpenAI API Key (transcripción)",
+        help="API key de OpenAI (platform.openai.com) usada solo para transcribir "
+             "audios. Se guarda como ir.config_parameter por seguridad.",
+    )
+    transcription_model = fields.Char(
+        string="Modelo de transcripción",
+        default="gpt-4o-transcribe",
+        help="Modelo de OpenAI para STT. Ej: gpt-4o-transcribe (mejor) o whisper-1.",
+    )
+    transcription_language = fields.Char(
+        string="Idioma de las notas de voz",
+        default="es",
+        help="Código ISO del idioma esperado (es = español). Mejora precisión. "
+             "Vacío = autodetección.",
+    )
+
     # ─────────── Parámetros del loop ───────────
     max_tokens = fields.Integer(
         string="Max tokens por respuesta",
@@ -441,11 +470,25 @@ class CristalAgentConfig(models.Model):
         config = self.get_active()
         return config.anthropic_api_key or False
 
+    @api.model
+    def get_openai_key(self):
+        """Obtiene la API key de OpenAI (transcripción). Prioridad:
+        ir.config_parameter, luego campo del modelo."""
+        param_key = self.env['ir.config_parameter'].sudo().get_param('cristal_agent.openai_api_key')
+        if param_key:
+            return param_key
+        config = self.get_active()
+        return config.openai_api_key or False
+
     def write(self, vals):
         """Si se escribe la API key, también la guardamos en ir.config_parameter."""
         if 'anthropic_api_key' in vals and vals['anthropic_api_key']:
             self.env['ir.config_parameter'].sudo().set_param(
                 'cristal_agent.anthropic_api_key', vals['anthropic_api_key']
+            )
+        if 'openai_api_key' in vals and vals['openai_api_key']:
+            self.env['ir.config_parameter'].sudo().set_param(
+                'cristal_agent.openai_api_key', vals['openai_api_key']
             )
         res = super().write(vals)
         # v1.10.2 — si subieron un PDF de reporte, materializarlo como

@@ -7,6 +7,36 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.13.0] — 2026-06-23
+
+### Added — Lector de notas de voz (transcripción de audio)
+
+La API de Claude no acepta audio (solo texto, imágenes y PDF). Hasta ahora las
+notas de voz que mandaba un cliente se perdían en silencio (el inbound cortaba al
+no encontrar texto). Ahora:
+
+- **Nuevo `services/transcription.py`**: toma el `ir.attachment` de audio (.ogg/opus
+  de WhatsApp) y lo transcribe con **OpenAI** (`gpt-4o-transcribe`) vía
+  `requests`/multipart. Devuelve el texto o `None` si falla.
+- **`whatsapp_message._maybe_trigger_agent`**: si llega un mensaje sin texto pero
+  con audio adjunto, lo transcribe y lo procesa como si el cliente lo hubiera
+  escrito (con prefijo `[nota de voz]`). El resto del flujo (debounce, Claude,
+  cotización) sigue igual.
+- **Si la transcripción está apagada o falla**: el bot avisa a Joaco por el canal
+  interno para que escuche el audio a mano (ya no se pierde en silencio).
+- **Config** (`cristal.agent.config`): `enable_audio_transcription` (default OFF),
+  `openai_api_key` (guardada en `ir.config_parameter`), `transcription_model`
+  (default `gpt-4o-transcribe`), `transcription_language` (default `es`). UI en
+  Configuración → 🔑 API de Anthropic.
+- **Prompt v4**: explica el prefijo `[nota de voz]` y que las notas de voz que no
+  se pueden transcribir las escala el sistema solo.
+
+### Migration
+- `migrations/18.0.1.13.0/post-migration.py`: recarga el prompt v4 y fija defaults
+  de transcripción (queda **apagada** hasta que se cargue la OpenAI API Key).
+
+---
+
 ## [18.0.1.12.0] — 2026-06-23
 
 ### Fixed — La cotización SIEMPRE cuelga de una oportunidad

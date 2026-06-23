@@ -66,6 +66,20 @@
                                 <strong>Tip:</strong> después de pegar la API key, hacé click en
                                 "🔌 Test de conexión Anthropic" arriba para verificar que funciona.
                             </div>
+                            <group string="🎙️ Transcripción de notas de voz (OpenAI)">
+                                <field name="enable_audio_transcription" widget="boolean_toggle"/>
+                                <field name="openai_api_key" password="True"
+                                       placeholder="sk-..."/>
+                                <field name="transcription_model"/>
+                                <field name="transcription_language"/>
+                            </group>
+                            <div class="alert alert-info">
+                                <strong>Notas de voz:</strong> Claude no entiende audio, así que las
+                                notas de voz de WhatsApp se transcriben con OpenAI y se procesan como
+                                texto. Pegá tu <b>OpenAI API Key</b> (platform.openai.com) y prendé el
+                                toggle. Costo ~US$0,006/min (centavos por audio). Si está apagado o
+                                falla, el bot te avisa por el canal interno para que lo escuches.
+                            </div>
                         </page>
 
                         <page string="🧠 System prompts">
