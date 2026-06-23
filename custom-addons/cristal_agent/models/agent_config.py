@@ -365,6 +365,30 @@ class CristalAgentConfig(models.Model):
              "la oferta de cada semana.",
     )
 
+    # ─────────── Combo Emprendedor (v1.12) ───────────
+    # Combo fijo prearmado que el bot ofrece a los clientes que están ARRANCANDO.
+    # Lo cargás acá (productos + cantidades). El bot lo cotiza con create_sale_order
+    # (+ 20% off de primera compra). prompt_builder inyecta este combo al contexto.
+    combo_emprendedor_active = fields.Boolean(
+        string="Combo Emprendedor activo",
+        default=False,
+        help="Si está ON, el bot ofrece el Combo Emprendedor a los clientes que "
+             "están arrancando (y no saben qué llevar).",
+    )
+    combo_emprendedor_name = fields.Char(
+        string="Nombre del Combo Emprendedor",
+        default="Combo Emprendedor",
+    )
+    combo_emprendedor_pitch = fields.Text(
+        string="Pitch del combo",
+        help="Cómo lo describe el bot al ofrecerlo (1-3 líneas, vendedor).",
+    )
+    combo_emprendedor_line_ids = fields.One2many(
+        'cristal.agent.combo.line',
+        'config_id',
+        string="Productos del Combo Emprendedor",
+    )
+
     # ─────────── Filtrado por cuenta WhatsApp ───────────
     restricted_wa_account_ids = fields.Many2many(
         'whatsapp.account',

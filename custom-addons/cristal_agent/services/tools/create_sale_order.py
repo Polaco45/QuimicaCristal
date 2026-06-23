@@ -172,6 +172,44 @@ class CreateSaleOrder(AgentTool):
             _logger.exception("Error creando sale.order: %s", e)
             return {"error": f"No se pudo crear la sale.order: {e}"}
 
+        # ── v1.12: el bot SIEMPRE trabaja sobre una oportunidad ──
+        # Vinculamos la cotización a la oportunidad abierta del cliente (o la
+        # creamos si no existe) y avanzamos la fase a "Propuesta enviada". Así la
+        # cotización NUNCA queda "en el aire": cuelga del lead en el CRM y el
+        # pipeline refleja el avance.
+        opp_id = None
+        try:
+            Lead = env['crm.lead'].sudo()
+            opp = Lead.search([
+                ('partner_id', '=', partner.id),
+                ('type', '=', 'opportunity'),
+                ('active', '=', True),
+                ('stage_id', 'not in', [4, 13]),  # no Ganado / Perdido
+            ], limit=1, order='create_date desc')
+            if not opp:
+                opp = Lead.create({
+                    'name': partner.name or 'Cliente mayorista',
+                    'partner_id': partner.id,
+                    'type': 'opportunity',
+                    'agent_managed': True,
+                })
+            order.opportunity_id = opp.id
+            opp_id = opp.id
+            try:
+                opp.write({'agent_strategy_phase': 'phase_2_quoted'})
+            except Exception:
+                pass
+            try:
+                note_disc = ' (20% off 1ra compra)' if discount_percent else ''
+                opp.message_post(body=(
+                    "Cotización <b>%s</b> enviada por Claudio: $%s%s. "
+                    "Pendiente de confirmación." % (
+                        order.name, '{:,.0f}'.format(order.amount_total), note_disc)))
+            except Exception:
+                pass
+        except Exception as e:
+            _logger.warning("No se pudo vincular la cotización a una oportunidad: %s", e)
+
         # Detalle de líneas resueltas para devolver al bot
         line_details = []
         for line in order.order_line:
@@ -190,10 +228,12 @@ class CreateSaleOrder(AgentTool):
             "pricelist": pricelist.name,
             "total_amount": order.amount_total,
             "currency": order.currency_id.name,
+            "opportunity_id": opp_id,
             "lines": line_details,
             "problems": problems if problems else None,
             "summary": (
-                f"Cotización {order.name} creada en draft para {partner.name}. "
+                f"Cotización {order.name} (draft) para {partner.name}, "
+                f"colgada de la oportunidad #{opp_id}. "
                 f"Total: ${order.amount_total:,.2f}. "
                 f"Pasale el order_id={order.id} a generate_quote_pdf para mandar el PDF."
             ),

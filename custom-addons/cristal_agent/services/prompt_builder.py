@@ -94,6 +94,9 @@ def build_system_prompt(env, partner=None, base_prompt=None, client_type=None):
     # ─── 5. Ofertas vigentes (globales) ───
     stable_parts.append(_build_offers_context(env, partner=None))
 
+    # ─── 5.b Combo Emprendedor (v1.12) — global ───
+    stable_parts.append(_build_combo_context(env, config))
+
     # ─── 6. REGLAS DURAS (siempre al final del bloque estable) ───
     stable_parts.append(_build_hard_rules())
 
@@ -105,6 +108,42 @@ def build_system_prompt(env, partner=None, base_prompt=None, client_type=None):
         dynamic_text = _build_partner_context(env, partner)
 
     return stable_text, dynamic_text
+
+
+def _build_combo_context(env, config):
+    """Inyecta el Combo Emprendedor (si está activo) para que el bot lo ofrezca
+    a los que arrancan y lo cotice con create_sale_order."""
+    if not config or not getattr(config, 'combo_emprendedor_active', False):
+        return ""
+    lines = config.combo_emprendedor_line_ids
+    if not lines:
+        return ""
+    name = config.combo_emprendedor_name or 'Combo Emprendedor'
+    pitch = (config.combo_emprendedor_pitch or '').strip()
+    items = []
+    for ln in lines:
+        if not ln.product_id:
+            continue
+        uom = ln.product_id.uom_id.name or ''
+        items.append(f"- {ln.qty:g} {uom} de {ln.product_id.display_name}")
+    if not items:
+        return ""
+    body = [f"\n## 🎁 {name.upper()} (para clientes que ARRANCAN)"]
+    if pitch:
+        body.append(pitch)
+    body.append("Incluye:")
+    body.extend(items)
+    body.append(
+        "CUÁNDO: si el cliente está arrancando / es nuevo y no sabe bien qué llevar, "
+        "ofrecele este combo como punto de partida (en vez de hacerle elegir producto "
+        "por producto). A los que ya saben qué quieren, cotizás lo que pidan con el 20% off."
+    )
+    body.append(
+        "CÓMO cotizarlo: create_sale_order con EXACTAMENTE estos productos y cantidades + "
+        "discount_percent=20 (primera compra) → generate_quote_pdf → mandá el PDF. Queda "
+        "en borrador colgado de la oportunidad; Joaco confirma."
+    )
+    return "\n".join(body)
 
 
 def _build_capabilities_status(env, config):

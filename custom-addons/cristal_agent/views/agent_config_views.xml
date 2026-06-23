@@ -188,6 +188,31 @@
                                 template cada semana por el de la oferta de turno.
                             </div>
 
+                            <group string="🎁 Combo Emprendedor (para los que arrancan)">
+                                <field name="combo_emprendedor_active" widget="boolean_toggle"/>
+                                <field name="combo_emprendedor_name"
+                                       invisible="not combo_emprendedor_active"/>
+                                <field name="combo_emprendedor_pitch"
+                                       placeholder="Ej: Arrancá con lo esencial para tu lavadero..."
+                                       invisible="not combo_emprendedor_active"/>
+                            </group>
+                            <field name="combo_emprendedor_line_ids"
+                                   invisible="not combo_emprendedor_active">
+                                <list editable="bottom">
+                                    <field name="sequence" widget="handle"/>
+                                    <field name="product_id"
+                                           options="{'no_create': True}"/>
+                                    <field name="qty"/>
+                                    <field name="uom_name"/>
+                                </list>
+                            </field>
+                            <div class="alert alert-info" invisible="not combo_emprendedor_active">
+                                Cargá acá los productos + cantidades del combo. El bot lo ofrece a
+                                los clientes que están <b>arrancando</b> y lo cotiza con el
+                                <b>20% off de primera compra</b> aplicado. A los demás les ofrece
+                                directamente el 20% off sobre lo que pidan.
+                            </div>
+
                             <group string="📱 Cuentas WhatsApp activas">
                                 <field name="restricted_wa_account_ids"
                                        widget="many2many_tags"

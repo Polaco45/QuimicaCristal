@@ -4,6 +4,7 @@ from . import agent_run
 from . import agent_memory
 from . import agent_knowledge
 from . import agent_offer
+from . import agent_combo_line
 from . import agent_cadence
 from . import res_partner
 from . import crm_lead

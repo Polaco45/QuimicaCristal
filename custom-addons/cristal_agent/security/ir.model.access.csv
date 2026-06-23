@@ -11,3 +11,5 @@ access_cristal_agent_offer_user,cristal.agent.offer user,model_cristal_agent_off
 access_cristal_agent_offer_manager,cristal.agent.offer manager,model_cristal_agent_offer,base.group_system,1,1,1,1
 access_cristal_agent_cadence_user,cristal.agent.cadence user,model_cristal_agent_cadence,base.group_user,1,1,1,0
 access_cristal_agent_cadence_manager,cristal.agent.cadence manager,model_cristal_agent_cadence,base.group_system,1,1,1,1
+access_cristal_agent_combo_line_user,cristal.agent.combo.line user,model_cristal_agent_combo_line,base.group_user,1,1,1,1
+access_cristal_agent_combo_line_manager,cristal.agent.combo.line manager,model_cristal_agent_combo_line,base.group_system,1,1,1,1

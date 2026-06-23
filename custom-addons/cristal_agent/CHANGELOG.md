@@ -7,6 +7,33 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.12.0] — 2026-06-23
+
+### Fixed — La cotización SIEMPRE cuelga de una oportunidad
+
+`create_sale_order` quedaba "en el aire": creaba la sale.order pero no la ligaba a
+ninguna oportunidad ni movía el pipeline. Ahora:
+- Busca la oportunidad abierta del cliente (o **la crea** si no existe) y setea
+  `order.opportunity_id`, así la cotización aparece en el CRM colgada del lead.
+- Avanza la fase a **Propuesta enviada** (`phase_2_quoted`) y deja un mensaje en
+  el chatter de la oportunidad.
+
+### Added — Combo Emprendedor (combo fijo configurable)
+
+- Nuevo modelo `cristal.agent.combo.line` + campos en `cristal.agent.config`
+  (`combo_emprendedor_active/name/pitch/line_ids`): cargás un combo fijo
+  (productos + cantidades) desde Configuración → Habilidades.
+- `prompt_builder` inyecta el combo activo al contexto del bot ("🎁 COMBO
+  EMPRENDEDOR"). El bot lo ofrece a los clientes que **arrancan** y lo cotiza con
+  el **20% off** de primera compra (borrador, Joaco confirma).
+- Prompt v4 actualizado con el puntero al combo.
+
+### Migration
+- `migrations/18.0.1.12.0/post-migration.py`: recarga el prompt v4 y fija el
+  nombre por defecto del combo.
+
+---
+
 ## [18.0.1.11.4] — 2026-06-15
 
 ### Changed — Fase 1: vendedor que cotiza, sin muestras (prompt v4)
