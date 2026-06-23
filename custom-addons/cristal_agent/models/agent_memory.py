@@ -179,6 +179,15 @@ class CristalAgentMemory(models.Model):
         help="El último whatsapp.message de la ráfaga, para resolver canal/cuenta "
              "al procesar.",
     )
+    # v1.14 — Notas de voz pendientes de transcribir. Lista de ids de ir.attachment
+    # (audio). Se transcriben en el CRON (no en el webhook) y el texto se suma a
+    # pending_text antes de disparar el run. Así la llamada a OpenAI nunca bloquea
+    # la recepción del mensaje.
+    pending_audio_att_ids = fields.Json(
+        string="Audios pendientes (ids de attachment)",
+        help="Lista de ids de ir.attachment de audio encolados para transcribir "
+             "asíncronamente en el cron.",
+    )
 
     # ─────────── Counters ───────────
     total_messages_received = fields.Integer(string="Mensajes recibidos", default=0)
@@ -301,13 +310,58 @@ class CristalAgentMemory(models.Model):
             vals['pending_wa_message_id'] = wa_message.id
         self.write(vals)  # write() actualiza last_interaction_at (silencio)
 
+    def enqueue_pending_audio(self, attachment_id, wa_message=None):
+        """Encola una nota de voz (id de ir.attachment) para transcribir en el
+        cron, FUERA del webhook. v1.14."""
+        self.ensure_one()
+        ids = list(self.pending_audio_att_ids or [])
+        if attachment_id and attachment_id not in ids:
+            ids.append(attachment_id)
+        vals = {
+            'pending_audio_att_ids': ids,
+            'pending_since': self.pending_since or fields.Datetime.now(),
+        }
+        if wa_message:
+            vals['pending_wa_message_id'] = wa_message.id
+        self.write(vals)
+
     def _clear_pending(self):
         self.ensure_one()
         self.write({
             'pending_text': False,
             'pending_since': False,
             'pending_wa_message_id': False,
+            'pending_audio_att_ids': False,
         })
+
+    def _transcribe_pending_audios(self, audio_ids, text, wa, partner, config):
+        """Transcribe las notas de voz pendientes (OpenAI corre ACÁ, en el cron —
+        nunca en el webhook) y las suma al texto. Si ninguna se pudo transcribir y
+        no hay texto, avisa a Joaco. Devuelve el texto combinado. v1.14."""
+        self.ensure_one()
+        from ..services.transcription import transcribe_audio_attachment
+        api_key = self.env['cristal.agent.config'].sudo().get_openai_key()
+        transcripts = []
+        if config.enable_audio_transcription and api_key:
+            for att_id in audio_ids:
+                att = self.env['ir.attachment'].sudo().browse(int(att_id))
+                if not att.exists():
+                    continue
+                t = transcribe_audio_attachment(
+                    att, api_key,
+                    model=config.transcription_model or 'gpt-4o-transcribe',
+                    language=config.transcription_language or 'es',
+                )
+                if t:
+                    transcripts.append("[nota de voz] " + t)
+        if transcripts:
+            joined = "\n".join(transcripts)
+            return (text + "\n" + joined).strip() if text else joined
+        # No se pudo transcribir ninguna. Si tampoco hay texto, avisar a Joaco.
+        if not text:
+            self.env['whatsapp.message']._notify_joaco_audio(
+                wa, "No se pudo transcribir la nota de voz", partner=partner)
+        return text
 
     @api.model
     def cron_process_debounced(self):
@@ -325,7 +379,8 @@ class CristalAgentMemory(models.Model):
         debounce = config.debounce_seconds or 0
         now = fields.Datetime.now()
 
-        pending = self.search([('pending_text', '!=', False)])
+        # pending_since se setea tanto al encolar texto como audio → captura ambos.
+        pending = self.search([('pending_since', '!=', False)])
         for mem in pending:
             try:
                 ref_time = mem.last_interaction_at or mem.pending_since
@@ -338,13 +393,22 @@ class CristalAgentMemory(models.Model):
                     mem._clear_pending()
                     continue
 
-                text = mem.pending_text
+                text = (mem.pending_text or "").strip()
+                audio_ids = list(mem.pending_audio_att_ids or [])
                 wa = mem.pending_wa_message_id
                 partner = mem.partner_id
                 # Limpiar ANTES de disparar para no reprocesar si entra otro run.
                 mem._clear_pending()
 
                 if not partner or not partner.exists():
+                    continue
+
+                # v1.14 — Transcribir audios pendientes ACÁ (en el cron, fuera del
+                # webhook). La llamada a OpenAI puede tardar; acá no molesta a nadie.
+                if audio_ids:
+                    text = mem._transcribe_pending_audios(audio_ids, text, wa, partner, config)
+
+                if not text:
                     continue
                 dispatch_agent_for_message(self.env, wa, partner, mem, text)
             except Exception as e:

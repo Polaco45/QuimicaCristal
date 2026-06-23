@@ -81,21 +81,26 @@ class WhatsAppMessage(models.Model):
             _logger.info("⏸️  Agente deshabilitado (config). Ignorando mensaje %s.", wa_message.id)
             return
 
-        # 3.1) v1.13 — ¿Es una nota de voz? (sin texto pero con audio adjunto).
-        # La API de Claude no entiende audio: lo transcribimos con OpenAI y usamos
-        # el texto como si el cliente lo hubiera escrito. Si la transcripción está
-        # apagada o falla, avisamos a Joaco para que lo escuche a mano (no corremos
-        # a Claudio "a ciegas" ni perdemos el mensaje en silencio).
+        # 3.1) v1.13/v1.14 — ¿Es una nota de voz? (sin texto pero con audio adjunto).
+        # La API de Claude no entiende audio. ⚠️ NO transcribimos acá: la llamada
+        # HTTP a OpenAI NUNCA debe correr dentro del webhook (bloquearía la
+        # respuesta a Meta y puede tumbar la entrega de mensajes). Solo MARCAMOS el
+        # audio; lo transcribe el cron, fuera del webhook (v1.14). Si la
+        # transcripción está apagada o sin key, avisamos a Joaco y cortamos.
+        audio_att = None
         if not plain_body:
-            audio_att = self._get_audio_attachment(wa_message)
-            if audio_att:
-                plain_body = self._transcribe_voice_note(wa_message, audio_att, config)
-                # Si no se pudo transcribir, el helper ya avisó a Joaco.
-                if not plain_body:
+            candidate = self._get_audio_attachment(wa_message)
+            if candidate:
+                ConfigModel = self.env['cristal.agent.config'].sudo()
+                if config.enable_audio_transcription and ConfigModel.get_openai_key():
+                    audio_att = candidate
+                else:
+                    self._notify_joaco_audio(
+                        wa_message, "Transcripción de audio desactivada o sin API key")
                     return
 
-        # 2.b) Sin texto (ni audio transcribible) → nada que procesar
-        if not plain_body:
+        # 2.b) Sin texto ni audio → nada que procesar
+        if not plain_body and not audio_att:
             return
 
         # 3.5) ¿Esta cuenta WA está en la lista de cuentas permitidas?
@@ -190,6 +195,17 @@ class WhatsAppMessage(models.Model):
         # de silencio. Resultado: menos costo + respuesta más completa y menos
         # "manda muchos mensajes".
         debounce = config.debounce_seconds or 0
+
+        # v1.14 — Las notas de voz SIEMPRE van por la cola asíncrona, sin importar
+        # el debounce: la transcripción (OpenAI) corre en el cron, jamás dentro del
+        # webhook. Así el webhook responde al instante y no se puede volver a colgar.
+        if audio_att:
+            _logger.info("🎙️ Encolando nota de voz de %s para transcribir (async).",
+                         partner.name)
+            memory.enqueue_pending_audio(audio_att.id, wa_message=wa_message)
+            self._schedule_debounce_cron(config)
+            return
+
         if debounce <= 0:
             _logger.info("🚀 Disparando agente (sin debounce) para %s: %r",
                          partner.name, plain_body[:120])
@@ -200,8 +216,12 @@ class WhatsAppMessage(models.Model):
         _logger.info("⏳ Encolando mensaje de %s (debounce %ss): %r",
                      partner.name, debounce, plain_body[:80])
         memory.enqueue_pending(plain_body, wa_message=wa_message)
-        # Programar el procesamiento one-shot apenas pase la ventana de silencio.
-        # (Además hay un cron cada 1 min de fallback por si el trigger falla.)
+        self._schedule_debounce_cron(config)
+
+    def _schedule_debounce_cron(self, config):
+        """Programa el cron one-shot del debounce apenas pase la ventana de
+        silencio. (Hay además un cron de 1 min de fallback por si el trigger falla.)"""
+        debounce = config.debounce_seconds or 0
         try:
             cron = self.env.ref('cristal_agent.cron_process_debounced', raise_if_not_found=False)
             if cron:
@@ -209,7 +229,7 @@ class WhatsAppMessage(models.Model):
         except Exception as e:
             _logger.warning("No se pudo programar el trigger de debounce: %s", e)
 
-    # ─────────── Notas de voz / transcripción (v1.13) ───────────
+    # ─────────── Notas de voz / transcripción (v1.13/v1.14) ───────────
     def _get_audio_attachment(self, wa_message):
         """Devuelve el primer ir.attachment de audio colgado del mensaje, o False.
         En Odoo, el media entrante de WhatsApp queda en mail_message_id.attachment_ids."""
@@ -221,36 +241,10 @@ class WhatsAppMessage(models.Model):
                 return att
         return False
 
-    def _transcribe_voice_note(self, wa_message, attachment, config):
-        """Transcribe una nota de voz a texto. Devuelve el texto (con prefijo
-        [nota de voz]) o False. Si no se puede, avisa a Joaco por canal interno."""
-        ConfigModel = self.env['cristal.agent.config'].sudo()
-        api_key = ConfigModel.get_openai_key()
-        if not (config.enable_audio_transcription and api_key):
-            _logger.info("🎙️ Nota de voz de %s: transcripción desactivada o sin key.",
-                         wa_message.mobile_number)
-            self._notify_joaco_audio(wa_message, "Transcripción de audio desactivada o sin API key")
-            return False
-
-        from ..services.transcription import transcribe_audio_attachment
-        text = transcribe_audio_attachment(
-            attachment, api_key,
-            model=config.transcription_model or 'gpt-4o-transcribe',
-            language=config.transcription_language or 'es',
-        )
-        if not text:
-            self._notify_joaco_audio(wa_message, "No se pudo transcribir el audio")
-            return False
-
-        _logger.info("🎙️ Nota de voz de %s transcripta: %r",
-                     wa_message.mobile_number, text[:120])
-        # Prefijo: que Claudio sepa que vino de un audio (la transcripción puede
-        # tener errores menores; le permite ser flexible o pedir aclaración).
-        return "[nota de voz] " + text
-
-    def _notify_joaco_audio(self, wa_message, reason):
+    def _notify_joaco_audio(self, wa_message, reason, partner=None):
         """Avisa a Joaco por canal interno cuando llega una nota de voz que el bot
-        no procesó (transcripción apagada o fallida)."""
+        no procesó (transcripción apagada o fallida). Usable desde el webhook
+        (wa_message) o desde el cron (partner como fallback)."""
         try:
             config = self.env['cristal.agent.config'].sudo().get_active()
             channel_id = config.internal_channel_id.id if config.internal_channel_id else 969
@@ -258,8 +252,9 @@ class WhatsAppMessage(models.Model):
             if not channel.exists():
                 _logger.warning("Canal interno %s no existe — skip aviso de audio", channel_id)
                 return
-            phone = wa_message.mobile_number or '?'
-            wa_account_name = wa_message.wa_account_id.name if wa_message.wa_account_id else "?"
+            phone = (wa_message.mobile_number if wa_message else None) \
+                or ((partner.mobile or partner.phone) if partner else None) or '?'
+            wa_account_name = wa_message.wa_account_id.name if (wa_message and wa_message.wa_account_id) else "?"
             msg = (
                 f"🎙️ Nota de voz recibida (el bot no la procesó)\n"
                 f"📞 WhatsApp: {phone}\n"

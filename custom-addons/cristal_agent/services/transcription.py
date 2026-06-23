@@ -46,7 +46,7 @@ _MAX_BYTES = 25 * 1024 * 1024
 
 
 def transcribe_audio_attachment(attachment, api_key, model='gpt-4o-transcribe',
-                                language='es', timeout=60):
+                                language='es', timeout=30):
     """
     Transcribe un ir.attachment de audio. Devuelve el texto (str) o None si falla.
 

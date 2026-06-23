@@ -7,6 +7,35 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.14.0] — 2026-06-23
+
+### Fixed — CRÍTICO: la transcripción de audio bloqueaba el webhook
+
+En v1.13.0 la transcripción corría **sincrónicamente dentro del `create()` del
+mensaje**, o sea **dentro del request del webhook de Meta**. Una nota de voz
+disparaba una llamada HTTP a OpenAI (hasta 60s) que **bloqueaba la respuesta a
+Meta**; con timeouts repetidos, Meta corta la entrega y dejan de entrar mensajes
+(de cualquier tipo). Se neutralizó en caliente apagando `enable_audio_transcription`
+por config; este release lo arregla de raíz.
+
+- La transcripción ahora es **100% asíncrona**: el webhook solo **marca** el audio
+  (`memory.enqueue_pending_audio`) y responde al instante. La llamada a OpenAI
+  corre en el **cron** (`cron_process_debounced`), fuera del camino del webhook.
+- Las notas de voz **siempre** van por la cola async (sin importar el debounce),
+  para que OpenAI nunca pueda volver a colgar la recepción.
+- Nuevo campo `cristal.agent.memory.pending_audio_att_ids` (Json) que encola los
+  ids de attachment de audio a transcribir.
+- El cron junta la transcripción con el texto pendiente (`[nota de voz] …`) y
+  dispara un único run. Si no se puede transcribir y no hay texto, avisa a Joaco.
+- Timeout de la llamada a OpenAI bajado 60s → 30s (defensa extra).
+
+### Nota operativa
+Tras deployar, re-activar `enable_audio_transcription` en Configuración (quedó
+apagado por la mitigación en caliente). Recordar que el rebuild del deploy puede
+pausar el webhook de Meta → re-verificarlo.
+
+---
+
 ## [18.0.1.13.0] — 2026-06-23
 
 ### Added — Lector de notas de voz (transcripción de audio)
