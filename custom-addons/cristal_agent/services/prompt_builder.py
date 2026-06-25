@@ -512,6 +512,16 @@ def build_user_message_for_cron(env, partner, cron_type, extra_context=None):
                                "que corresponda según la cadencia de Fase 2 (ver system prompt).",
         'cadence_step_phase3': "El cliente hizo su 1ra compra hace X días. Mandale el mensaje "
                                "que corresponda según la cadencia de Onboarding (Fase 3).",
+        'cadence_step_quoted': "El cliente recibió una COTIZACIÓN hace unos días y todavía no "
+                               "respondió. Hacele un seguimiento corto y cordial: recordale el "
+                               "total, que tiene el 20% OFF de primera compra, las formas de pago "
+                               "(efectivo contraentrega o transferencia) y preguntá si la cierra. "
+                               "PRIMERO leé el historial (read_message_history): si ya hubo charla "
+                               "reciente sobre esta cotización, NO insistas. Si la ventana de 24hs "
+                               "está abierta, usá send_whatsapp; si está cerrada, usá "
+                               "send_whatsapp_template con el template 'hola_mayorista_crm' y poné "
+                               "el seguimiento en la variable de texto libre. Es AUTÓNOMO: NO "
+                               "escales a Joaco por esto.",
         'level_change_up': "El cliente subió de nivel. Mandale el mensaje de felicitación con "
                            "los beneficios del nuevo nivel.",
         'level_change_down': "El cliente está por bajar de nivel (mes de gracia). Mandale el "

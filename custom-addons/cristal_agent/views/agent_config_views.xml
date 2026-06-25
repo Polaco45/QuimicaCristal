@@ -167,6 +167,7 @@
                                 <field name="enable_proactive_activities" widget="boolean_toggle"/>
                                 <field name="enable_phase2_cadences" widget="boolean_toggle"/>
                                 <field name="enable_phase3_cadences" widget="boolean_toggle"/>
+                                <field name="enable_quoted_cadences" widget="boolean_toggle"/>
                                 <field name="enable_level_recalculation" widget="boolean_toggle"/>
                                 <field name="enable_churn_detection" widget="boolean_toggle"/>
                             </group>

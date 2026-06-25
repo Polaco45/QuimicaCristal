@@ -196,7 +196,14 @@ class CreateSaleOrder(AgentTool):
             order.opportunity_id = opp.id
             opp_id = opp.id
             try:
-                opp.write({'agent_strategy_phase': 'phase_2_quoted'})
+                # v1.16: marcamos agent_managed (para que el cron de seguimiento
+                # la tome) y reseteamos el contador de cadencia para que el
+                # seguimiento de cotización (días 1/3/7) arranque limpio.
+                opp.write({'agent_strategy_phase': 'phase_2_quoted', 'agent_managed': True})
+                mem = env['cristal.agent.memory'].sudo().search(
+                    [('partner_id', '=', partner.id)], limit=1)
+                if mem:
+                    mem.last_cadence_step_executed = -1
             except Exception:
                 pass
             try:

@@ -321,6 +321,66 @@ class CristalAgentRun(models.Model):
                 _logger.exception("cron_cadence_phase3 falló para lead %s: %s", lead.id, e)
 
     @api.model
+    def cron_cadence_quoted(self):
+        """
+        Cadencia de SEGUIMIENTO DE COTIZACIÓN (Fase 2 — Cotización enviada).
+
+        Para cada oportunidad en 'phase_2_quoted' (cotización enviada y sin
+        cerrar), si los días desde que se envió la cotización están en [1, 3, 7]
+        dispara al bot para que mande un seguimiento autónomo (recordatorio +
+        20% off + formas de pago). La referencia de tiempo es la última
+        sale.order vinculada a la oportunidad. Máx 3 toques (1/3/7) y para.
+        """
+        from ..services.feature_flags import is_cron_enabled
+        if not is_cron_enabled(self.env, 'enable_quoted_cadences'):
+            _logger.info("cron_cadence_quoted: SKIP (flag enable_quoted_cadences=False)")
+            return
+        from ..services.claude_client import dispatch_agent_for_cron
+
+        now = fields.Datetime.now()
+        Lead = self.env['crm.lead']
+        Memory = self.env['cristal.agent.memory']
+        SaleOrder = self.env['sale.order']
+
+        leads = Lead.search([
+            ('agent_managed', '=', True),
+            ('agent_strategy_phase', '=', 'phase_2_quoted'),
+        ])
+        CADENCE_DAYS_QUOTED = [1, 3, 7]
+
+        for lead in leads:
+            if not lead.partner_id:
+                continue
+            try:
+                # Referencia: la última cotización (sale.order) colgada de la opp.
+                order = SaleOrder.search(
+                    [('opportunity_id', '=', lead.id)],
+                    order='date_order desc', limit=1)
+                ref = order.date_order if order else False
+                if not ref:
+                    continue
+                days_since = (now - ref).days
+                if days_since not in CADENCE_DAYS_QUOTED:
+                    continue
+                memory = Memory.get_or_create(lead.partner_id)
+                if memory.last_cadence_step_executed == days_since:
+                    continue
+                if memory.is_takeover_active():
+                    continue
+                dispatch_agent_for_cron(
+                    self.env, 'cron_cadence', lead.partner_id, 'cadence_step_quoted',
+                    extra_context={
+                        'days_since_quote': days_since,
+                        'lead_id': lead.id,
+                        'cotizacion': order.name,
+                        'total': order.amount_total,
+                    },
+                )
+                memory.last_cadence_step_executed = days_since
+            except Exception as e:
+                _logger.exception("cron_cadence_quoted falló para lead %s: %s", lead.id, e)
+
+    @api.model
     def cron_levels_monthly(self):
         """Recálculo mensual de niveles BRONCE/PLATA/ORO de todos los Mayoristas."""
         from ..services.feature_flags import is_cron_enabled

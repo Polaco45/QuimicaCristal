@@ -7,6 +7,32 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.16.0] — 2026-06-24
+
+### Added — Seguimiento autónomo de cotizaciones (días 1/3/7)
+
+Faltaba la única cadencia que quedaba manual (el ida y vuelta del canal interno):
+el seguimiento de **cotizaciones enviadas**. Había crons autónomos para post-muestra
+(Fase 2) y post-compra (Fase 3), pero ninguno para `phase_2_quoted`.
+
+- **Nuevo cron `cron_cadence_quoted`** (cada 6hs, activo): para cada oportunidad en
+  "Cotización enviada" sin cerrar, a los días **1, 3 y 7** desde la cotización
+  (referencia = última `sale.order` colgada de la opp), dispara al bot para que
+  mande un seguimiento **autónomo** (recuerda total + 20% off + formas de pago).
+  Máx 3 toques y para. Si el cliente responde/compra, la fase cambia y se corta.
+- **Sin canal interno**: el bot manda solo — `send_whatsapp` si la ventana 24hs
+  está abierta, o el template **`hola_mayorista_crm` (236)** rellenando el texto
+  libre `{{2}}` si está cerrada. No escala a Joaco.
+- `create_sale_order` ahora marca `agent_managed=True` en la opp y resetea el
+  contador de cadencia para que el seguimiento arranque limpio desde la cotización.
+- Nuevo flag `enable_quoted_cadences` (default ON) en Configuración → Habilidades.
+
+**Dependencia:** el seguimiento con ventana cerrada necesita que Meta **apruebe el
+template 236** (`hola_mayorista_crm`); hasta entonces, los seguimientos con ventana
+abierta funcionan y los de ventana cerrada quedan a la espera.
+
+---
+
 ## [18.0.1.15.0] — 2026-06-24
 
 ### Changed — El bot opera como OdooBot (se da de baja el usuario Claudio)

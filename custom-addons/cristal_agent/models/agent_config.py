@@ -334,6 +334,14 @@ class CristalAgentConfig(models.Model):
         string="Cadencias proactivas Fase 3 (post-compra)",
         default=True,
     )
+    enable_quoted_cadences = fields.Boolean(
+        string="Seguimiento autónomo de cotizaciones (días 1/3/7)",
+        default=True,
+        help="Si está ON, el bot sigue solo las cotizaciones enviadas sin "
+             "respuesta a los días 1, 3 y 7 (máx 3 toques): recuerda total, 20% "
+             "off y formas de pago. Con ventana cerrada usa el template "
+             "'hola_mayorista_crm' (requiere que Meta lo apruebe).",
+    )
     enable_level_recalculation = fields.Boolean(
         string="Recálculo mensual de niveles BRONCE/PLATA/ORO",
         default=False,
