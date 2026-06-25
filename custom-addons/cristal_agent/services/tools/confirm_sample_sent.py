@@ -70,7 +70,7 @@ class ConfirmSampleSent(AgentTool):
             return {"error": f"crm.lead id={lead_id} no existe"}
 
         config = env['cristal.agent.config'].sudo().get_active()
-        bot_user_id = config.bot_user_id.id if config.bot_user_id else 721
+        bot_user_id = config.bot_user_id.id if config.bot_user_id else 1
 
         from odoo import fields as odoo_fields
         now = odoo_fields.Datetime.now()

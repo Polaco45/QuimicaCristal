@@ -450,7 +450,7 @@ def build_user_message_for_whatsapp(env, wa_message, partner, plain_text):
     # Señal de "previa intervención del bot": hay datos de calificación en curso
     # y/o el bot ya posteó mensajes en este canal (author_id = bot_partner).
     try:
-        bot_partner_id = config.bot_partner_id.id if config.bot_partner_id else 80799
+        bot_partner_id = config.bot_partner_id.id if config.bot_partner_id else 2
         mem = env['cristal.agent.memory'].sudo().search(
             [('partner_id', '=', partner.id)], limit=1
         )

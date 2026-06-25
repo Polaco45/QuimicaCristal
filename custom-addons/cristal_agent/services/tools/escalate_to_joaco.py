@@ -61,7 +61,7 @@ class EscalateToJoaco(AgentTool):
         config = env['cristal.agent.config'].sudo().get_active()
         bot_partner = config.bot_partner_id
         if not bot_partner:
-            bot_partner = env['res.partner'].sudo().browse(80799)
+            bot_partner = env['res.partner'].sudo().browse(2)
 
         owner_partner = config.owner_partner_id
         if not owner_partner:

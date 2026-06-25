@@ -65,7 +65,7 @@ class ReadMessageHistory(AgentTool):
 
         # Identificar el partner del canal para clasificar entrantes/salientes
         config = env['cristal.agent.config'].sudo().get_active()
-        bot_partner_id = config.bot_partner_id.id if config.bot_partner_id else 80799
+        bot_partner_id = config.bot_partner_id.id if config.bot_partner_id else 2
 
         result = []
         for m in messages:

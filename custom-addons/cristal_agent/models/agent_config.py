@@ -213,7 +213,7 @@ class CristalAgentConfig(models.Model):
         'res.partner',
         string="Partner del bot (Claudio)",
         help="Partner que se usa como author_id de los mensajes salientes. "
-             "Por defecto: id 80799 (claudio.quimicacristal).",
+             "Por defecto: OdooBot (partner de sistema, id 2).",
     )
     owner_partner_id = fields.Many2one(
         'res.partner',
@@ -228,7 +228,7 @@ class CristalAgentConfig(models.Model):
     bot_user_id = fields.Many2one(
         'res.users',
         string="Usuario del bot (Claudio)",
-        help="Usuario al que se asignan leads de Mayorista. Por defecto: id 721.",
+        help="Usuario al que se asignan leads de Mayorista. Por defecto: OdooBot (id 1).",
     )
     internal_channel_id = fields.Many2one(
         'discuss.channel',
@@ -608,7 +608,7 @@ class CristalAgentConfig(models.Model):
 
     # Partners internos a EXCLUIR del filtro de "cliente activo" para no
     # contar comprobantes X de consumo propio (Sergio, Joaquin, Claudio bot, etc).
-    INTERNAL_PARTNER_IDS = [3, 60023, 65371, 65374, 75679, 79526, 79653, 80799, 64675]
+    INTERNAL_PARTNER_IDS = [2, 3, 60023, 65371, 65374, 75679, 79526, 79653, 80799, 64675]
 
     @api.model
     def detect_client_type(self, wa_account_id=None, partner=None):

@@ -161,7 +161,7 @@ class CreateLead(AgentTool):
 
         # Resolver user y team según tipo
         if client_type == 'mayorista':
-            user_id = config.bot_user_id.id if config.bot_user_id else 721
+            user_id = config.bot_user_id.id if config.bot_user_id else 1
             team = env['crm.team'].sudo().search([('name', '=', 'Cristal Mayorista')], limit=1)
             team_id = team.id if team else False
         elif client_type == 'empresa':

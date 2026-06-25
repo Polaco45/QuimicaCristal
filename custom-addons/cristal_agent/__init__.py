@@ -12,10 +12,10 @@ _logger = logging.getLogger(__name__)
 # IDs específicos del entorno productivo de Joaco. Se intenta asignarlos al
 # instalar; si alguno no existe en la DB destino, se ignora (no es fatal).
 DEFAULT_IDENTITIES = {
-    'bot_partner_id': 80799,        # Claudio (claudio.quimicacristal)
+    'bot_partner_id': 2,            # OdooBot (partner de sistema) — antes Claudio (80799)
     'owner_partner_id': 65374,      # Joaquín (Joaco)
     'owner_user_id': 18,            # Joaco como res.users
-    'bot_user_id': 721,             # Claudio como res.users
+    'bot_user_id': 1,               # OdooBot (res.users de sistema) — antes Claudio (721)
     'internal_channel_id': 969,     # Canal interno Joaco↔Claudio
 }
 

@@ -7,6 +7,29 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.15.0] — 2026-06-24
+
+### Changed — El bot opera como OdooBot (se da de baja el usuario Claudio)
+
+Para no pagar una licencia de usuario dedicada, el bot deja de actuar como el
+usuario **Claudio** (res.users 721 / res.partner 80799) y pasa a operar como
+**OdooBot** (res.users 1 / res.partner 2), el usuario de sistema (sin costo).
+
+- **Config** (en vivo): `bot_user_id` → OdooBot (1), `bot_partner_id` → OdooBot (2).
+- **Código**: todos los fallbacks hardcodeados a 721/80799 ahora apuntan a 1/2
+  (`create_lead`, `confirm_sample_sent`, `send_whatsapp`, `escalate_to_joaco`,
+  `read_message_history`, `prompt_builder`, `__init__` post-init). `INTERNAL_PARTNER_IDS`
+  suma el partner de OdooBot (2).
+- **Migración 1.15.0**: reasigna a OdooBot todo lo que estaba como Claudio —
+  oportunidades (crm.lead, incl. archivadas), actividades (mail.activity) y órdenes
+  de venta (sale.order) — para poder dar de baja el usuario Claudio sin dejar
+  registros colgados.
+
+Tras el deploy, Joaco puede archivar/eliminar el usuario Claudio (721) y liberar
+la licencia.
+
+---
+
 ## [18.0.1.14.0] — 2026-06-23
 
 ### Fixed — CRÍTICO: la transcripción de audio bloqueaba el webhook

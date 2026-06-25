@@ -83,8 +83,8 @@ class SendWhatsApp(AgentTool):
         config = env['cristal.agent.config'].sudo().get_active()
         bot_partner = config.bot_partner_id
         if not bot_partner:
-            # Fallback a id 80799 (Claudio según el system prompt original)
-            bot_partner = env['res.partner'].sudo().browse(80799)
+            # Fallback a OdooBot (partner de sistema, id 2)
+            bot_partner = env['res.partner'].sudo().browse(2)
             if not bot_partner.exists():
                 return {"error": "No se pudo determinar el partner del bot. Configurá bot_partner_id."}
 
@@ -122,7 +122,7 @@ class SendWhatsApp(AgentTool):
                     ch = Channel.browse(int(channel_id))
                     if ch.exists() and ch.channel_partner_ids:
                         internal_ids = set(env['cristal.agent.config'].INTERNAL_PARTNER_IDS)
-                        bot_pid = config.bot_partner_id.id if config.bot_partner_id else 80799
+                        bot_pid = config.bot_partner_id.id if config.bot_partner_id else 2
                         owner_pid = config.owner_partner_id.id if config.owner_partner_id else 65374
                         internal_ids |= {bot_pid, owner_pid}
                         others = ch.channel_partner_ids.filtered(
