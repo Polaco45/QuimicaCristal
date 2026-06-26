@@ -360,10 +360,17 @@ class CristalAgentRun(models.Model):
                 if not ref:
                     continue
                 days_since = (now - ref).days
-                if days_since not in CADENCE_DAYS_QUOTED:
+                if days_since < 1:
                     continue
                 memory = Memory.get_or_create(lead.partner_id)
-                if memory.last_cadence_step_executed == days_since:
+                last = memory.last_cadence_step_executed
+                # Catch-up del backlog: si la cotización nunca tuvo seguimiento
+                # (last < 0), hacemos UN toque ahora aunque esté fuera de [1,3,7].
+                # Si ya arrancó la cadencia, seguimos el ritmo normal 1/3/7.
+                is_catchup = (last is None or last < 0)
+                if days_since not in CADENCE_DAYS_QUOTED and not is_catchup:
+                    continue
+                if last == days_since:
                     continue
                 if memory.is_takeover_active():
                     continue

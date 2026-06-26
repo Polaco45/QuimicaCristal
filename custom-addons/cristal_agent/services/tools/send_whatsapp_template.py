@@ -84,13 +84,17 @@ class SendWhatsappTemplate(AgentTool):
 
         # ─── 2. Template aprobado ───
         WhatsappTemplate = env['whatsapp.template'].sudo()
-        template = WhatsappTemplate.search([
-            ('name', '=', template_name),
-            ('status', '=', 'approved'),
-        ], limit=1)
+        # Buscar por 'name' O 'template_name' (case-insensitive). El bot a veces
+        # usa el nombre técnico (ej: hola_mayorista_crm) y a veces el visible
+        # (ej: "Hola Mayorista crm"); ambos tienen que funcionar.
+        name_domain = ['|',
+                       ('name', '=ilike', template_name),
+                       ('template_name', '=ilike', template_name)]
+        template = WhatsappTemplate.search(
+            name_domain + [('status', '=', 'approved')], limit=1)
 
         if not template:
-            template = WhatsappTemplate.search([('name', '=', template_name)], limit=1)
+            template = WhatsappTemplate.search(name_domain, limit=1)
             if not template:
                 return {
                     "error": f"No encontré template '{template_name}'. "

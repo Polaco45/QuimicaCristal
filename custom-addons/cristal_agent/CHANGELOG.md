@@ -7,6 +7,29 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.17.0] — 2026-06-26
+
+### Fixed — El bot no encontraba el template de seguimiento (escalaba en vez de mandar)
+
+`send_whatsapp_template` buscaba el template solo por el campo `name` ("Hola
+Mayorista crm"), pero el bot pasaba el nombre técnico `template_name`
+("hola_mayorista_crm") → "template no existe" → el bot escalaba a Joaco en vez de
+mandar el seguimiento con ventana cerrada.
+
+- **FIX:** ahora busca por `name` **o** `template_name` (case-insensitive). El bot
+  puede pasar cualquiera de los dos.
+
+### Added — Catch-up del backlog de cotizaciones
+
+- `cron_cadence_quoted` ahora hace **catch-up**: las cotizaciones que nunca tuvieron
+  seguimiento (`last_cadence_step_executed < 0`) reciben **un toque** aunque estén
+  fuera de los días [1,3,7]. Las nuevas siguen el ritmo normal 1/3/7.
+- **Migración 1.17.0:** resetea el contador de las cotizaciones en cola
+  (`phase_2_quoted`) para que en la próxima corrida del cron se disparen **todas**
+  los pendientes — ahora que el template funciona.
+
+---
+
 ## [18.0.1.16.0] — 2026-06-24
 
 ### Added — Seguimiento autónomo de cotizaciones (días 1/3/7)
