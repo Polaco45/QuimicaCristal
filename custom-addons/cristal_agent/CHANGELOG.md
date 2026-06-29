@@ -7,6 +7,20 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.20.0] — 2026-06-26
+
+### Changed — Usuarios permitidos por plantilla de WhatsApp (según cuenta)
+
+Se setea `allowed_user_ids` en las plantillas según la cuenta:
+- **Crilimp (8)** → Joaquín (18)
+- **Ventas (9)** → Joaquín (18) + Alejandra (725)
+- **Compras (5)** → Guillermo (15) + Sergio (2) + Joaquín (18)
+- Info (3): sin cambios.
+
+Migración 1.20.0 (bulk por cuenta). Las plantillas nuevas se asignan aparte.
+
+---
+
 ## [18.0.1.19.0] — 2026-06-26
 
 ### Changed — Ocultar apps "avanzadas" del menú (solo Sergio y Joaquín)
