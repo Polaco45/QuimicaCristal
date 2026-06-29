@@ -7,6 +7,26 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.18.0] — 2026-06-26
+
+### Changed — Acceso restringido: solo Sergio y Joaquín ven el módulo
+
+El menú raíz de Cristal Agent no tenía grupo → lo veía todo el personal (Alejandra
+incluida). Ahora:
+
+- Nuevo grupo `group_cristal_agent_access` (Cristal Agent · Acceso interno) con
+  **solo Sergio (id 2) y Joaquín (id 18)**.
+- El menú raíz `menu_cristal_agent_root` queda restringido a ese grupo → el resto
+  del personal ya no ve ni entra al módulo.
+- Se gestiona desde Ajustes → Usuarios (el grupo es administrable; `noupdate`).
+- No se tocó el acceso a los modelos (el bot y el conector entran por API/sudo,
+  restringirlos los rompería); la restricción es de menú/visibilidad, que es lo
+  que saca a Alejandra del módulo.
+
+(Mismo criterio aplicado al módulo "Reporte Plan Control" — `quimica_cristal_reporte_mensual` v18.0.1.2.0.)
+
+---
+
 ## [18.0.1.17.0] — 2026-06-26
 
 ### Fixed — El bot no encontraba el template de seguimiento (escalaba en vez de mandar)

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 {
     'name': "Cristal Agent — Claudio (Mayorista)",
-    'version': '18.0.1.17.0',
+    'version': '18.0.1.18.0',
     'summary': "Agente comercial autónomo (Claude AI) para Cristal Mayorista",
     'description': """
 Cristal Agent — Claudio
@@ -53,6 +53,7 @@ Características principales
     },
     'data': [
         # security primero
+        'security/cristal_agent_groups.xml',
         'security/ir.model.access.csv',
         'security/ir_rule.xml',
 

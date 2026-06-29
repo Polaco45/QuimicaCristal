@@ -8,6 +8,7 @@
     <menuitem id="menu_cristal_agent_root"
               name="🤖 Cristal Agent"
               sequence="10"
+              groups="group_cristal_agent_access"
               web_icon="cristal_agent,static/description/icon.png"/>
 
     <!-- ═════════════════════════════════════ -->

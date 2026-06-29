@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- noupdate=1: los usuarios se fijan al crear el grupo; después se pueden
+         administrar desde Ajustes → Usuarios sin que un upgrade los pise. -->
+    <data noupdate="1">
+        <!-- Acceso a Cristal Agent: SOLO Sergio (id 2) y Joaquín (id 18).
+             El resto del personal (Alejandra, etc.) no ve ni accede al módulo. -->
+        <record id="group_cristal_agent_access" model="res.groups">
+            <field name="name">Cristal Agent · Acceso interno</field>
+            <field name="users" eval="[(6, 0, [2, 18])]"/>
+        </record>
+    </data>
+</odoo>

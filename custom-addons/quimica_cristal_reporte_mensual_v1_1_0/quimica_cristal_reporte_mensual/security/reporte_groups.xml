@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- noupdate=1: los usuarios se fijan al crear el grupo; después se pueden
+         administrar desde Ajustes → Usuarios sin que un upgrade los pise. -->
+    <data noupdate="1">
+        <!-- Acceso a Reporte Plan Control: SOLO Sergio (id 2) y Joaquín (id 18).
+             El resto del personal (Alejandra, etc.) no ve ni accede al módulo. -->
+        <record id="group_reporte_plan_control_access" model="res.groups">
+            <field name="name">Reporte Plan Control · Acceso interno</field>
+            <field name="users" eval="[(6, 0, [2, 18])]"/>
+        </record>
+    </data>
+</odoo>

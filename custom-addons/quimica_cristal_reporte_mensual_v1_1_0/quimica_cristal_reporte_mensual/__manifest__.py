@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 {
     'name': 'Quimica Cristal · Reporte Mensual Plan Control',
-    'version': '18.0.1.1.0',
+    'version': '18.0.1.2.0',
     'category': 'Sales/CRM',
     'summary': 'Reporte mensual de consumo para clientes del Plan Control',
     'description': """
@@ -34,6 +34,7 @@ Autor: Joaquin Ramello - Quimica Cristal (Crilim S.A.S.)
     ],
     'data': [
         # Security
+        'security/reporte_groups.xml',
         'security/ir.model.access.csv',
 
         # Data
