@@ -9,5 +9,12 @@
             <field name="name">Cristal Agent · Acceso interno</field>
             <field name="users" eval="[(6, 0, [2, 18])]"/>
         </record>
+
+        <!-- Apps "avanzadas" que solo deben ver Sergio (2) y Joaquín (18).
+             La migración 1.19.0 gatea los menús de esas apps a este grupo. -->
+        <record id="group_apps_internas" model="res.groups">
+            <field name="name">Apps internas · solo Sergio/Joaquín</field>
+            <field name="users" eval="[(6, 0, [2, 18])]"/>
+        </record>
     </data>
 </odoo>

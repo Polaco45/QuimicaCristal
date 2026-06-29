@@ -7,6 +7,23 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.19.0] — 2026-06-26
+
+### Changed — Ocultar apps "avanzadas" del menú (solo Sergio y Joaquín)
+
+Para despejar el menú superior del personal (Alejandra, etc.), se ocultan 7 apps
+dejándolas visibles solo para Sergio (2) y Joaquín (18):
+**Aplicaciones, Eventos, Empleados, Sitio web, Planeación, Suscripciones e
+Información (Knowledge).**
+
+- Nuevo grupo `group_apps_internas` (solo Sergio/Joaquín).
+- Migración 1.19.0: gatea el menú raíz de esas apps a ese grupo, buscándolos por
+  nombre (es + en) para no depender de xmlids internos. Lo que no matchea se ignora
+  (no rompe el deploy). Reversible.
+- No se tocan permisos funcionales de nadie; es solo visibilidad de menú.
+
+---
+
 ## [18.0.1.18.0] — 2026-06-26
 
 ### Changed — Acceso restringido: solo Sergio y Joaquín ven el módulo
