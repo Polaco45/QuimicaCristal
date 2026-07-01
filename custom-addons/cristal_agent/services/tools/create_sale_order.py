@@ -2,12 +2,20 @@
 """
 Tool: create_sale_order
 
-Crea una sale.order en estado DRAFT (borrador) para un cliente.
-- Aplica la pricelist correcta según el tipo de cliente.
-- Acepta líneas como lista de {product_id, qty} o {product_name, qty} (con búsqueda fuzzy).
-- Devuelve order_id para que después se llame a generate_quote_pdf.
+Crea/actualiza UNA cotización (sale.order draft) por cliente.
 
-IMPORTANTE: queda en draft. Joaco la revisa y confirma antes de mandarla al cliente.
+Reglas de negocio (v1.21):
+- COTIZACIÓN ÚNICA: si el cliente ya tiene un borrador abierto (colgado de su
+  oportunidad), NO se crea otro: se agregan/mergean las líneas en ESE. Nunca
+  varios presupuestos para el mismo cliente.
+- MÍNIMO A GRANEL: 20 L por producto, SIN excepción. Si piden menos, se rechaza
+  esa línea.
+- MÍNIMO DE COMPRA: $50.000 (se comunica + upsell). Piso duro: $39.990 — NO se
+  puede cotizar/enviar por menos. Entre 39.990 y 50.000 se permite pero se avisa
+  para hacer upsell.
+- STOCK: los productos de DISTRIBUCIÓN/secos sin stock se marcan (sin_stock) para
+  que el bot ofrezca una alternativa / escale. Los de fabricación a granel se
+  producen a pedido → siempre disponibles.
 """
 import logging
 from .base import AgentTool
@@ -19,25 +27,33 @@ _logger = logging.getLogger(__name__)
 @ToolRegistry.register
 class CreateSaleOrder(AgentTool):
     name = "create_sale_order"
+
+    # Reglas de negocio
+    GRANEL_MIN_L = 20          # mínimo a granel por producto, SIN excepción
+    COMPRA_MIN = 50000.0       # compra mínima oficial (comunicar + upsell)
+    COMPRA_PISO = 39990.0      # piso duro: NO cotizar/enviar por menos
+
     description = (
-        "Crea una cotización (sale.order) en estado DRAFT para el cliente. "
-        "Pasale partner_id y una lista de líneas: cada línea con product_id+qty o product_name+qty "
-        "(la tool busca el producto por nombre con fuzzy match). "
-        "Devuelve order_id para luego generar PDF con generate_quote_pdf y mandar por WA. "
-        "Pasá discount_percent=20 para el 20% OFF de PRIMERA COMPRA (se aplica a todas las líneas). "
-        "La cotización queda en draft — Joaco la revisa y confirma antes de cerrarla."
+        "Crea o ACTUALIZA la ÚNICA cotización (sale.order draft) del cliente. "
+        "Si el cliente ya tiene un borrador abierto, agrega/mergea las líneas ahí "
+        "(NUNCA crees varios presupuestos para el mismo cliente: mandá TODOS los "
+        "productos en una sola llamada o se van sumando al mismo borrador). "
+        "Pasale partner_id y lines: {product_id|product_name, qty}. "
+        "Reglas que la tool valida sola: mínimo 20 L por producto a granel (sin "
+        "excepción), y piso de compra $39.990 (no se puede cotizar por menos). "
+        "Pasá discount_percent=20 para el 20% OFF de primera compra. "
+        "Fijate el campo 'upsell' y 'sin_stock' de la respuesta: si vienen, "
+        "comunicáselos al cliente (upsell para llegar a $50.000, alternativa si "
+        "algo está sin stock)."
     )
     input_schema = {
         "type": "object",
         "properties": {
-            "partner_id": {
-                "type": "integer",
-                "description": "ID del partner cliente.",
-            },
+            "partner_id": {"type": "integer", "description": "ID del partner cliente."},
             "lines": {
                 "type": "array",
-                "description": "Lista de líneas de la cotización. Cada una: "
-                               "{product_id (int) + qty (number)} o {product_name (str) + qty (number)}.",
+                "description": "TODAS las líneas de la cotización de una: "
+                               "{product_id (int) o product_name (str)} + qty (number).",
                 "items": {
                     "type": "object",
                     "properties": {
@@ -47,23 +63,64 @@ class CreateSaleOrder(AgentTool):
                     },
                 },
             },
-            "pricelist_name": {
-                "type": "string",
-                "description": "Nombre de pricelist a aplicar. Default: 'Lista Mayorista'.",
-            },
-            "note": {
-                "type": "string",
-                "description": "(Opcional) Nota interna que se agrega a la cotización.",
-            },
+            "pricelist_name": {"type": "string", "description": "Default: 'Lista Mayorista'."},
+            "note": {"type": "string", "description": "(Opcional) Nota interna."},
             "discount_percent": {
                 "type": "number",
-                "description": "Descuento % a aplicar a TODAS las líneas. Usá 20 para el "
-                               "20% OFF de primera compra. Default: sin descuento.",
+                "description": "Descuento % a TODAS las líneas. 20 = primera compra.",
             },
         },
         "required": ["partner_id", "lines"],
     }
 
+    # ───────────────────────── Helpers de negocio ─────────────────────────
+    def _es_granel(self, product):
+        """True si el producto se vende a granel (por litro)."""
+        name = (product.name or '').lower()
+        uom = (product.uom_id.name or '').lower() if product.uom_id else ''
+        return ('granel' in name) or uom in ('l', 'lt', 'litro', 'litros', 'l.')
+
+    def _disponibilidad(self, product):
+        """Stock disponible para productos de DISTRIBUCIÓN/secos.
+        Devuelve None si es fabricación a granel o no trackea stock (siempre disp.)."""
+        if self._es_granel(product):
+            return None  # fabricación a pedido → siempre disponible
+        # Solo productos almacenables (goods con stock) trackean disponibilidad.
+        # En Odoo 17/18 esto es is_storable (el tipo 'product' ya no existe).
+        if not getattr(product, 'is_storable', False):
+            return None
+        try:
+            return product.qty_available or 0.0
+        except Exception:
+            return None
+
+    def _resolver_producto(self, env, ln):
+        """Resuelve el product.product de una línea (id o nombre fuzzy)."""
+        Product = env['product.product'].sudo()
+        product = None
+        if ln.get('product_id'):
+            product = Product.browse(int(ln['product_id']))
+            if not product.exists():
+                product = None
+        if not product and ln.get('product_name'):
+            name = ln['product_name'].strip()
+            words = [w for w in name.split() if len(w) > 1]
+            if words:
+                domain_words = [('product_tmpl_id.is_mayorista_catalog', '=', True),
+                                ('sale_ok', '=', True)]
+                for w in words:
+                    domain_words.append(('name', 'ilike', w))
+                product = Product.search(domain_words, limit=1)
+            if not product and words:
+                domain_words = [('sale_ok', '=', True)]
+                for w in words:
+                    domain_words.append(('name', 'ilike', w))
+                product = Product.search(domain_words, limit=1)
+            if not product:
+                product = Product.search([('name', 'ilike', name), ('sale_ok', '=', True)], limit=1)
+        return product
+
+    # ─────────────────────────────── Main ───────────────────────────────
     def _execute(self, env, run=None, partner_id=None, lines=None,
                  pricelist_name='Lista Mayorista', note=None,
                  discount_percent=None, **kwargs):
@@ -74,158 +131,160 @@ class CreateSaleOrder(AgentTool):
         if not partner.exists():
             return {"error": f"partner_id={partner_id} no existe"}
 
-        # Resolver pricelist
         Pricelist = env['product.pricelist'].sudo()
         pricelist = Pricelist.search([('name', '=', pricelist_name)], limit=1)
         if not pricelist:
-            # Fallback a la pricelist del partner si tiene
             pricelist = partner.property_product_pricelist
         if not pricelist:
             return {"error": f"No encontré pricelist '{pricelist_name}' ni en el partner"}
 
-        # Resolver líneas
-        Product = env['product.product'].sudo()
-        order_lines = []
+        # 1) Resolver líneas + validar mínimo a granel + stock
+        resolved = []  # (product, qty)
         problems = []
+        sin_stock = []
         for i, ln in enumerate(lines):
             qty = float(ln.get('qty', 0))
             if qty <= 0:
                 problems.append(f"Línea {i+1}: qty inválida ({qty})")
                 continue
-
-            product = None
-            if ln.get('product_id'):
-                product = Product.browse(int(ln['product_id']))
-                if not product.exists():
-                    product = None
-
-            if not product and ln.get('product_name'):
-                # Búsqueda fuzzy: dividimos por palabras (AND) para encontrar
-                # variantes "fuera de orden" en el nombre.
-                # Ej: 'Ariel granel' encuentra 'Detergente Ariel 200L Granel'.
-                name = ln['product_name'].strip()
-                words = [w for w in name.split() if len(w) > 1]
-
-                # Estrategia A: dentro del catálogo mayorista, palabras AND
-                if words:
-                    domain_words = [('product_tmpl_id.is_mayorista_catalog', '=', True),
-                                    ('sale_ok', '=', True)]
-                    for w in words:
-                        domain_words.append(('name', 'ilike', w))
-                    product = Product.search(domain_words, limit=1)
-
-                # Estrategia B: fuera del catálogo, palabras AND
-                if not product and words:
-                    domain_words = [('sale_ok', '=', True)]
-                    for w in words:
-                        domain_words.append(('name', 'ilike', w))
-                    product = Product.search(domain_words, limit=1)
-                    if product:
-                        problems.append(
-                            f"Producto '{name}' encontrado pero está FUERA del Catálogo Mayorista. "
-                            f"Avisale a Joaco para que lo agregue al catálogo si corresponde."
-                        )
-
-                # Estrategia C: fallback ilike directo (por si quedó algo sin matchear)
-                if not product:
-                    product = Product.search([
-                        ('name', 'ilike', name),
-                        ('sale_ok', '=', True),
-                    ], limit=1)
-
+            product = self._resolver_producto(env, ln)
             if not product:
                 problems.append(
                     f"Línea {i+1}: no encontré el producto "
-                    f"(id={ln.get('product_id')}, name={ln.get('product_name')})"
-                )
+                    f"(id={ln.get('product_id')}, name={ln.get('product_name')})")
                 continue
+            # Mínimo a granel 20 L — SIN excepción
+            if self._es_granel(product) and qty < self.GRANEL_MIN_L:
+                problems.append(
+                    f"'{product.display_name}': el mínimo a granel es "
+                    f"{self.GRANEL_MIN_L} L por producto SIN excepción "
+                    f"(pediste {qty:g}). Subí a {self.GRANEL_MIN_L} L o más.")
+                continue
+            # Stock (solo distribución/secos)
+            disp = self._disponibilidad(product)
+            if disp is not None and disp <= 0:
+                sin_stock.append(product.display_name)
+            resolved.append((product, qty))
 
-            line_vals = {
-                'product_id': product.id,
-                'product_uom_qty': qty,
-            }
-            if discount_percent:
-                try:
-                    line_vals['discount'] = float(discount_percent)
-                except (TypeError, ValueError):
-                    pass
-            order_lines.append((0, 0, line_vals))
-
-        if not order_lines:
+        if not resolved:
             return {
-                "error": "No se pudieron resolver líneas válidas.",
+                "error": "No hay líneas válidas para cotizar (revisá mínimos y nombres).",
                 "problems": problems,
+                "sin_stock": sin_stock or None,
             }
 
-        # Crear sale.order en draft
-        try:
-            vals = {
+        # 2) Oportunidad + cotización ÚNICA (reusar borrador si existe)
+        Lead = env['crm.lead'].sudo()
+        opp = Lead.search([
+            ('partner_id', '=', partner.id),
+            ('type', '=', 'opportunity'),
+            ('active', '=', True),
+            ('stage_id', 'not in', [4, 13]),
+        ], limit=1, order='create_date desc')
+        if not opp:
+            opp = Lead.create({
+                'name': partner.name or 'Cliente mayorista',
                 'partner_id': partner.id,
-                'pricelist_id': pricelist.id,
-                'order_line': order_lines,
-                'state': 'draft',
-            }
-            if note:
-                vals['note'] = note
-            order = env['sale.order'].sudo().create(vals)
-        except Exception as e:
-            _logger.exception("Error creando sale.order: %s", e)
-            return {"error": f"No se pudo crear la sale.order: {e}"}
-
-        # ── v1.12: el bot SIEMPRE trabaja sobre una oportunidad ──
-        # Vinculamos la cotización a la oportunidad abierta del cliente (o la
-        # creamos si no existe) y avanzamos la fase a "Propuesta enviada". Así la
-        # cotización NUNCA queda "en el aire": cuelga del lead en el CRM y el
-        # pipeline refleja el avance.
-        opp_id = None
-        try:
-            Lead = env['crm.lead'].sudo()
-            opp = Lead.search([
-                ('partner_id', '=', partner.id),
-                ('type', '=', 'opportunity'),
-                ('active', '=', True),
-                ('stage_id', 'not in', [4, 13]),  # no Ganado / Perdido
-            ], limit=1, order='create_date desc')
-            if not opp:
-                opp = Lead.create({
-                    'name': partner.name or 'Cliente mayorista',
-                    'partner_id': partner.id,
-                    'type': 'opportunity',
-                    'agent_managed': True,
-                })
-            order.opportunity_id = opp.id
-            opp_id = opp.id
-            try:
-                # v1.16: marcamos agent_managed (para que el cron de seguimiento
-                # la tome) y reseteamos el contador de cadencia para que el
-                # seguimiento de cotización (días 1/3/7) arranque limpio.
-                opp.write({'agent_strategy_phase': 'phase_2_quoted', 'agent_managed': True})
-                mem = env['cristal.agent.memory'].sudo().search(
-                    [('partner_id', '=', partner.id)], limit=1)
-                if mem:
-                    mem.last_cadence_step_executed = -1
-            except Exception:
-                pass
-            try:
-                note_disc = ' (20% off 1ra compra)' if discount_percent else ''
-                opp.message_post(body=(
-                    "Cotización <b>%s</b> enviada por Claudio: $%s%s. "
-                    "Pendiente de confirmación." % (
-                        order.name, '{:,.0f}'.format(order.amount_total), note_disc)))
-            except Exception:
-                pass
-        except Exception as e:
-            _logger.warning("No se pudo vincular la cotización a una oportunidad: %s", e)
-
-        # Detalle de líneas resueltas para devolver al bot
-        line_details = []
-        for line in order.order_line:
-            line_details.append({
-                'product': line.product_id.display_name,
-                'qty': line.product_uom_qty,
-                'price_unit': line.price_unit,
-                'subtotal': line.price_subtotal,
+                'type': 'opportunity',
+                'agent_managed': True,
             })
+
+        SaleOrder = env['sale.order'].sudo()
+        order = SaleOrder.search([
+            ('opportunity_id', '=', opp.id),
+            ('state', '=', 'draft'),
+        ], order='create_date desc', limit=1)
+
+        try:
+            if order:
+                # Mergear en el borrador existente (una sola cotización)
+                for product, qty in resolved:
+                    existing = order.order_line.filtered(
+                        lambda l: l.product_id.id == product.id)
+                    if existing:
+                        existing[0].product_uom_qty = qty
+                        if discount_percent:
+                            existing[0].discount = float(discount_percent)
+                    else:
+                        vals_line = {'product_id': product.id, 'product_uom_qty': qty}
+                        if discount_percent:
+                            vals_line['discount'] = float(discount_percent)
+                        order.write({'order_line': [(0, 0, vals_line)]})
+                reused = True
+            else:
+                order_lines = []
+                for product, qty in resolved:
+                    vals_line = {'product_id': product.id, 'product_uom_qty': qty}
+                    if discount_percent:
+                        vals_line['discount'] = float(discount_percent)
+                    order_lines.append((0, 0, vals_line))
+                order = SaleOrder.create({
+                    'partner_id': partner.id,
+                    'pricelist_id': pricelist.id,
+                    'order_line': order_lines,
+                    'state': 'draft',
+                })
+                reused = False
+            if note:
+                order.note = note
+            order.opportunity_id = opp.id
+        except Exception as e:
+            _logger.exception("Error creando/actualizando sale.order: %s", e)
+            return {"error": f"No se pudo armar la cotización: {e}"}
+
+        # 3) Fase + reset cadencia + chatter
+        try:
+            opp.write({'agent_strategy_phase': 'phase_2_quoted', 'agent_managed': True})
+            mem = env['cristal.agent.memory'].sudo().search(
+                [('partner_id', '=', partner.id)], limit=1)
+            if mem:
+                mem.last_cadence_step_executed = -1
+        except Exception:
+            pass
+        try:
+            note_disc = ' (20% off 1ra compra)' if discount_percent else ''
+            opp.message_post(body=(
+                "Cotización <b>%s</b> actualizada por Claudio: $%s%s. "
+                "Pendiente de confirmación." % (
+                    order.name, '{:,.0f}'.format(order.amount_total), note_disc)))
+        except Exception:
+            pass
+
+        # 4) Mínimo de compra (piso duro + upsell)
+        total = order.amount_total
+        line_details = [{
+            'product': l.product_id.display_name,
+            'qty': l.product_uom_qty,
+            'price_unit': l.price_unit,
+            'subtotal': l.price_subtotal,
+        } for l in order.order_line]
+
+        if total < self.COMPRA_PISO:
+            return {
+                "ok": False,
+                "blocked_min_compra": True,
+                "order_id": order.id,
+                "total_amount": total,
+                "needs_upsell": True,
+                "sin_stock": sin_stock or None,
+                "problems": problems or None,
+                "lines": line_details,
+                "message_for_bot": (
+                    f"El total va ${total:,.0f}, por debajo del PISO de "
+                    f"${self.COMPRA_PISO:,.0f}. NO se puede cotizar ni enviar por "
+                    f"menos. Comunicá que la compra mínima es ${self.COMPRA_MIN:,.0f} "
+                    f"y hacé UPSELL (sumá productos) para llegar. Cuando supere el "
+                    f"piso, volvé a llamar create_sale_order con la lista completa."),
+            }
+
+        upsell = None
+        if total < self.COMPRA_MIN:
+            falta = self.COMPRA_MIN - total
+            upsell = (
+                f"El total va ${total:,.0f}. La compra mínima es ${self.COMPRA_MIN:,.0f} "
+                f"(faltan ${falta:,.0f}). COMUNICÁ el mínimo y hacé UPSELL para llegar "
+                f"a ${self.COMPRA_MIN:,.0f}. Si el cliente no quiere sumar, se puede "
+                f"enviar igual (supera el piso de ${self.COMPRA_PISO:,.0f}).")
 
         return {
             "ok": True,
@@ -235,13 +294,16 @@ class CreateSaleOrder(AgentTool):
             "pricelist": pricelist.name,
             "total_amount": order.amount_total,
             "currency": order.currency_id.name,
-            "opportunity_id": opp_id,
+            "opportunity_id": opp.id,
+            "reused_draft": reused,
             "lines": line_details,
+            "sin_stock": sin_stock or None,
+            "upsell": upsell,
             "problems": problems if problems else None,
             "summary": (
-                f"Cotización {order.name} (draft) para {partner.name}, "
-                f"colgada de la oportunidad #{opp_id}. "
-                f"Total: ${order.amount_total:,.2f}. "
-                f"Pasale el order_id={order.id} a generate_quote_pdf para mandar el PDF."
-            ),
+                f"Cotización {order.name} ({'actualizada' if reused else 'nueva'}, draft) "
+                f"para {partner.name}. Total: ${order.amount_total:,.2f}. "
+                f"{'⚠️ UPSELL: ' + upsell if upsell else ''} "
+                f"{'⚠️ SIN STOCK: ' + ', '.join(sin_stock) if sin_stock else ''} "
+                f"Pasale order_id={order.id} a generate_quote_pdf."),
         }

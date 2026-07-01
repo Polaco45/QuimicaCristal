@@ -346,7 +346,8 @@ class CristalAgentRun(models.Model):
             ('agent_managed', '=', True),
             ('agent_strategy_phase', '=', 'phase_2_quoted'),
         ])
-        CADENCE_DAYS_QUOTED = [1, 3, 7]
+        CADENCE_DAYS_QUOTED = [1, 3]   # seguimientos suaves
+        CANCEL_DAY = 7                 # +7 días sin confirmar → cancelar + reenganche
 
         for lead in leads:
             if not lead.partner_id:
@@ -363,16 +364,34 @@ class CristalAgentRun(models.Model):
                 if days_since < 1:
                     continue
                 memory = Memory.get_or_create(lead.partner_id)
+                if memory.is_takeover_active():
+                    continue
                 last = memory.last_cadence_step_executed
-                # Catch-up del backlog: si la cotización nunca tuvo seguimiento
-                # (last < 0), hacemos UN toque ahora aunque esté fuera de [1,3,7].
-                # Si ya arrancó la cadencia, seguimos el ritmo normal 1/3/7.
+
+                # +7 días sin confirmar: cancelar la(s) cotización(es) draft y
+                # mandar un último mensaje de reenganche. Marca 999 = ya cancelado.
+                if days_since >= CANCEL_DAY:
+                    if last == 999:
+                        continue
+                    orders = SaleOrder.search([
+                        ('opportunity_id', '=', lead.id), ('state', '=', 'draft')])
+                    try:
+                        if orders:
+                            orders.action_cancel()
+                    except Exception as e:
+                        _logger.warning("No se pudo cancelar cotización lead %s: %s", lead.id, e)
+                    dispatch_agent_for_cron(
+                        self.env, 'cron_cadence', lead.partner_id, 'cadence_step_quote_cancel',
+                        extra_context={'days_since_quote': days_since, 'lead_id': lead.id,
+                                       'cotizacion': order.name, 'total': order.amount_total})
+                    memory.last_cadence_step_executed = 999
+                    continue
+
+                # Catch-up del backlog (nunca seguido, last < 0) o seguimiento 1/3.
                 is_catchup = (last is None or last < 0)
                 if days_since not in CADENCE_DAYS_QUOTED and not is_catchup:
                     continue
                 if last == days_since:
-                    continue
-                if memory.is_takeover_active():
                     continue
                 dispatch_agent_for_cron(
                     self.env, 'cron_cadence', lead.partner_id, 'cadence_step_quoted',

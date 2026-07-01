@@ -63,16 +63,13 @@ class ScheduleActivity(AgentTool):
         except Exception:
             return {"error": f"Modelo {res_model} no existe"}
 
-        # Resolver user
-        if not user_id:
-            try:
-                rec = env[res_model].sudo().browse(int(res_id))
-                if hasattr(rec, 'user_id') and rec.user_id:
-                    user_id = rec.user_id.id
-            except Exception:
-                pass
-        if not user_id:
-            user_id = env.uid
+        # Resolver user — v1.21: las actividades del bot van SIEMPRE al bot
+        # (OdooBot), NUNCA a Joaco. Joaco no debe recibir actividades del agente.
+        config = env['cristal.agent.config'].sudo().get_active()
+        bot_uid = config.bot_user_id.id if config.bot_user_id else 1
+        owner_uid = config.owner_user_id.id if config.owner_user_id else 18
+        if not user_id or int(user_id) == owner_uid:
+            user_id = bot_uid
 
         deadline = date.today() + timedelta(days=int(deadline_offset_days or 0))
 

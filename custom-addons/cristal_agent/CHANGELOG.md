@@ -7,6 +7,31 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.21.0] — 2026-06-26
+
+### Fixed / Changed — Claudio máquina de vender: cotización, mínimos, stock, autonomía
+
+- **Cotización ÚNICA por cliente:** `create_sale_order` reusa el borrador abierto y
+  mergea líneas — nunca más varios presupuestos para el mismo cliente.
+- **Mínimo a granel 20L por producto, SIN excepción:** la tool rechaza líneas de
+  granel con menos de 20L.
+- **Mínimo de compra $50.000 con piso duro $39.990:** no se cotiza/envía por menos
+  de $39.990; entre 39.990 y 50.000 avisa `upsell` para empujar a 50k.
+- **Stock:** los productos de distribución/secos sin stock se marcan (`sin_stock`)
+  para ofrecer alternativa / escalar; los granel de fabricación siempre disponibles
+  (usa `is_storable`, compatible Odoo 18).
+- **Cadencia de cotización:** seguimientos días 1 y 3; a los **+7 días sin
+  confirmar la cotización se cancela sola** (`action_cancel`) y se manda un mensaje
+  de reenganche ("se canceló por el tiempo, ¿la reactivamos para no perder el 20%?").
+- **Actividades siempre al bot, NUNCA a Joaco** (`schedule_activity`).
+- **Prompt v4 reforzado:** cotización única, precisión de producto (líquido de
+  lampazo ≠ lampazo), stock → alternativa → escalar, mínimos + upsell, y
+  **autonomía total** (escalar solo problemas graves tipo "Flor Gramajo").
+
+Migración 1.21.0: recarga el prompt v4.
+
+---
+
 ## [18.0.1.20.0] — 2026-06-26
 
 ### Changed — Usuarios permitidos por plantilla de WhatsApp (según cuenta)

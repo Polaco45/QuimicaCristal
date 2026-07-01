@@ -522,6 +522,16 @@ def build_user_message_for_cron(env, partner, cron_type, extra_context=None):
                                "send_whatsapp_template con el template 'hola_mayorista_crm' y poné "
                                "el seguimiento en la variable de texto libre. Es AUTÓNOMO: NO "
                                "escales a Joaco por esto.",
+        'cadence_step_quote_cancel': "La cotización cumplió 7 días sin confirmar y el "
+                               "sistema YA la canceló. Mandale un último mensaje de reenganche, "
+                               "cordial y corto: contale que se canceló por el tiempo y preguntá "
+                               "si quiere confirmar el pedido o modificar algo para NO perder los "
+                               "beneficios (20% OFF de primera compra). Ej: 'Tu cotización se "
+                               "canceló por el tiempo transcurrido. ¿La reactivamos? Si confirmás "
+                               "o ajustás algo no perdés el 20% OFF de primera compra.' Si "
+                               "responde que sí, armá la cotización de nuevo (create_sale_order). "
+                               "Ventana cerrada → template 'hola_mayorista_crm'. AUTÓNOMO: NO "
+                               "escales a Joaco.",
         'level_change_up': "El cliente subió de nivel. Mandale el mensaje de felicitación con "
                            "los beneficios del nuevo nivel.",
         'level_change_down': "El cliente está por bajar de nivel (mes de gracia). Mandale el "
