@@ -7,6 +7,32 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.22.0] — 2026-07-02
+
+### Fixed — Calificación: no rebotar mayoristas reales
+
+Claudio derivaba a Compras a mayoristas claros (ej: "micro emprendimiento de
+limpieza"). Prompt reforzado: **micro-emprendimiento/emprendedor de limpieza =
+MAYORISTA** (atenderlo, no derivar); derivar a Compras SOLO si es empresa/institución
+para consumo propio de otro rubro; **ante la duda, PREGUNTAR — nunca derivar por
+las dudas** (rebotar un mayorista real = error grave).
+
+### Added — Operador por WhatsApp (reemplaza el chat interno)
+
+El canal interno de Odoo se reemplaza por el **WhatsApp de Joaco (3585481191)**:
+- **Saliente:** las escalaciones/urgencias/confirmaciones le llegan a Joaco por
+  WhatsApp con la plantilla `hola_mayorista_crm` (el canal interno queda como log
+  de respaldo).
+- **Entrante:** los mensajes DESDE el número de Joaco se tratan como **órdenes del
+  operador** (el bot obedece, ejecuta sobre los clientes y le responde por su
+  WhatsApp) — **NUNCA como cliente** (no le vende ni lo califica).
+- Config: `owner_whatsapp_number`, `owner_whatsapp_partner_id`,
+  `notify_owner_via_whatsapp`. Nuevo `dispatch_agent_for_owner_whatsapp`.
+
+Migración 1.22.0: recarga el prompt + resuelve/crea el partner operador.
+
+---
+
 ## [18.0.1.21.0] — 2026-06-26
 
 ### Fixed / Changed — Claudio máquina de vender: cotización, mínimos, stock, autonomía

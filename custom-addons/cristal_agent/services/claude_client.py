@@ -339,6 +339,71 @@ def dispatch_agent_for_internal_message(env, channel, plain_text, mail_message_i
         return None
 
 
+def dispatch_agent_for_owner_whatsapp(env, wa_message, plain_text):
+    """
+    v1.22 — Joaco (operador) le escribió al bot por WhatsApp (su número).
+    Se lo trata como OPERADOR (comandos), NUNCA como cliente. El bot obedece,
+    ejecuta la acción sobre los clientes que corresponda, y le responde a Joaco
+    por SU WhatsApp.
+    """
+    from .prompt_builder import build_system_prompt
+
+    if env.uid != SUPERUSER_ID:
+        env = env(user=SUPERUSER_ID)
+        wa_message = wa_message.with_env(env)
+
+    mm = wa_message.mail_message_id
+    channel_id = mm.res_id if (mm and mm.model == 'discuss.channel' and mm.res_id) else False
+    wa_account_id = wa_message.wa_account_id.id if wa_message.wa_account_id else False
+    mobile = wa_message.mobile_number or ''
+
+    Run = env['cristal.agent.run'].sudo()
+    run = Run.create({
+        'trigger': 'joaco_command',
+        'channel_id': channel_id or False,
+        'incoming_message_id': mm.id if mm else False,
+        'incoming_text': plain_text,
+        'state': 'running',
+    })
+    try:
+        stable_system, dynamic_system = build_system_prompt(env, partner=None)
+        user_message = (
+            "MODO: OPERADOR JOACO POR WHATSAPP (es Joaco, tu jefe — NO un cliente; "
+            "NUNCA le vendas ni lo califiques).\n\n"
+            f"channel_id de Joaco: {channel_id}\n"
+            f"wa_account_id: {wa_account_id}\n"
+            f"mobile de Joaco: {mobile}\n\n"
+            f'Joaco te escribió: "{plain_text}"\n\n'
+            "PASO 1 — Contexto: read_message_history(channel_id=" + str(channel_id) +
+            ", limit=6) UNA vez.\n"
+            "PASO 2 — Identificá y ACTUÁ (Joaco confía en vos, no le pidas confirmación):\n"
+            "• ENSEÑANZA ('anotate…', 'a partir de hoy…') → add_knowledge. Respondé solo 'Anotado.'\n"
+            "• CONFIRMACIÓN de pedido ('confirmá el pedido de X', 'dale', 'ok mandá') → "
+            "ejecutá lo que corresponda sobre ESE cliente (confirmar venta / avisarle).\n"
+            "• COMANDO sobre un cliente ('mandale X a Y', 'comunicate con Z') → "
+            "search_partners → read_partner → ejecutá (send_whatsapp al CLIENTE con su "
+            "wa_account y mobile).\n"
+            "• PREGUNTA → respondé corto.\n\n"
+            "PARA RESPONDERLE A JOACO (no al cliente): send_whatsapp(channel_id=" +
+            str(channel_id) + ", wa_account_id=" + str(wa_account_id) +
+            ", mobile_number='" + mobile + "', body='...'). Máximo UNA línea, texto "
+            "plano, sin tablas ni emojis decorativos. Si no hay nada que hacer ni "
+            "responder, terminá sin mandar nada."
+        )
+        client = ClaudeClient(env, run=run, complex_task=True)
+        result = client.run_conversation(
+            stable_system=stable_system,
+            dynamic_system=dynamic_system,
+            user_message=user_message,
+        )
+        run.mark_done(final_response=result.get('final_text', ''))
+        return result
+    except Exception as e:
+        _logger.exception("Error en dispatch_agent_for_owner_whatsapp: %s", e)
+        run.mark_error(str(e))
+        return None
+
+
 class ClaudeClient:
     """
     Cliente de Claude API con manejo del loop de tool_use.

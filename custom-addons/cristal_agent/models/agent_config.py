@@ -233,8 +233,41 @@ class CristalAgentConfig(models.Model):
     internal_channel_id = fields.Many2one(
         'discuss.channel',
         string="Canal interno Joaco↔Claudio",
-        help="Canal donde se postean escalaciones. Por defecto: id 969.",
+        help="Canal donde se postean escalaciones (log de respaldo). Por defecto: id 969.",
     )
+
+    # ─────────── Operador por WhatsApp (v1.22) ───────────
+    # El canal interno de Odoo se reemplaza por el WhatsApp de Joaco: las
+    # urgencias/confirmaciones le llegan a su número, y sus mensajes DESDE ese
+    # número se tratan como órdenes del operador (no como cliente).
+    owner_whatsapp_number = fields.Char(
+        string="WhatsApp del operador (Joaco)",
+        default="3585481191",
+        help="Número de WhatsApp de Joaco. Los mensajes DESDE este número se "
+             "tratan como órdenes del operador (no cliente). Las urgencias y "
+             "confirmaciones se le mandan acá.",
+    )
+    owner_whatsapp_partner_id = fields.Many2one(
+        'res.partner',
+        string="Partner del operador (Joaco WA)",
+        help="Partner que representa el WhatsApp de Joaco (para mandarle "
+             "notificaciones con la plantilla). Lo resuelve/crea la migración.",
+    )
+    notify_owner_via_whatsapp = fields.Boolean(
+        string="Notificar a Joaco por WhatsApp",
+        default=True,
+        help="Si está ON, las escalaciones/urgencias le llegan a Joaco por "
+             "WhatsApp (además del canal interno de respaldo).",
+    )
+
+    @api.model
+    def get_owner_whatsapp_digits(self):
+        """Devuelve los dígitos del número del operador (sin +54/9/formato)."""
+        config = self.get_active()
+        raw = config.owner_whatsapp_number or ''
+        digits = ''.join(ch for ch in raw if ch.isdigit())
+        # Quedarnos con los últimos 10 (número local sin país ni 9)
+        return digits[-10:] if len(digits) >= 10 else digits
 
     # ─────────── Mapping fase agente → stage CRM ───────────
     # Cuando el agente actualiza agent_strategy_phase de un lead, el módulo

@@ -134,8 +134,36 @@ class EscalateToJoaco(AgentTool):
             except Exception:
                 pass
 
+        # v1.22 — además del canal interno (log de respaldo), notificar a Joaco
+        # por WhatsApp para que responda desde ahí (canal de operador).
+        wa_ok = False
+        if getattr(config, 'notify_owner_via_whatsapp', False):
+            try:
+                wa_ok = self._notify_owner_whatsapp(env, config, message)
+            except Exception as e:
+                _logger.warning("No se pudo notificar a Joaco por WhatsApp: %s", e)
+
         return {
             "ok": True,
             "channel_id": internal_channel.id,
-            "summary": f"Escalado a Joaco en canal {internal_channel.name}",
+            "notified_whatsapp": wa_ok,
+            "summary": f"Escalado a Joaco (canal interno{' + WhatsApp' if wa_ok else ''})",
         }
+
+    def _notify_owner_whatsapp(self, env, config, message):
+        """Manda la plantilla 'hola_mayorista_crm' al WhatsApp de Joaco con el
+        mensaje como texto libre, para que responda desde ahí. Devuelve True si OK."""
+        import re as _re
+        partner = config.owner_whatsapp_partner_id
+        if not partner:
+            return False
+        txt = _re.sub(r'<[^>]+>', '', message or '').strip()
+        if not txt:
+            return False
+        # El template 'hola_mayorista_crm' tiene 2 variables: {{1}} nombre, {{2}} texto.
+        first_name = (partner.name or 'Joaco').split()[0]
+        from .send_whatsapp_template import SendWhatsappTemplate
+        res = SendWhatsappTemplate()._execute(
+            env, partner_id=partner.id, template_name='hola_mayorista_crm',
+            variables=[first_name, txt[:900]])
+        return bool(res and res.get('ok'))

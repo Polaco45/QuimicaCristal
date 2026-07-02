@@ -81,6 +81,21 @@ class WhatsAppMessage(models.Model):
             _logger.info("⏸️  Agente deshabilitado (config). Ignorando mensaje %s.", wa_message.id)
             return
 
+        # 3.05) v1.22 — ¿Es JOACO (operador) escribiéndole por WhatsApp?
+        # Su número NO es un cliente: sus mensajes son órdenes del operador. Lo
+        # mandamos al flujo interno (el bot le obedece y le responde por WA), y
+        # NUNCA lo tratamos como cliente al que venderle.
+        try:
+            owner_digits = config.get_owner_whatsapp_digits()
+        except Exception:
+            owner_digits = ''
+        if owner_digits and owner_digits in re.sub(r'\D', '', phone_raw or ''):
+            if plain_body:
+                from ..services.claude_client import dispatch_agent_for_owner_whatsapp
+                dispatch_agent_for_owner_whatsapp(self.env, wa_message, plain_body)
+                _logger.info("🧑‍💼 Mensaje de Joaco (operador) procesado por WhatsApp.")
+            return
+
         # 3.1) v1.13/v1.14 — ¿Es una nota de voz? (sin texto pero con audio adjunto).
         # La API de Claude no entiende audio. ⚠️ NO transcribimos acá: la llamada
         # HTTP a OpenAI NUNCA debe correr dentro del webhook (bloquearía la
