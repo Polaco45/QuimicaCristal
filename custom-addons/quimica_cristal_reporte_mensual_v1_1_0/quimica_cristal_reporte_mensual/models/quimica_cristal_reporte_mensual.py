@@ -797,6 +797,62 @@ class QuimicaCristalReporteMensual(models.Model):
             'sent_email': email,
         })
 
+    def action_resend_apology(self):
+        """Reenvía el reporte con una disculpa y el PDF adjunto.
+
+        Pensado para corregir un envío previo que salió con errores (sin PDF
+        o con campos sin renderizar por una plantilla congelada). Corre sobre
+        reportes ya generados; si alguno está en borrador, lo genera. Se
+        dispara desde la acción contextual "Reenviar con disculpas (PDF)"
+        seleccionando los reportes del período afectado.
+        """
+        template = self.env.ref(
+            'quimica_cristal_reporte_mensual.mail_template_reporte_mensual_apology',
+            raise_if_not_found=False,
+        )
+        enviados = 0
+        for rec in self:
+            if rec.state == 'draft':
+                rec._do_generate()
+
+            # Email destino: reusar el ya usado, si no el del cliente/sub-contacto
+            email = rec.sent_email or rec.partner_id.email
+            if not email:
+                contact = rec.env['res.partner'].search([
+                    ('parent_id', '=', rec.partner_id.id),
+                    ('email', '!=', False),
+                ], limit=1)
+                email = contact.email if contact else False
+            if not email:
+                _logger.warning(
+                    '[Reenvío disculpas] %s sin email, salteo', rec.partner_id.name
+                )
+                continue
+
+            pdf_attachment = rec._generate_pdf_attachment()
+            if template:
+                template.with_context(
+                    attachment_ids=[pdf_attachment.id],
+                ).send_mail(rec.id, force_send=True)
+            else:
+                rec.env['mail.mail'].create({
+                    'subject': f'Corrección · Reporte mensual · {rec.get_mes_nombre()} {rec.period_year} · Quimica Cristal',
+                    'email_to': email,
+                    'reply_to': 'catchall@quimicacristal.com.ar',
+                    'body_html': rec._get_default_body_html(),
+                    'attachment_ids': [(4, pdf_attachment.id)],
+                }).send()
+
+            rec.write({
+                'state': 'sent',
+                'sent_date': fields.Datetime.now(),
+                'sent_email': email,
+            })
+            enviados += 1
+
+        _logger.info('[Reenvío disculpas] %s reportes reenviados', enviados)
+        return True
+
     def _get_default_body_html(self):
         mes_nombre = MESES_ES.get(self.period_month, '')
         return f"""

@@ -1,11 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <data noupdate="1">
+    <!-- noupdate="0": el template es "source of truth" en el código. Al
+         actualizar el módulo se re-aplica, así el reply_to y los fixes quedan
+         sí o sí en la base aunque el registro ya exista (antes con noupdate=1
+         la plantilla quedaba congelada con la versión vieja). -->
+    <data noupdate="0">
         <record id="mail_template_reporte_mensual" model="mail.template">
             <field name="name">Quimica Cristal · Reporte Mensual Plan Control</field>
             <field name="model_id" ref="model_quimica_cristal_reporte_mensual"/>
             <field name="subject">Reporte mensual de consumo · {{ object.get_mes_nombre() }} {{ object.period_year }} · Quimica Cristal</field>
             <field name="email_from">cristal@quimicacristal.com.ar</field>
+            <field name="reply_to">catchall@quimicacristal.com.ar</field>
             <field name="partner_to">{{ object.partner_id.id }}</field>
             <field name="body_html" type="html">
 <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #1a1a1a;">
@@ -79,6 +84,82 @@
 </div>
             </field>
             <field name="auto_delete" eval="False"/>
+        </record>
+
+        <!-- ============================================================ -->
+        <!-- TEMPLATE DE REENVÍO CON DISCULPAS                             -->
+        <!-- Igual al principal, con un banner de disculpa arriba. Se usa  -->
+        <!-- para reenviar a quienes el envío anterior les llegó con error -->
+        <!-- (sin PDF / campos sin renderizar).                            -->
+        <!-- ============================================================ -->
+        <record id="mail_template_reporte_mensual_apology" model="mail.template">
+            <field name="name">Quimica Cristal · Reporte Mensual · Reenvío con disculpas</field>
+            <field name="model_id" ref="model_quimica_cristal_reporte_mensual"/>
+            <field name="subject">Corrección · Reporte mensual de consumo · {{ object.get_mes_nombre() }} {{ object.period_year }} · Quimica Cristal</field>
+            <field name="email_from">cristal@quimicacristal.com.ar</field>
+            <field name="reply_to">catchall@quimicacristal.com.ar</field>
+            <field name="partner_to">{{ object.partner_id.id }}</field>
+            <field name="body_html" type="html">
+<div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #1a1a1a;">
+    <div style="background: linear-gradient(135deg, #1a1a1a 0%, #2a2a2a 100%); color: #fff; padding: 20px 24px; border-radius: 6px 6px 0 0;">
+        <div style="font-size: 13px; letter-spacing: 0.15em; color: #ee7b1f; font-weight: 700;">QUIMICA CRISTAL</div>
+        <div style="font-size: 11px; color: #ccc; margin-top: 2px;">Limpieza profesional · Río Cuarto</div>
+    </div>
+    <div style="background: #fff; padding: 24px; border: 1px solid #e5e5e5; border-top: 0;">
+        <div style="background: #fff4e5; border-left: 4px solid #ee7b1f; padding: 12px 16px; margin-bottom: 16px; font-size: 13px; color: #8a4b00; border-radius: 0 4px 4px 0;">
+            <b>Disculpá la molestia.</b> Nuestro envío anterior de este reporte salió con un error de formato y sin el archivo adjunto. Este es el reporte correcto, ahora sí con el PDF.
+        </div>
+        <h2 style="font-size: 18px; color: #1a1a1a; margin: 0 0 12px 0; font-weight: 800;">
+            Tu reporte de <span style="color: #ee7b1f;">{{ object.get_mes_nombre() }} {{ object.period_year }}</span>
+        </h2>
+        <p style="font-size: 14px; color: #444; line-height: 1.5; margin-bottom: 16px;">
+            Hola,<br/><br/>
+            Reenviamos tu reporte mensual de consumo correspondiente a <b>{{ object.partner_id.name }}</b>.
+        </p>
+        <div style="background: #fef3e8; border-left: 4px solid #ee7b1f; padding: 14px 16px; margin: 16px 0; border-radius: 0 4px 4px 0;">
+            <div style="font-size: 11px; color: #888; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 700; margin-bottom: 4px;">
+                Total del mes (con IVA)
+            </div>
+            <div style="font-size: 22px; font-weight: 800; color: #1a1a1a;">
+                $<t t-out="'{:,.0f}'.format(object.amount_total).replace(',', '.')"/>
+            </div>
+            <div style="font-size: 12px; color: #666; margin-top: 4px;">
+                <t t-out="object.pedidos"/> pedido<t t-if="object.pedidos != 1">s</t>
+                <t t-if="object.notas_credito">
+                    · <t t-out="object.notas_credito"/> nota<t t-if="object.notas_credito != 1">s</t> de crédito restadas
+                </t>
+            </div>
+        </div>
+        <p style="font-size: 13px; color: #555; line-height: 1.5;">
+            En el <b>PDF adjunto</b> vas a encontrar el detalle por producto, el gasto por categoría (Líquidos, Papeles, Bolsas, Accesorios, Varios) y la tendencia de los últimos 4 meses.
+        </p>
+        <p style="font-size: 13px; color: #555; line-height: 1.5; margin-top: 20px;">
+            Cualquier consulta, escribinos al WhatsApp:
+        </p>
+        <div style="text-align: center; margin: 16px 0;">
+            <a href="https://wa.me/543585481199"
+               style="background: #25d366; color: #fff; padding: 12px 28px; text-decoration: none; border-radius: 6px; font-weight: 700; font-size: 14px; display: inline-block;">
+                WhatsApp 358 548 1199
+            </a>
+        </div>
+    </div>
+    <div style="background: #1a1a1a; color: #999; padding: 14px 20px; border-radius: 0 0 6px 6px; font-size: 11px; text-align: center;">
+        <div style="color: #fff; font-weight: 700;">Quimica Cristal · Limpieza profesional</div>
+        <div style="margin-top: 4px;">Río Cuarto, Córdoba · cristal@quimicacristal.com.ar</div>
+    </div>
+</div>
+            </field>
+            <field name="auto_delete" eval="False"/>
+        </record>
+
+        <!-- Acción contextual: seleccionar reportes y reenviar con disculpas + PDF -->
+        <record id="action_resend_apology_server" model="ir.actions.server">
+            <field name="name">Reenviar con disculpas (PDF)</field>
+            <field name="model_id" ref="model_quimica_cristal_reporte_mensual"/>
+            <field name="binding_model_id" ref="model_quimica_cristal_reporte_mensual"/>
+            <field name="binding_type">action</field>
+            <field name="state">code</field>
+            <field name="code">records.action_resend_apology()</field>
         </record>
     </data>
 </odoo>
