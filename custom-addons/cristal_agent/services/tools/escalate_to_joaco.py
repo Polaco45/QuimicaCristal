@@ -160,10 +160,12 @@ class EscalateToJoaco(AgentTool):
         txt = _re.sub(r'<[^>]+>', '', message or '').strip()
         if not txt:
             return False
-        # El template 'hola_mayorista_crm' tiene 2 variables: {{1}} nombre, {{2}} texto.
-        first_name = (partner.name or 'Joaco').split()[0]
+        # El template 'hola_mayorista_crm' tiene {{1}} = nombre (campo automático del
+        # partner) y {{2}} = UN solo texto libre. Por eso se pasa UNA sola variable
+        # (el mensaje). Pasar dos hacía que el nombre cayera en {{2}} y el mensaje se
+        # perdía → llegaban vacíos.
         from .send_whatsapp_template import SendWhatsappTemplate
         res = SendWhatsappTemplate()._execute(
             env, partner_id=partner.id, template_name='hola_mayorista_crm',
-            variables=[first_name, txt[:900]])
+            variables=[txt[:900]])
         return bool(res and res.get('ok'))

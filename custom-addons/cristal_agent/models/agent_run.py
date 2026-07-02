@@ -349,8 +349,15 @@ class CristalAgentRun(models.Model):
         CADENCE_DAYS_QUOTED = [1, 3]   # seguimientos suaves
         CANCEL_DAY = 7                 # +7 días sin confirmar → cancelar + reenganche
 
+        # El partner operador (WhatsApp de Joaco) NO es un cliente: nunca le
+        # mandamos cadencias aunque tenga una opp/cotización histórica.
+        cfg = self.env['cristal.agent.config'].sudo().get_active()
+        op_pid = cfg.owner_whatsapp_partner_id.id if cfg.owner_whatsapp_partner_id else None
+
         for lead in leads:
             if not lead.partner_id:
+                continue
+            if op_pid and lead.partner_id.id == op_pid:
                 continue
             try:
                 # Referencia: la última cotización (sale.order) colgada de la opp.
@@ -837,6 +844,10 @@ class CristalAgentRun(models.Model):
         ]
         if fuera_zona_tag:
             domain.append(('category_id', 'not in', [fuera_zona_tag.id]))
+        # Nunca al partner operador (WhatsApp de Joaco): no es cliente.
+        _cfg = self.env['cristal.agent.config'].sudo().get_active()
+        if _cfg.owner_whatsapp_partner_id:
+            domain.append(('id', '!=', _cfg.owner_whatsapp_partner_id.id))
         partners = self.env['res.partner'].sudo().search(domain)
 
         if not partners:

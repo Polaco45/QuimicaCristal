@@ -7,6 +7,33 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.24.0] — 2026-07-02
+
+### Fixed — Notificaciones al operador llegaban VACÍAS
+
+La plantilla `hola_mayorista_crm` tiene `{{1}}` = nombre (campo automático) y
+`{{2}}` = UN solo texto libre. `escalate_to_joaco` pasaba DOS variables, así que
+el nombre caía en `{{2}}` y el mensaje real se perdía → a Joaco le llegaban avisos
+vacíos ("Hola Carlos Ramello. Como estas? Carlos -"). Ahora pasa **una** variable
+(el mensaje), igual que la cadencia.
+
+### Fixed — El bot no podía sacar un producto de la cotización
+
+No existía forma de quitar una línea de un presupuesto (solo agregar/mergear), así
+que ante "sacame el desengrasante" el bot quedaba trabado. Nueva tool
+**`remove_quote_product`**: quita el producto del draft del cliente, recalcula el
+total y avisa si queda por debajo del mínimo.
+
+### Fixed — El número operador ya no recibe cadencias/ofertas de cliente
+
+El partner operador (WhatsApp de Joaco) se excluye de `cron_cadence_quoted` y del
+broadcast de ofertas: aunque tenga una opp/cotización histórica, nunca se le manda
+comunicación de cliente.
+
+Migración 1.24.0: recarga el prompt (nueva tool).
+
+---
+
 ## [18.0.1.23.0] — 2026-07-02
 
 ### Added — Nombre en los chats de WhatsApp (no el número)
