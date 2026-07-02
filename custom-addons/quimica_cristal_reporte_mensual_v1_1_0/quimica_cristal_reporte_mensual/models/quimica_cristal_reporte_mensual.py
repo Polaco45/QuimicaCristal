@@ -769,27 +769,22 @@ class QuimicaCristalReporteMensual(models.Model):
                 'ficha del cliente antes de enviar.'
             ) % self.partner_id.name)
 
-        # Generar PDF y adjuntar
+        # Generar PDF y armar el mail DIRECTO.
+        # Importante: NO usamos template.send_mail() con attachment_ids en el
+        # contexto (send_mail lo ignora → el PDF nunca se adjunta) ni dependemos
+        # del render {{ }} de mail.template (en esta instancia salía literal).
+        # Construimos el cuerpo ya renderizado en Python y adjuntamos el PDF vía
+        # attachment_ids del mail.mail, que sí funciona.
         pdf_attachment = self._generate_pdf_attachment()
-
-        # Disparar mail template
-        template = self.env.ref(
-            'quimica_cristal_reporte_mensual.mail_template_reporte_mensual',
-            raise_if_not_found=False,
-        )
-        if template:
-            template.with_context(
-                attachment_ids=[pdf_attachment.id],
-            ).send_mail(self.id, force_send=True)
-        else:
-            # Fallback manual si no existe el template
-            mes_nombre = MESES_ES.get(self.period_month, '')
-            self.env['mail.mail'].create({
-                'subject': f'Reporte mensual de consumo - {mes_nombre} {self.period_year} - Quimica Cristal',
-                'email_to': email,
-                'body_html': self._get_default_body_html(),
-                'attachment_ids': [(4, pdf_attachment.id)],
-            }).send()
+        mes_nombre = self.get_mes_nombre()
+        self.env['mail.mail'].create({
+            'subject': f'Reporte mensual de consumo · {mes_nombre} {self.period_year} · Quimica Cristal',
+            'email_from': 'cristal@quimicacristal.com.ar',
+            'reply_to': 'catchall@quimicacristal.com.ar',
+            'email_to': email,
+            'body_html': self._build_report_email_html(apology=False),
+            'attachment_ids': [(4, pdf_attachment.id)],
+        }).send()
 
         self.write({
             'state': 'sent',
@@ -806,10 +801,6 @@ class QuimicaCristalReporteMensual(models.Model):
         dispara desde la acción contextual "Reenviar con disculpas (PDF)"
         seleccionando los reportes del período afectado.
         """
-        template = self.env.ref(
-            'quimica_cristal_reporte_mensual.mail_template_reporte_mensual_apology',
-            raise_if_not_found=False,
-        )
         enviados = 0
         for rec in self:
             if rec.state == 'draft':
@@ -829,19 +820,18 @@ class QuimicaCristalReporteMensual(models.Model):
                 )
                 continue
 
+            # Mismo criterio que el envío principal: cuerpo en Python + PDF
+            # adjunto directo por mail.mail (sin render de plantilla).
             pdf_attachment = rec._generate_pdf_attachment()
-            if template:
-                template.with_context(
-                    attachment_ids=[pdf_attachment.id],
-                ).send_mail(rec.id, force_send=True)
-            else:
-                rec.env['mail.mail'].create({
-                    'subject': f'Corrección · Reporte mensual · {rec.get_mes_nombre()} {rec.period_year} · Quimica Cristal',
-                    'email_to': email,
-                    'reply_to': 'catchall@quimicacristal.com.ar',
-                    'body_html': rec._get_default_body_html(),
-                    'attachment_ids': [(4, pdf_attachment.id)],
-                }).send()
+            mes_nombre = rec.get_mes_nombre()
+            rec.env['mail.mail'].create({
+                'subject': f'Corrección · Reporte mensual de consumo · {mes_nombre} {rec.period_year} · Quimica Cristal',
+                'email_from': 'cristal@quimicacristal.com.ar',
+                'reply_to': 'catchall@quimicacristal.com.ar',
+                'email_to': email,
+                'body_html': rec._build_report_email_html(apology=True),
+                'attachment_ids': [(4, pdf_attachment.id)],
+            }).send()
 
             rec.write({
                 'state': 'sent',
@@ -853,15 +843,70 @@ class QuimicaCristalReporteMensual(models.Model):
         _logger.info('[Reenvío disculpas] %s reportes reenviados', enviados)
         return True
 
-    def _get_default_body_html(self):
-        mes_nombre = MESES_ES.get(self.period_month, '')
-        return f"""
-        <p>Hola,</p>
-        <p>Adjuntamos el reporte mensual de consumo de <b>{mes_nombre} {self.period_year}</b>
-        correspondiente a <b>{self.partner_id.name}</b>.</p>
-        <p>Cualquier consulta, escribinos al WhatsApp 358 548 1199.</p>
-        <p><i>Quimica Cristal · Limpieza profesional · Río Cuarto, Córdoba</i></p>
+    def _build_report_email_html(self, apology=False):
+        """Arma el HTML del email con los valores YA sustituidos (sin {{ }}).
+
+        Se construye en Python a propósito: el render {{ }} de mail.template
+        resultó poco confiable en esta instancia (salía literal). Generamos el
+        cuerpo acá y se envía tal cual por mail.mail, así el cliente ve el mes,
+        el nombre y el monto correctos, y el PDF va adjunto.
         """
+        self.ensure_one()
+        mes = self.get_mes_nombre()
+        anio = self.period_year
+        cliente = self.partner_id.name or ''
+        total_fmt = '{:,.0f}'.format(self.amount_total or 0).replace(',', '.')
+        pedidos = self.pedidos or 0
+        ped_txt = f"{pedidos} pedido" + ("s" if pedidos != 1 else "")
+        if self.notas_credito:
+            nc = self.notas_credito
+            ped_txt += f" · {nc} nota" + ("s" if nc != 1 else "") + " de crédito restadas"
+
+        banner = ""
+        if apology:
+            banner = (
+                '<div style="background:#fff4e5;border-left:4px solid #ee7b1f;'
+                'padding:12px 16px;margin-bottom:16px;font-size:13px;color:#8a4b00;'
+                'border-radius:0 4px 4px 0"><b>Disculpá la molestia.</b> Nuestro '
+                'envío anterior de este reporte salió con un error de formato y sin '
+                'el archivo adjunto. Este es el reporte correcto, ahora sí con el PDF.</div>'
+            )
+
+        return f"""<div style="font-family:'Helvetica Neue',Arial,sans-serif;max-width:600px;margin:0 auto;color:#1a1a1a">
+    <div style="background:linear-gradient(135deg,#1a1a1a 0%,#2a2a2a 100%);color:#fff;padding:20px 24px;border-radius:6px 6px 0 0">
+        <div style="font-size:13px;letter-spacing:0.15em;color:#ee7b1f;font-weight:700">QUIMICA CRISTAL</div>
+        <div style="font-size:11px;color:#ccc;margin-top:2px">Limpieza profesional · Río Cuarto</div>
+    </div>
+    <div style="background:#fff;padding:24px;border:1px solid #e5e5e5;border-top:0">
+        {banner}
+        <h2 style="font-size:18px;color:#1a1a1a;margin:0 0 12px 0;font-weight:800">
+            Tu reporte de <span style="color:#ee7b1f">{mes} {anio}</span>
+        </h2>
+        <p style="font-size:14px;color:#444;line-height:1.5;margin-bottom:16px">
+            Hola,<br/><br/>
+            Te enviamos tu reporte mensual de consumo correspondiente a <b>{cliente}</b>.
+        </p>
+        <div style="background:#fef3e8;border-left:4px solid #ee7b1f;padding:14px 16px;margin:16px 0;border-radius:0 4px 4px 0">
+            <div style="font-size:11px;color:#888;letter-spacing:0.1em;text-transform:uppercase;font-weight:700;margin-bottom:4px">Total del mes (con IVA)</div>
+            <div style="font-size:22px;font-weight:800;color:#1a1a1a">${total_fmt}</div>
+            <div style="font-size:12px;color:#666;margin-top:4px">{ped_txt}</div>
+        </div>
+        <p style="font-size:13px;color:#555;line-height:1.5">En el <b>PDF adjunto</b> vas a encontrar:</p>
+        <ul style="font-size:13px;color:#555;line-height:1.6;padding-left:20px">
+            <li>Detalle por producto, con cantidad y porcentaje del mes</li>
+            <li>Gasto por categoría: Líquidos, Papeles, Bolsas (más Accesorios y Varios)</li>
+            <li>Tendencia de los últimos 4 meses</li>
+        </ul>
+        <p style="font-size:13px;color:#555;line-height:1.5;margin-top:20px">Cualquier consulta, escribinos al WhatsApp:</p>
+        <div style="text-align:center;margin:16px 0">
+            <a href="https://wa.me/543585481199" style="background:#25d366;color:#fff;padding:12px 28px;text-decoration:none;border-radius:6px;font-weight:700;font-size:14px;display:inline-block">WhatsApp 358 548 1199</a>
+        </div>
+    </div>
+    <div style="background:#1a1a1a;color:#999;padding:14px 20px;border-radius:0 0 6px 6px;font-size:11px;text-align:center">
+        <div style="color:#fff;font-weight:700">Quimica Cristal · Limpieza profesional</div>
+        <div style="margin-top:4px">Río Cuarto, Córdoba · cristal@quimicacristal.com.ar</div>
+    </div>
+</div>"""
 
     def _generate_pdf_attachment(self):
         """Genera el PDF del reporte y lo devuelve como ir.attachment."""
