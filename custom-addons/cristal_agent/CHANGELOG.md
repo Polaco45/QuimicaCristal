@@ -7,6 +7,18 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.25.0] — 2026-07-02
+
+### Fixed — Las notificaciones al operador quedaban en "sent" (no llegaban)
+
+El partner operador había quedado resuelto con el número SIN el 9
+(`+543585481191`). Meta acepta esos envíos ("sent") pero NO los entrega. El
+WhatsApp real de Joaco es `+5493585481191` (con 9, partner "Joaco Ramello").
+Migración 1.25.0: re-resuelve el operador prefiriendo el número CON el 9, así los
+avisos se entregan de verdad. (En producción ya se corrigió en caliente.)
+
+---
+
 ## [18.0.1.24.0] — 2026-07-02
 
 ### Fixed — Notificaciones al operador llegaban VACÍAS
