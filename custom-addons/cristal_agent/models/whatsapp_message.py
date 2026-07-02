@@ -137,6 +137,15 @@ class WhatsAppMessage(models.Model):
             _logger.warning("No se pudo identificar partner para mensaje %s", wa_message.id)
             return
 
+        # 4.5) v1.23 — Ponerle NOMBRE al chat de WhatsApp (no el número).
+        # Odoo crea el canal con el número como nombre, pero el nombre real del
+        # contacto (perfil de WhatsApp) ya está en whatsapp_partner_id. Lo
+        # copiamos al nombre del canal para que Joaco lo identifique de un vistazo.
+        try:
+            self._sync_whatsapp_channel_name(wa_message)
+        except Exception as e:
+            _logger.warning("No se pudo renombrar el canal de WhatsApp: %s", e)
+
         # 5) Obtener / crear memoria
         Memory = self.env['cristal.agent.memory'].sudo()
         memory = Memory.get_or_create(partner)
@@ -319,6 +328,33 @@ class WhatsAppMessage(models.Model):
             _logger.info("📣 Notificación de bypass enviada a canal %s", JOACO_INTERNAL_CHANNEL)
         except Exception as e:
             _logger.exception("Error notificando bypass institucional: %s", e)
+
+    @staticmethod
+    def _looks_like_bare_number(txt):
+        """True si el texto es solo un número (con +, espacios o guiones)."""
+        if not txt:
+            return True
+        cleaned = re.sub(r'[\s\-\+()]', '', txt)
+        return cleaned.isdigit()
+
+    def _sync_whatsapp_channel_name(self, wa_message):
+        """Renombra el canal de WhatsApp para que muestre el NOMBRE del contacto
+        (perfil de WhatsApp) en vez del número. Idempotente y barato."""
+        mm = wa_message.mail_message_id
+        if not (mm and mm.model == 'discuss.channel' and mm.res_id):
+            return
+        channel = self.env['discuss.channel'].sudo().browse(mm.res_id)
+        if not channel.exists():
+            return
+        # Nombre real: el del perfil de WhatsApp (whatsapp_partner_id). Si es un
+        # número o está vacío, no tenemos con qué mejorar → dejamos el canal como está.
+        wa_partner = getattr(channel, 'whatsapp_partner_id', False)
+        real_name = (wa_partner.name or '').strip() if wa_partner else ''
+        if not real_name or self._looks_like_bare_number(real_name):
+            return
+        if (channel.name or '').strip() != real_name:
+            channel.write({'name': real_name})
+            _logger.info("🏷️  Canal WhatsApp %s renombrado a '%s'", channel.id, real_name)
 
     def _find_or_create_partner(self, phone_raw):
         """

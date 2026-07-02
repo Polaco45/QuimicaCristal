@@ -7,6 +7,20 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.23.0] — 2026-07-02
+
+### Added — Nombre en los chats de WhatsApp (no el número)
+
+Los chats de WhatsApp mostraban el número (ej: `5493585734625`). Ahora muestran
+el **nombre del contacto** (perfil de WhatsApp, ya guardado en `whatsapp_partner_id`):
+- **En vivo:** cada mensaje entrante sincroniza el nombre del canal con el nombre
+  real del contacto (`_sync_whatsapp_channel_name`, idempotente).
+- **Backfill:** migración 1.23.0 renombra todos los chats existentes (~1600).
+
+Si el contacto no tiene nombre de perfil (solo número), el chat queda con el número.
+
+---
+
 ## [18.0.1.22.0] — 2026-07-02
 
 ### Fixed — Calificación: no rebotar mayoristas reales
