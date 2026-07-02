@@ -7,6 +7,16 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.27.0] — 2026-07-02
+
+### Fixed — Combo Emprendedor: base 500cc → 1 lt
+
+La línea del Combo Emprendedor que usaba la variante "Base Limpiador Desodorante
+(1+80) Arpege, **500cc**" pasa a la de **1 litro** (decisión de Joaco). Migración
+1.27.0 hace el swap (el modelo del combo no está expuesto al conector MCP).
+
+---
+
 ## [18.0.1.26.0] — 2026-07-02
 
 ### Fixed — A Joaco no le llegaban los avisos (spam de escalaciones)
