@@ -7,6 +7,30 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.26.0] — 2026-07-02
+
+### Fixed — A Joaco no le llegaban los avisos (spam de escalaciones)
+
+El bot escalaba el MISMO pedido a Joaco muchas veces seguidas; Meta acepta la
+plantilla repetida ("sent") pero deja de entregarla → Joaco no recibía nada.
+`escalate_to_joaco` ahora **throttlea**: si ya se avisó algo parecido en las
+últimas 6 h, no lo repite por WhatsApp (el canal interno queda de log).
+
+### Added — Checklist antes de confirmar un pedido
+
+Antes de avisar "PEDIDO LISTO", el bot ahora: (1) confirma la **dirección de
+entrega** exacta con el cliente; (2) pregunta si tiene los **bidones de 20 L**
+para el recambio — si NO los tiene, informa **+$3.500 por cada bidón** y lo suma.
+
+### Changed — Siempre adjuntar el PDF de la cotización
+
+Reforzado en el prompt: nunca cotizar sin mandar el PDF adjunto (caso Abigail
+Juárez, que no recibía el archivo).
+
+Migración 1.26.0: recarga el prompt.
+
+---
+
 ## [18.0.1.25.0] — 2026-07-02
 
 ### Fixed — Las notificaciones al operador quedaban en "sent" (no llegaban)

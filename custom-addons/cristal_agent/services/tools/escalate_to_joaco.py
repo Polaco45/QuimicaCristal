@@ -154,12 +154,37 @@ class EscalateToJoaco(AgentTool):
         """Manda la plantilla 'hola_mayorista_crm' al WhatsApp de Joaco con el
         mensaje como texto libre, para que responda desde ahí. Devuelve True si OK."""
         import re as _re
+        from datetime import timedelta
+        from odoo import fields as _fields
         partner = config.owner_whatsapp_partner_id
         if not partner:
             return False
         txt = _re.sub(r'<[^>]+>', '', message or '').strip()
         if not txt:
             return False
+
+        # THROTTLE anti-spam: si ya se le mandó a Joaco una escalación PARECIDA en
+        # las últimas 6 h, no la repetimos por WhatsApp. Mandar la MISMA plantilla
+        # muchas veces seguidas hace que Meta la acepte ("sent") pero DEJE de
+        # entregarla → Joaco no recibe nada. (El canal interno igual queda de log.)
+        try:
+            digits = config.get_owner_whatsapp_digits() or ''
+            # Huella: primeras palabras significativas del mensaje (ej. el cliente).
+            snippet = _re.sub(r'[%_]', ' ', txt)[:45].strip()
+            if digits and snippet:
+                since = _fields.Datetime.now() - timedelta(hours=6)
+                dup = env['whatsapp.message'].sudo().search_count([
+                    ('mobile_number', 'like', digits),
+                    ('create_date', '>=', since),
+                    ('body', 'ilike', snippet),
+                ])
+                if dup:
+                    _logger.info("🔁 Escalación a Joaco por WhatsApp OMITIDA (ya se "
+                                 "avisó algo igual en las últimas 6h): %s", snippet)
+                    return False
+        except Exception as e:
+            _logger.warning("Throttle de escalación falló (sigo y mando): %s", e)
+
         # El template 'hola_mayorista_crm' tiene {{1}} = nombre (campo automático del
         # partner) y {{2}} = UN solo texto libre. Por eso se pasa UNA sola variable
         # (el mensaje). Pasar dos hacía que el nombre cayera en {{2}} y el mensaje se
