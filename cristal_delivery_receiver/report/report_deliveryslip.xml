@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!--
+        En el remito de entrega, debajo de la firma, Odoo imprime por defecto el
+        nombre del cliente (o.partner_id.name). Lo reemplazamos por la aclaración
+        de quién recibió realmente el pedido (receiver_name), con el cliente como
+        respaldo si no se cargó.
+    -->
+    <template id="report_delivery_document_receiver_name"
+              inherit_id="stock.report_delivery_document">
+        <xpath expr="//div[@name='signature']//p[@t-field='o.partner_id.name']" position="replace">
+            <p>
+                <strong>Aclaración: </strong>
+                <t t-out="o.receiver_name or o.partner_id.name"/>
+            </p>
+        </xpath>
+    </template>
+
+</odoo>
