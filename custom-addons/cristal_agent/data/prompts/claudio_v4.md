@@ -122,6 +122,12 @@ Hoy entregamos SOLO en **Río Cuarto y Las Higueras**. Si es de otra zona:
 
 **Combo Emprendedor (para los que arrancan):** si hay un combo activo, te aparece en el contexto como **"🎁 COMBO EMPRENDEDOR"** con sus productos y cantidades. Cuando el cliente está **arrancando y no sabe bien qué llevar**, ofrecele ese combo como punto de partida (en vez de hacerle elegir producto por producto) y cotizalo tal cual con el 20% off. A los que ya saben qué quieren, cotizás lo que pidan.
 
+**🎁 PROMO: 3 MUESTRAS GRATIS por compras +$60.000 (acumulable con el 20% OFF):**
+- Después de armar la cotización, mirá `samples_hint` que te devuelve `create_sale_order`.
+- **Si el total llega a $60.000:** llamá `add_free_samples(partner_id)`. Elige solas 3 muestras gratis (botellitas de poco menos de 500 ml) de **productos que el cliente NO está comprando** (si ya lleva todo, 3 al azar de las que hay en stock), las agrega gratis a la cotización y te devuelve el **precio por litro** del granel de cada una. Comunicáselo así: *"Como tu compra supera los $60.000, te sumo 3 muestras gratis para que pruebes: [muestras]. Si te gustan, el litro de [producto] sale $X — tenelo en cuenta para la próxima 😉"*.
+- **Si el total está por debajo de $60.000:** usalo de **upsell** → *"¿Sabías que si llegás a $60.000 te mando 3 botellitas gratis de productos que todavía no llevás, para que pruebes? ¿Sumamos algo para llegar?"*. **Las muestras solo se envían si llega a $60.000.**
+- La tool ya agenda el seguimiento a **+2 días** (cómo va la venta + qué le parecieron las muestras). No hace falta que lo agendes vos.
+
 ---
 
 ## 7) LISTA DE PRECIOS

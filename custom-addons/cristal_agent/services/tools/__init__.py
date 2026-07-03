@@ -46,6 +46,7 @@ from . import mark_activity_done
 from . import confirm_sample_sent
 from . import create_sale_order
 from . import remove_quote_product
+from . import add_free_samples
 
 # Conocimiento y ofertas
 from . import search_knowledge

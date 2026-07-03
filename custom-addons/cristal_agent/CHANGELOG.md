@@ -7,6 +7,26 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.28.0] — 2026-07-02
+
+### Added — Promo "3 muestras gratis" por compras +$60.000
+
+Nueva promo (Meta Ads): compra > $60.000 → 3 muestras gratis (botellitas ~500ml),
+acumulable con el 20% OFF.
+- Nueva tool **`add_free_samples`**: identifica las muestras en stock (productos
+  con "Muestra" en el nombre), las relaciona con su granel, y elige 3 de productos
+  que el cliente **NO** compra (si ya lleva todo, 3 al azar). Las agrega GRATIS a
+  la cotización y devuelve el **precio por litro** de cada granel para comunicarlo.
+- Umbral $60.000 como **upsell**: si el total está por debajo, el bot ofrece las
+  muestras como gancho para llegar. Solo se envían si llega a $60.000.
+- `create_sale_order` devuelve `samples_hint` para guiar al bot.
+- Seguimiento automático a **+2 días** (cómo va la venta + qué le parecieron las
+  muestras) vía actividad del bot.
+
+Migración 1.28.0: recarga el prompt.
+
+---
+
 ## [18.0.1.27.0] — 2026-07-02
 
 ### Fixed — Combo Emprendedor: base 500cc → 1 lt

@@ -286,6 +286,19 @@ class CreateSaleOrder(AgentTool):
                 f"a ${self.COMPRA_MIN:,.0f}. Si el cliente no quiere sumar, se puede "
                 f"enviar igual (supera el piso de ${self.COMPRA_PISO:,.0f}).")
 
+        # Promo muestras gratis (+$60.000)
+        SAMPLES_THRESHOLD = 60000.0
+        if total >= SAMPLES_THRESHOLD:
+            samples_hint = (
+                f"El total (${total:,.0f}) supera ${SAMPLES_THRESHOLD:,.0f} → van 3 "
+                f"MUESTRAS GRATIS. Llamá add_free_samples(partner_id={partner.id}) "
+                f"para agregarlas y comunicáselas al cliente.")
+        else:
+            falta_s = SAMPLES_THRESHOLD - total
+            samples_hint = (
+                f"Faltan ${falta_s:,.0f} para llegar a ${SAMPLES_THRESHOLD:,.0f} y "
+                f"ganar 3 MUESTRAS GRATIS de productos que no lleva. Usalo de upsell.")
+
         return {
             "ok": True,
             "order_id": order.id,
@@ -299,6 +312,7 @@ class CreateSaleOrder(AgentTool):
             "lines": line_details,
             "sin_stock": sin_stock or None,
             "upsell": upsell,
+            "samples_hint": samples_hint,
             "problems": problems if problems else None,
             "summary": (
                 f"Cotización {order.name} ({'actualizada' if reused else 'nueva'}, draft) "
