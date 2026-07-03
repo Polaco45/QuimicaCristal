@@ -18,5 +18,7 @@ firmar, y lo muestra en el PDF del remito de entrega debajo de la firma.
     ],
     "installable": True,
     "application": False,
-    "auto_install": False,
+    # auto_install: se instala solo en el build de Odoo.sh (su dependencia
+    # 'stock' siempre está instalada), sin pasar por Apps manualmente.
+    "auto_install": True,
 }
