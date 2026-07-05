@@ -7,6 +7,20 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.29.0] — 2026-07-03
+
+### Fixed — El bot no detallaba la cotización/combo (decía solo "sale $X")
+
+El bot ofrecía el Combo Emprendedor o cotizaba diciendo solo el total ("te armé
+el combo, sale $62.000 y van 3 muestras") sin listar los productos ni adjuntar el
+PDF. Prompt reforzado: **prohibido decir solo "sale $X"** — el mensaje TIENE que
+listar productos + cantidades (campo `lines`), nombrar las muestras gratis, y
+adjuntar el PDF. Ejemplo de formato correcto incluido en el prompt.
+
+Migración 1.29.0: recarga el prompt.
+
+---
+
 ## [18.0.1.28.0] — 2026-07-02
 
 ### Added — Promo "3 muestras gratis" por compras +$60.000
