@@ -882,9 +882,12 @@ class CristalAgentRun(models.Model):
                     skipped_takeover += 1
                     continue
 
-                # Armar variables del template
-                first_name = (partner.name or 'amigo').split()[0]
-                variables = [first_name, offer_description]
+                # Armar variables del template.
+                # El template tiene {{1}} = nombre (campo AUTOMÁTICO del partner) y
+                # {{2}} = UN solo texto libre. Por eso se pasa UNA sola variable (la
+                # descripción de la oferta). Pasar dos hacía que el nombre cayera en
+                # {{2}} y la oferta se perdiera → salía "Oferta de la semana: <nombre>".
+                variables = [offer_description]
 
                 # Determinar wa_account
                 wa_account_id = template.wa_account_id.id if template.wa_account_id else None

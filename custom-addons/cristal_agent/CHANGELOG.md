@@ -7,6 +7,26 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.30.0] — 2026-07-06
+
+### Fixed — El broadcast semanal mandaba el NOMBRE en vez de la oferta
+
+El template `oferta_semanal_general` tiene {{1}} = nombre (campo automático) y
+{{2}} = un solo texto libre. El broadcast pasaba DOS variables `[nombre, oferta]`,
+así que el nombre caía en {{2}} y la oferta se perdía → salía *"Oferta de la
+semana: <nombre del cliente>"* sin la promo. Ahora pasa **una** variable (la
+oferta). Sin esto, disparar el cron mandaba mensajes vacíos de contenido.
+
+### Added — CTA "YO" → avanza con el Combo Emprendedor
+
+Para el broadcast del combo (responder "YO"): el bot ahora reconoce un "YO" como
+intención de compra del Combo Emprendedor y avanza directo — cotiza el combo con
+20% OFF, agrega las 3 muestras, detalla la lista literal y manda el PDF.
+
+Migración 1.30.0: recarga el prompt.
+
+---
+
 ## [18.0.1.29.0] — 2026-07-03
 
 ### Fixed — El bot no detallaba la cotización/combo (decía solo "sale $X")
