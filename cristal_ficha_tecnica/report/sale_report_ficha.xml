@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!--
+        Template idéntico al presupuesto estándar de venta
+        (reutiliza sale.report_saleorder_document). El adjuntado de las fichas
+        técnicas se hace en Python, en ir.actions.report._render_qweb_pdf.
+    -->
+    <template id="report_saleorder_ficha">
+        <t t-call="web.html_container">
+            <t t-foreach="docs" t-as="doc">
+                <t t-call="sale.report_saleorder_document" t-lang="doc.partner_id.lang"/>
+            </t>
+        </t>
+    </template>
+
+    <!-- Reporte adicional disponible en el menú Imprimir de la orden de venta. -->
+    <record id="action_report_saleorder_ficha" model="ir.actions.report">
+        <field name="name">Cotización + Ficha Técnica</field>
+        <field name="model">sale.order</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">cristal_ficha_tecnica.report_saleorder_ficha</field>
+        <field name="report_file">cristal_ficha_tecnica.report_saleorder_ficha</field>
+        <field name="print_report_name">(object.state in ('draft', 'sent') and 'Cotizacion FT - %s' % (object.name) or 'Pedido FT - %s' % (object.name))</field>
+        <field name="binding_model_id" ref="sale.model_sale_order"/>
+        <field name="binding_type">report</field>
+    </record>
+
+</odoo>
