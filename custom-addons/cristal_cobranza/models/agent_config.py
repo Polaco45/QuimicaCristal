@@ -55,11 +55,16 @@ class CristalAgentConfig(models.Model):
     )
 
     # ─── Datos de pago (aparecen en el estado de cuenta y mensajes) ───
-    cobranza_payment_titular = fields.Char(string="Titular de la cuenta")
-    cobranza_payment_bank = fields.Char(string="Banco")
-    cobranza_payment_cbu = fields.Char(string="CBU")
-    cobranza_payment_alias = fields.Char(string="Alias")
-    cobranza_payment_cuit = fields.Char(string="CUIT")
+    cobranza_payment_titular = fields.Char(
+        string="Titular de la cuenta",
+        default="Química Cristal – Crilim S.A.S.")
+    cobranza_payment_bank = fields.Char(string="Banco", default="Brubank")
+    cobranza_payment_cbu = fields.Char(
+        string="CBU", default="1430001725040102970011")
+    cobranza_payment_alias = fields.Char(string="Alias", default="crilim.sas")
+    cobranza_payment_cuit = fields.Char(string="CUIT", default="30-71855127-3")
+    cobranza_payment_account = fields.Char(
+        string="N° de cuenta", default="2504010297001")
     cobranza_recargo_text = fields.Text(
         string="Texto de recargos (día 10)",
         default="Pasado este aviso se aplicarán los recargos por mora vigentes "

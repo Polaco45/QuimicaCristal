@@ -127,6 +127,16 @@ class ResPartner(models.Model):
         return formatLang(
             self.env, amount, currency_obj=self._cobranza_currency())
 
+    def _cobranza_billing_contact(self):
+        """Contacto al que se le manda el recordatorio: la dirección de
+        facturación de la entidad comercial. Si no tiene una definida,
+        address_get devuelve la propia entidad comercial."""
+        self.ensure_one()
+        commercial = self.commercial_partner_id
+        addr = commercial.address_get(['invoice'])
+        contact = self.browse(addr.get('invoice')) if addr.get('invoice') else commercial
+        return contact or commercial
+
     def cobranza_dias_mora(self, move, today=None):
         """Días de mora de una factura puntual (>=0)."""
         today = today or fields.Date.context_today(self)

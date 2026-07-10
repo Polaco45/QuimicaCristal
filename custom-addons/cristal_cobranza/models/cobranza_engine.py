@@ -188,7 +188,11 @@ class CristalAgentRun(models.Model):
         attachment = self._cobranza_generate_pdf(partner, report_ref, stage)
 
         importe = partner.cobranza_format_amount(snap['total_vencido'])
-        result = self._cobranza_composer_send(partner, template, [partner.name, importe])
+        # El mensaje va al contacto de facturación; el estado de cuenta se
+        # consolida sobre la entidad comercial (partner).
+        recipient = partner._cobranza_billing_contact()
+        result = self._cobranza_composer_send(
+            partner, recipient, template, [partner.name, importe])
 
         if result.get('error'):
             self._cobranza_log(partner, stage, 'whatsapp', snap, run,
@@ -199,7 +203,8 @@ class CristalAgentRun(models.Model):
         wa_msg = result.get('wa_message')
         self._cobranza_log(partner, stage, 'whatsapp', snap, run,
                            state='sent', attachment=attachment, wa_message=wa_msg,
-                           note="Enviado template '%s' con importe %s." % (template.name, importe))
+                           note="Enviado template '%s' a %s con importe %s."
+                                % (template.name, recipient.name, importe))
         # Dejar rastro en el chatter del cliente.
         try:
             body = ("💰 Cobranza día %s enviada por WhatsApp — vencido %s (%s facturas)."
@@ -210,13 +215,21 @@ class CristalAgentRun(models.Model):
             pass
         return True
 
-    def _cobranza_composer_send(self, partner, template, free_texts):
+    def _cobranza_composer_send(self, doc_partner, recipient, template, free_texts):
         """Envía un template aprobado vía whatsapp.composer (mismo mecanismo que
-        usa Claudio para mandar fuera de la ventana de 24hs)."""
+        usa Claudio para mandar fuera de la ventana de 24hs).
+
+        doc_partner: entidad comercial (sobre la que se renderiza el estado de
+                     cuenta que viaja como documento del template).
+        recipient:   contacto al que se le manda (su celular).
+        """
         env = self.env
-        mobile = self._cobranza_normalize_mobile(partner.mobile or partner.phone or '')
+        mobile = self._cobranza_normalize_mobile(
+            recipient.mobile or recipient.phone
+            or doc_partner.mobile or doc_partner.phone or '')
         if not mobile:
-            return {'error': "El cliente %s no tiene mobile válido." % partner.display_name}
+            return {'error': "Ni %s ni %s tienen celular válido."
+                    % (recipient.display_name, doc_partner.display_name)}
 
         model = template.model_id.model if template.model_id else 'res.partner'
         if model != 'res.partner':
@@ -231,12 +244,12 @@ class CristalAgentRun(models.Model):
             Composer = env['whatsapp.composer'].sudo()
             composer = Composer.with_context(
                 active_model='res.partner',
-                active_ids=[partner.id],
+                active_ids=[doc_partner.id],
                 default_res_model='res.partner',
-                default_res_ids=str(partner.id),
+                default_res_ids=str(doc_partner.id),
             ).create({
                 'res_model': 'res.partner',
-                'res_ids': str(partner.id),
+                'res_ids': str(doc_partner.id),
                 'wa_template_id': template.id,
                 'phone': mobile,
                 **free_text_fields,

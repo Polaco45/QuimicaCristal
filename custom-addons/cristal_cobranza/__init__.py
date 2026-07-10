@@ -65,12 +65,14 @@ def post_init_cobranza(env):
     if not config:
         config = env['cristal.agent.config'].sudo().search([], limit=1)
 
-    # Cuenta de WhatsApp por defecto: la de la config, si no la primera disponible.
-    wa_account = env['whatsapp.account'].sudo()
+    # Cuenta de WhatsApp por defecto: la de la config; si no, la de Compras
+    # (id 5 en el entorno de Joaco); si no existe, la primera disponible.
     if config and config.cobranza_wa_account_id:
         wa_account = config.cobranza_wa_account_id
     else:
-        wa_account = env['whatsapp.account'].sudo().search([], limit=1)
+        wa_account = env['whatsapp.account'].sudo().browse(5)  # Compras
+        if not wa_account.exists():
+            wa_account = env['whatsapp.account'].sudo().search([], limit=1)
 
     partner_model_id = env['ir.model']._get_id('res.partner')
     config_vals = {}
@@ -113,6 +115,12 @@ def post_init_cobranza(env):
     if config:
         if wa_account and not config.cobranza_wa_account_id:
             config_vals['cobranza_wa_account_id'] = wa_account.id
+        # Responsable de llamadas y visitas: Joaco (dueño) por defecto.
+        if config.owner_user_id:
+            if not config.cobranza_call_user_id:
+                config_vals['cobranza_call_user_id'] = config.owner_user_id.id
+            if not config.cobranza_visit_user_id:
+                config_vals['cobranza_visit_user_id'] = config.owner_user_id.id
         try:
             config.write(config_vals)
         except Exception as e:  # noqa: BLE001

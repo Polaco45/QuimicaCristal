@@ -42,6 +42,7 @@
                         <group>
                             <field name="cobranza_payment_cbu"/>
                             <field name="cobranza_payment_alias"/>
+                            <field name="cobranza_payment_account"/>
                         </group>
                     </group>
                     <group string="Recargos (día 10)">

@@ -122,6 +122,10 @@
                             <td><strong>Alias</strong></td>
                             <td><span t-esc="config.cobranza_payment_alias"/></td>
                         </tr>
+                        <tr t-if="config.cobranza_payment_account">
+                            <td><strong>N° de cuenta</strong></td>
+                            <td><span t-esc="config.cobranza_payment_account"/></td>
+                        </tr>
                         <tr t-if="config.cobranza_payment_cuit">
                             <td><strong>CUIT</strong></td>
                             <td><span t-esc="config.cobranza_payment_cuit"/></td>
