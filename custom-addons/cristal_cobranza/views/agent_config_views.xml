@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_cristal_agent_config_form_cobranza" model="ir.ui.view">
+        <field name="name">cristal.agent.config.form.cobranza</field>
+        <field name="model">cristal.agent.config</field>
+        <field name="inherit_id" ref="cristal_agent.view_cristal_agent_config_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//notebook[1]" position="inside">
+                <page string="💰 Cobranza">
+                    <group>
+                        <group string="Activación">
+                            <field name="cobranza_enabled"/>
+                            <field name="cobranza_test_mode"/>
+                            <field name="cobranza_test_partner_id"
+                                   invisible="not cobranza_test_mode"/>
+                            <field name="cobranza_wa_account_id"/>
+                        </group>
+                        <group string="Parámetros de la cadencia">
+                            <field name="cobranza_ventana_dias"/>
+                            <field name="cobranza_min_gap_days"/>
+                            <field name="cobranza_min_amount"/>
+                        </group>
+                    </group>
+                    <group>
+                        <group string="Responsables">
+                            <field name="cobranza_call_user_id"/>
+                            <field name="cobranza_visit_user_id"/>
+                        </group>
+                        <group string="Templates de WhatsApp">
+                            <field name="cobranza_template_day0_id"/>
+                            <field name="cobranza_template_day5_id"/>
+                            <field name="cobranza_template_day10_id"/>
+                        </group>
+                    </group>
+                    <group string="Datos para el pago (aparecen en el estado de cuenta)">
+                        <group>
+                            <field name="cobranza_payment_titular"/>
+                            <field name="cobranza_payment_bank"/>
+                            <field name="cobranza_payment_cuit"/>
+                        </group>
+                        <group>
+                            <field name="cobranza_payment_cbu"/>
+                            <field name="cobranza_payment_alias"/>
+                        </group>
+                    </group>
+                    <group string="Recargos (día 10)">
+                        <field name="cobranza_recargo_text" nolabel="1"/>
+                    </group>
+                </page>
+            </xpath>
+        </field>
+    </record>
+
+</odoo>

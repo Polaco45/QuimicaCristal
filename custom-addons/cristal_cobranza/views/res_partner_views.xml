@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_partner_form_cobranza" model="ir.ui.view">
+        <field name="name">res.partner.form.cobranza</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="base.view_partner_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//notebook" position="inside">
+                <page string="Cobranza" name="cobranza">
+                    <group>
+                        <group string="Estado de la cadencia">
+                            <field name="cobranza_exclude"/>
+                            <field name="cobranza_last_stage" readonly="1"/>
+                            <field name="cobranza_last_action_date" readonly="1"/>
+                        </group>
+                    </group>
+                    <field name="cobranza_action_ids" readonly="1">
+                        <list>
+                            <field name="action_datetime"/>
+                            <field name="stage"/>
+                            <field name="channel"/>
+                            <field name="amount_display"/>
+                            <field name="state" widget="badge"
+                                   decoration-success="state == 'sent'"
+                                   decoration-danger="state == 'failed'"/>
+                        </list>
+                    </field>
+                </page>
+            </xpath>
+        </field>
+    </record>
+
+</odoo>

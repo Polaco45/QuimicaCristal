@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="action_report_estado_cuenta" model="ir.actions.report">
+        <field name="name">Estado de cuenta</field>
+        <field name="model">res.partner</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">cristal_cobranza.report_estado_cuenta</field>
+        <field name="report_file">cristal_cobranza.report_estado_cuenta</field>
+        <field name="print_report_name">'Estado de cuenta - %s' % (object.name or '')</field>
+    </record>
+
+    <record id="action_report_estado_cuenta_full" model="ir.actions.report">
+        <field name="name">Estado de cuenta + comprobantes</field>
+        <field name="model">res.partner</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">cristal_cobranza.report_estado_cuenta_full</field>
+        <field name="report_file">cristal_cobranza.report_estado_cuenta_full</field>
+        <field name="print_report_name">'Estado de cuenta - %s' % (object.name or '')</field>
+    </record>
+
+</odoo>

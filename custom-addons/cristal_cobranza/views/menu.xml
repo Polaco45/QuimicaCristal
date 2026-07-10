@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <menuitem id="menu_cobranza_root"
+              name="💰 Cobranza"
+              parent="cristal_agent.menu_cristal_agent_root"
+              sequence="50"/>
+
+    <menuitem id="menu_cobranza_actions"
+              name="Acciones de cobranza"
+              parent="menu_cobranza_root"
+              action="action_cobranza_action"
+              sequence="10"/>
+
+</odoo>
