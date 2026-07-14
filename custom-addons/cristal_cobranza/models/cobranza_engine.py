@@ -111,8 +111,11 @@ class CristalAgentRun(models.Model):
             return 'skipped'
 
         if stage in (0, 5, 10):
-            ok = self._cobranza_do_whatsapp(partner, stage, snap, config, run)
-            outcome = 'whatsapp' if ok else 'error'
+            # Doble canal: WhatsApp + Email, cada uno con el PDF adjunto. Son
+            # independientes (el email no depende de la aprobación de Meta).
+            ok_wa = self._cobranza_do_whatsapp(partner, stage, snap, config, run)
+            ok_mail = self._cobranza_do_email(partner, stage, snap, config, run)
+            outcome = 'whatsapp' if (ok_wa or ok_mail) else 'error'
         else:
             self._cobranza_do_activity(partner, stage, snap, config, run)
             outcome = 'activity'
@@ -189,10 +192,11 @@ class CristalAgentRun(models.Model):
 
         importe = partner.cobranza_format_amount(snap['total_vencido'])
         # El mensaje va al contacto de facturación; el estado de cuenta se
-        # consolida sobre la entidad comercial (partner).
+        # consolida sobre la entidad comercial (partner). Las variables {{1}}/{{2}}
+        # son de tipo Campo → el composer las autocompleta desde el registro; no
+        # las pasamos a mano.
         recipient = partner._cobranza_billing_contact()
-        result = self._cobranza_composer_send(
-            partner, recipient, template, [partner.name, importe])
+        result = self._cobranza_composer_send(partner, recipient, template)
 
         if result.get('error'):
             self._cobranza_log(partner, stage, 'whatsapp', snap, run,
@@ -215,9 +219,66 @@ class CristalAgentRun(models.Model):
             pass
         return True
 
-    def _cobranza_composer_send(self, doc_partner, recipient, template, free_texts):
+    # ────────────────────── Ejecución: Email ──────────────────────
+    def _cobranza_do_email(self, partner, stage, snap, config, run):
+        """Manda el mismo estado de cuenta por email al contacto de facturación.
+        Es independiente de WhatsApp: no depende de la aprobación de Meta."""
+        recipient = partner._cobranza_billing_contact()
+        email = (recipient.email or partner.email or '').strip()
+        if not email:
+            self._cobranza_log(partner, stage, 'email', snap, run, state='skipped',
+                               note="Sin email de facturación.")
+            return False
+
+        template = self._cobranza_email_template(stage)
+        if not template:
+            self._cobranza_log(partner, stage, 'email', snap, run, state='skipped',
+                               note="No hay plantilla de email para el día %s." % stage)
+            return False
+
+        report_ref = REPORT_FULL if stage == 0 else REPORT_LIGHT
+        attachment = self._cobranza_generate_pdf(partner, report_ref, stage)
+        try:
+            template.sudo().send_mail(
+                partner.id, force_send=True,
+                email_values={
+                    'email_to': email,
+                    'attachment_ids': [(4, attachment.id)] if attachment else False,
+                })
+        except Exception as e:  # noqa: BLE001
+            self._cobranza_log(partner, stage, 'email', snap, run, state='failed',
+                               attachment=attachment, note="Error email: %s" % e)
+            _logger.exception("Error enviando email de cobranza: %s", e)
+            return False
+
+        importe = partner.cobranza_format_amount(snap['total_vencido'])
+        self._cobranza_log(partner, stage, 'email', snap, run, state='sent',
+                           attachment=attachment,
+                           note="Email día %s a %s (vencido %s)." % (stage, email, importe))
+        try:
+            partner.message_post(
+                body="📧 Cobranza día %s enviada por email a %s." % (stage, email))
+        except Exception:  # noqa: BLE001
+            pass
+        return True
+
+    def _cobranza_email_template(self, stage):
+        """Devuelve la mail.template del día indicado (o False)."""
+        xmlid = {
+            0: 'cristal_cobranza.mail_template_cobranza_day0',
+            5: 'cristal_cobranza.mail_template_cobranza_day5',
+            10: 'cristal_cobranza.mail_template_cobranza_day10',
+        }.get(stage)
+        if not xmlid:
+            return False
+        return self.env.ref(xmlid, raise_if_not_found=False)
+
+    def _cobranza_composer_send(self, doc_partner, recipient, template):
         """Envía un template aprobado vía whatsapp.composer (mismo mecanismo que
         usa Claudio para mandar fuera de la ventana de 24hs).
+
+        Las variables del template son de tipo Campo, así que el composer las
+        autocompleta solo desde el registro de doc_partner.
 
         doc_partner: entidad comercial (sobre la que se renderiza el estado de
                      cuenta que viaja como documento del template).
@@ -235,11 +296,6 @@ class CristalAgentRun(models.Model):
         if model != 'res.partner':
             return {'error': "El template de cobranza debe estar sobre res.partner (está sobre %s)." % model}
 
-        free_text_fields = {}
-        for i, val in enumerate(free_texts, start=1):
-            if i <= 10:
-                free_text_fields['free_text_%s' % i] = self._cobranza_sanitize(val)
-
         try:
             Composer = env['whatsapp.composer'].sudo()
             composer = Composer.with_context(
@@ -252,7 +308,6 @@ class CristalAgentRun(models.Model):
                 'res_ids': str(doc_partner.id),
                 'wa_template_id': template.id,
                 'phone': mobile,
-                **free_text_fields,
             })
             send_method = None
             for name in ('action_send_whatsapp_template', '_send_whatsapp_template'):

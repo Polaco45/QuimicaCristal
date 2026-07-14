@@ -18,6 +18,7 @@ class CristalCobranzaAction(models.Model):
     stage = fields.Selection(STAGE_SELECTION, string="Nivel", required=True)
     channel = fields.Selection([
         ('whatsapp', 'WhatsApp'),
+        ('email', 'Email'),
         ('activity', 'Actividad'),
     ], string="Canal", required=True)
     state = fields.Selection([

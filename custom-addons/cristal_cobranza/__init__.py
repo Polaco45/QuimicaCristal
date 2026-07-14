@@ -77,14 +77,35 @@ def post_init_cobranza(env):
     partner_model_id = env['ir.model']._get_id('res.partner')
     config_vals = {}
 
+    # Variables de TIPO CAMPO (no "texto libre"): Odoo las autocompleta desde el
+    # registro del cliente al momento de enviar. Así el nombre y el importe salen
+    # SIEMPRE del sistema y nunca queda el valor de ejemplo pegado.
+    #   {{1}} = name                              → nombre del cliente
+    #   {{2}} = cobranza_total_vencido_display     → total vencido formateado
+    def _var_cmds():
+        return [
+            (5, 0, 0),  # limpia variables previas (idempotente / self-heal)
+            (0, 0, {'name': '{{1}}', 'line_type': 'body',
+                    'field_type': 'field', 'field_name': 'name',
+                    'demo_value': 'Juan Pérez'}),
+            (0, 0, {'name': '{{2}}', 'line_type': 'body',
+                    'field_type': 'field',
+                    'field_name': 'cobranza_total_vencido_display',
+                    'demo_value': '$ 10.000,00'}),
+        ]
+
     for spec in _TEMPLATES:
         try:
+            report = env.ref(spec['report_xmlid'], raise_if_not_found=False)
             existing = Template.search(
                 [('template_name', '=', spec['template_name'])], limit=1)
             if existing:
+                # Self-heal: si sigue en borrador, corregimos las variables a tipo
+                # Campo. No tocamos una plantilla ya aprobada por Meta.
+                if existing.status == 'draft':
+                    existing.write({'variable_ids': _var_cmds()})
                 tmpl = existing
             else:
-                report = env.ref(spec['report_xmlid'], raise_if_not_found=False)
                 tmpl = Template.create({
                     'name': spec['name'],
                     'template_name': spec['template_name'],
@@ -98,12 +119,7 @@ def post_init_cobranza(env):
                     'body': spec['body'],
                     'footer_text': 'Química Cristal',
                     'wa_account_id': wa_account.id if wa_account else False,
-                    'variable_ids': [
-                        (0, 0, {'name': '{{1}}', 'line_type': 'body',
-                                'field_type': 'free_text', 'demo_value': 'Juan Pérez'}),
-                        (0, 0, {'name': '{{2}}', 'line_type': 'body',
-                                'field_type': 'free_text', 'demo_value': '$ 10.000,00'}),
-                    ],
+                    'variable_ids': _var_cmds(),
                 })
                 _logger.info("✅ Template de cobranza creado: %s (id=%s)",
                              spec['template_name'], tmpl.id)

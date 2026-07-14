@@ -53,6 +53,24 @@ class ResPartner(models.Model):
         'partner_id',
         string="Acciones de cobranza",
     )
+    cobranza_total_vencido_display = fields.Char(
+        string="Total vencido (autocompletar plantillas)",
+        compute='_compute_cobranza_total_vencido_display',
+        help="Total vencido formateado (ej: '$ 81.336,00'). Se usa para "
+             "autocompletar la variable {{2}} de las plantillas de cobranza "
+             "(de tipo Campo), así el importe sale SIEMPRE del sistema y no de "
+             "un valor cargado a mano. Se calcula al vuelo.",
+    )
+
+    def _compute_cobranza_total_vencido_display(self):
+        for partner in self:
+            try:
+                snap = partner.cobranza_snapshot()
+                partner.cobranza_total_vencido_display = \
+                    partner.cobranza_format_amount(snap['total_vencido'])
+            except Exception:  # noqa: BLE001 — nunca romper la lectura del campo
+                partner.cobranza_total_vencido_display = \
+                    partner.cobranza_format_amount(0.0)
 
     # ────────────────────── Núcleo ──────────────────────
     def _cobranza_open_moves(self):
