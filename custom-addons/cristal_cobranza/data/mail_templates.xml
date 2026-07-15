@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!--
+        Plantillas de EMAIL de cobranza (días 0 / 5 / 10). Espejo del texto de
+        WhatsApp. El nombre y el importe se autocompletan desde el registro
+        ({{ object.name }} / {{ object.cobranza_total_vencido_display }}), así el
+        contenido sale SIEMPRE del sistema. El PDF de estado de cuenta lo adjunta
+        el motor al enviar. noupdate="1": se crean una vez y no se pisan si las
+        editás desde la interfaz.
+    -->
+    <data noupdate="1">
+
+        <record id="mail_template_cobranza_day0" model="mail.template">
+            <field name="name">Cobranza día 0 — Recordatorio (email)</field>
+            <field name="model_id" ref="base.model_res_partner"/>
+            <field name="subject">Química Cristal — Recordatorio de saldo vencido</field>
+            <field name="email_from">{{ user.company_id.email_formatted or user.email_formatted }}</field>
+            <field name="auto_delete" eval="False"/>
+            <field name="body_html" type="html">
+                <div style="font-family: Arial, sans-serif; font-size: 14px; color: #1a1a1a;">
+                    <p>Hola <strong t-out="object.name or ''">Cliente</strong>,</p>
+                    <p>Te escribimos de <strong>Química Cristal</strong>. Te recordamos que
+                       registrás un saldo vencido de
+                       <strong t-out="object.cobranza_total_vencido_display or ''">$ 0,00</strong>.</p>
+                    <p>Adjuntamos el <strong>estado de cuenta</strong> con el detalle y los
+                       comprobantes. Te pedimos regularizarlo a la brevedad; en el archivo
+                       están los datos para el pago. Si ya lo abonaste, envianos el comprobante.</p>
+                    <p>¡Gracias!<br/>Química Cristal</p>
+                </div>
+            </field>
+        </record>
+
+        <record id="mail_template_cobranza_day5" model="mail.template">
+            <field name="name">Cobranza día 5 — Seguimiento (email)</field>
+            <field name="model_id" ref="base.model_res_partner"/>
+            <field name="subject">Química Cristal — Saldo vencido pendiente</field>
+            <field name="email_from">{{ user.company_id.email_formatted or user.email_formatted }}</field>
+            <field name="auto_delete" eval="False"/>
+            <field name="body_html" type="html">
+                <div style="font-family: Arial, sans-serif; font-size: 14px; color: #1a1a1a;">
+                    <p>Hola <strong t-out="object.name or ''">Cliente</strong>,</p>
+                    <p>Seguimos pendientes de tu saldo vencido de
+                       <strong t-out="object.cobranza_total_vencido_display or ''">$ 0,00</strong>
+                       con <strong>Química Cristal</strong>. Adjuntamos el estado de cuenta
+                       actualizado.</p>
+                    <p>Te pedimos abonarlo a la brevedad. Si ya lo abonaste, envianos el
+                       comprobante así lo registramos.</p>
+                    <p>¡Gracias!<br/>Química Cristal</p>
+                </div>
+            </field>
+        </record>
+
+        <record id="mail_template_cobranza_day10" model="mail.template">
+            <field name="name">Cobranza día 10 — Ultimátum (email)</field>
+            <field name="model_id" ref="base.model_res_partner"/>
+            <field name="subject">Química Cristal — Último aviso antes de recargos</field>
+            <field name="email_from">{{ user.company_id.email_formatted or user.email_formatted }}</field>
+            <field name="auto_delete" eval="False"/>
+            <field name="body_html" type="html">
+                <div style="font-family: Arial, sans-serif; font-size: 14px; color: #1a1a1a;">
+                    <p>Hola <strong t-out="object.name or ''">Cliente</strong>,</p>
+                    <p>Tu saldo con <strong>Química Cristal</strong> continúa vencido:
+                       <strong t-out="object.cobranza_total_vencido_display or ''">$ 0,00</strong>.
+                       Este es un último aviso antes de aplicar los recargos por mora
+                       correspondientes.</p>
+                    <p>Adjuntamos el estado de cuenta. Te pedimos regularizar el pago a la
+                       brevedad para evitar recargos. Quedamos a la espera.</p>
+                    <p>Química Cristal</p>
+                </div>
+            </field>
+        </record>
+
+    </data>
+</odoo>

@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_partner_form_cobranza" model="ir.ui.view">
+        <field name="name">res.partner.form.cobranza</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="base.view_partner_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//notebook" position="inside">
+                <page string="Cobranza" name="cobranza">
+                    <field name="cobranza_currency_id" invisible="1"/>
+
+                    <!-- ── Estado de deuda EN TIEMPO REAL ── -->
+                    <group>
+                        <group string="Situación de deuda (en vivo)">
+                            <field name="cobranza_gravedad" widget="badge"
+                                   decoration-danger="cobranza_gravedad == 'critica'"
+                                   decoration-warning="cobranza_gravedad == 'alta'"
+                                   decoration-info="cobranza_gravedad == 'media'"
+                                   decoration-muted="cobranza_gravedad == 'baja'"
+                                   decoration-success="cobranza_gravedad == 'none'"/>
+                            <field name="cobranza_total_vencido" widget="monetary"
+                                   options="{'currency_field': 'cobranza_currency_id'}"/>
+                            <field name="cobranza_dias_mora_max"/>
+                            <field name="cobranza_cant_vencidas"/>
+                        </group>
+                        <group string="Próximos vencimientos">
+                            <field name="cobranza_total_por_vencer" widget="monetary"
+                                   options="{'currency_field': 'cobranza_currency_id'}"/>
+                            <field name="cobranza_cant_por_vencer"/>
+                        </group>
+                    </group>
+
+                    <!-- ── Facturas vencidas (solo usuarios con acceso a facturación) ── -->
+                    <separator string="Facturas vencidas"
+                               groups="account.group_account_invoice"/>
+                    <field name="cobranza_overdue_move_ids" nolabel="1" readonly="1"
+                           groups="account.group_account_invoice">
+                        <list create="false" delete="false" default_order="invoice_date_due asc">
+                            <field name="currency_id" column_invisible="1"/>
+                            <field name="name" string="Comprobante"/>
+                            <field name="invoice_date" string="Fecha"/>
+                            <field name="invoice_date_due" string="Vencimiento"/>
+                            <field name="amount_total" string="Total" widget="monetary"/>
+                            <field name="amount_residual" string="Saldo" widget="monetary"/>
+                            <field name="payment_state" widget="badge"
+                                   decoration-danger="payment_state == 'not_paid'"
+                                   decoration-warning="payment_state == 'partial'"/>
+                        </list>
+                    </field>
+
+                    <!-- ── Por vencer (ventana) ── -->
+                    <separator string="Por vencer (próximos días)"
+                               groups="account.group_account_invoice"/>
+                    <field name="cobranza_upcoming_move_ids" nolabel="1" readonly="1"
+                           groups="account.group_account_invoice">
+                        <list create="false" delete="false" default_order="invoice_date_due asc">
+                            <field name="currency_id" column_invisible="1"/>
+                            <field name="name" string="Comprobante"/>
+                            <field name="invoice_date_due" string="Vencimiento"/>
+                            <field name="amount_residual" string="Saldo" widget="monetary"/>
+                        </list>
+                    </field>
+
+                    <!-- ── Cadencia y acciones ── -->
+                    <separator string="Cadencia automática"/>
+                    <group>
+                        <group>
+                            <field name="cobranza_exclude"/>
+                            <field name="cobranza_last_stage" readonly="1"/>
+                            <field name="cobranza_last_action_date" readonly="1"/>
+                        </group>
+                    </group>
+                    <field name="cobranza_action_ids" nolabel="1" readonly="1">
+                        <list create="false" delete="false">
+                            <field name="action_datetime"/>
+                            <field name="stage"/>
+                            <field name="channel"/>
+                            <field name="amount_display"/>
+                            <field name="state" widget="badge"
+                                   decoration-success="state == 'sent'"
+                                   decoration-danger="state == 'failed'"
+                                   decoration-muted="state == 'skipped'"/>
+                            <field name="note" optional="show"/>
+                        </list>
+                    </field>
+                </page>
+            </xpath>
+        </field>
+    </record>
+
+</odoo>

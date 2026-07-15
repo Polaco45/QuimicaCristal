@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ══════════ Página de estado de cuenta (compartida) ══════════ -->
+    <template id="report_estado_cuenta_page">
+        <t t-set="company" t-value="o.company_id or o.env.company"/>
+        <t t-call="web.external_layout">
+            <div class="page">
+                <div class="row mb-3">
+                    <div class="col-7">
+                        <h2 style="margin-bottom:0;">Estado de cuenta</h2>
+                        <span class="text-muted">Detalle de saldos pendientes</span>
+                    </div>
+                    <div class="col-5 text-end">
+                        <div><strong>Fecha: </strong>
+                            <span t-esc="snap['today'].strftime('%d/%m/%Y')"/></div>
+                    </div>
+                </div>
+
+                <div class="row mb-4">
+                    <div class="col-7">
+                        <strong>Cliente:</strong> <span t-field="o.name"/><br/>
+                        <span t-if="o.vat"><strong>CUIT:</strong> <span t-field="o.vat"/><br/></span>
+                        <span t-if="o.street"><span t-field="o.street"/><br/></span>
+                        <span t-if="o.city"><span t-field="o.city"/></span>
+                    </div>
+                    <div class="col-5 text-end">
+                        <div style="border:1px solid #ddd;border-radius:6px;padding:10px;display:inline-block;text-align:right;">
+                            <div class="text-muted" style="font-size:11px;">TOTAL VENCIDO A PAGAR</div>
+                            <div style="font-size:22px;font-weight:bold;color:#b00020;">
+                                <span t-esc="o.cobranza_format_amount(snap['total_vencido'])"/>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ── Facturas vencidas ── -->
+                <h4 style="color:#b00020;">Facturas vencidas
+                    (<span t-esc="snap['cant_vencidas']"/>)</h4>
+                <table class="table table-sm" t-if="snap['vencidas']">
+                    <thead>
+                        <tr>
+                            <th>Comprobante</th>
+                            <th class="text-center">Fecha</th>
+                            <th class="text-center">Vencimiento</th>
+                            <th class="text-center">Días de mora</th>
+                            <th class="text-end">Saldo</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr t-foreach="snap['vencidas']" t-as="inv">
+                            <td><span t-field="inv.name"/></td>
+                            <td class="text-center">
+                                <span t-esc="inv.invoice_date and inv.invoice_date.strftime('%d/%m/%Y') or ''"/></td>
+                            <td class="text-center">
+                                <span t-esc="inv.invoice_date_due and inv.invoice_date_due.strftime('%d/%m/%Y') or ''"/></td>
+                            <td class="text-center">
+                                <span t-esc="o.cobranza_dias_mora(inv, snap['today'])"/></td>
+                            <td class="text-end">
+                                <span t-esc="o.cobranza_format_amount(inv.amount_residual)"/></td>
+                        </tr>
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td colspan="4" class="text-end"><strong>Total vencido</strong></td>
+                            <td class="text-end"><strong>
+                                <span t-esc="o.cobranza_format_amount(snap['total_vencido'])"/></strong></td>
+                        </tr>
+                    </tfoot>
+                </table>
+                <p t-else="" class="text-muted">Sin facturas vencidas.</p>
+
+                <!-- ── Por vencer ── -->
+                <div t-if="snap['por_vencer']">
+                    <h4 style="color:#b8860b;">Por vencer en los próximos
+                        <span t-esc="snap['ventana_dias']"/> días
+                        (<span t-esc="snap['cant_por_vencer']"/>)</h4>
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Comprobante</th>
+                                <th class="text-center">Vencimiento</th>
+                                <th class="text-end">Saldo</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr t-foreach="snap['por_vencer']" t-as="inv">
+                                <td><span t-field="inv.name"/></td>
+                                <td class="text-center">
+                                    <span t-esc="inv.invoice_date_due and inv.invoice_date_due.strftime('%d/%m/%Y') or ''"/></td>
+                                <td class="text-end">
+                                    <span t-esc="o.cobranza_format_amount(inv.amount_residual)"/></td>
+                            </tr>
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <td colspan="2" class="text-end"><strong>Total por vencer</strong></td>
+                                <td class="text-end"><strong>
+                                    <span t-esc="o.cobranza_format_amount(snap['total_por_vencer'])"/></strong></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+
+                <!-- ── Datos de pago ── -->
+                <div style="margin-top:18px;border-top:2px solid #eee;padding-top:10px;">
+                    <h4>Datos para el pago</h4>
+                    <table class="table table-sm table-borderless" style="width:auto;">
+                        <tr t-if="config.cobranza_payment_titular">
+                            <td><strong>Titular</strong></td>
+                            <td><span t-esc="config.cobranza_payment_titular"/></td>
+                        </tr>
+                        <tr t-if="config.cobranza_payment_bank">
+                            <td><strong>Banco</strong></td>
+                            <td><span t-esc="config.cobranza_payment_bank"/></td>
+                        </tr>
+                        <tr t-if="config.cobranza_payment_cbu">
+                            <td><strong>CBU</strong></td>
+                            <td><span t-esc="config.cobranza_payment_cbu"/></td>
+                        </tr>
+                        <tr t-if="config.cobranza_payment_alias">
+                            <td><strong>Alias</strong></td>
+                            <td><span t-esc="config.cobranza_payment_alias"/></td>
+                        </tr>
+                        <tr t-if="config.cobranza_payment_account">
+                            <td><strong>N° de cuenta</strong></td>
+                            <td><span t-esc="config.cobranza_payment_account"/></td>
+                        </tr>
+                        <tr t-if="config.cobranza_payment_cuit">
+                            <td><strong>CUIT</strong></td>
+                            <td><span t-esc="config.cobranza_payment_cuit"/></td>
+                        </tr>
+                    </table>
+                    <p class="text-muted" style="font-size:11px;">
+                        Si ya realizaste el pago, por favor envianos el comprobante. ¡Gracias!
+                    </p>
+                </div>
+            </div>
+        </t>
+    </template>
+
+    <!-- ══════════ Reporte liviano (solo estado de cuenta) — días 5 y 10 ══════════ -->
+    <template id="report_estado_cuenta">
+        <t t-call="web.html_container">
+            <t t-foreach="docs" t-as="o">
+                <t t-set="config" t-value="o.env['cristal.agent.config'].sudo().get_active() or o.env['cristal.agent.config']"/>
+                <t t-set="snap" t-value="o.cobranza_snapshot(config and config.cobranza_ventana_dias or 5)"/>
+                <t t-call="cristal_cobranza.report_estado_cuenta_page"/>
+            </t>
+        </t>
+    </template>
+
+    <!-- ══════════ Reporte completo (estado de cuenta + comprobantes) — día 0 ══════════ -->
+    <template id="report_estado_cuenta_full">
+        <t t-call="web.html_container">
+            <t t-foreach="docs" t-as="o">
+                <t t-set="config" t-value="o.env['cristal.agent.config'].sudo().get_active() or o.env['cristal.agent.config']"/>
+                <t t-set="snap" t-value="o.cobranza_snapshot(config and config.cobranza_ventana_dias or 5)"/>
+                <t t-call="cristal_cobranza.report_estado_cuenta_page"/>
+                <!-- Cada factura vencida embebida como página propia -->
+                <t t-foreach="snap['vencidas']" t-as="inv">
+                    <t t-call="account.report_invoice_document">
+                        <t t-set="o" t-value="inv"/>
+                    </t>
+                </t>
+            </t>
+        </t>
+    </template>
+
+</odoo>
