@@ -111,10 +111,15 @@ class CristalAgentRun(models.Model):
             return 'skipped'
 
         if stage in (0, 5, 10):
-            # Doble canal: WhatsApp + Email, cada uno con el PDF adjunto. Son
-            # independientes (el email no depende de la aprobación de Meta).
-            ok_wa = self._cobranza_do_whatsapp(partner, stage, snap, config, run)
-            ok_mail = self._cobranza_do_email(partner, stage, snap, config, run)
+            # Un solo PDF de estado de cuenta, compartido por los dos canales.
+            report_ref = REPORT_FULL if stage == 0 else REPORT_LIGHT
+            attachment = self._cobranza_generate_pdf(partner, report_ref, stage)
+            # Doble canal: WhatsApp + Email. Son independientes (el email no
+            # depende de la aprobación de Meta).
+            ok_wa = self._cobranza_do_whatsapp(
+                partner, stage, snap, config, run, attachment)
+            ok_mail = self._cobranza_do_email(
+                partner, stage, snap, config, run, attachment)
             outcome = 'whatsapp' if (ok_wa or ok_mail) else 'error'
         else:
             self._cobranza_do_activity(partner, stage, snap, config, run)
@@ -155,7 +160,7 @@ class CristalAgentRun(models.Model):
         return None
 
     # ────────────────────── Ejecución: WhatsApp ──────────────────────
-    def _cobranza_do_whatsapp(self, partner, stage, snap, config, run):
+    def _cobranza_do_whatsapp(self, partner, stage, snap, config, run, attachment=None):
         template = {
             0: config.cobranza_template_day0_id,
             5: config.cobranza_template_day5_id,
@@ -185,10 +190,12 @@ class CristalAgentRun(models.Model):
             _logger.warning("⚠️ Template día %s no aprobado (%s).", stage, template.status)
             return False
 
-        # PDF para archivo/chatter (el que viaja por WA lo genera el composer
-        # desde template.report_id; este es la copia auditable).
-        report_ref = REPORT_FULL if stage == 0 else REPORT_LIGHT
-        attachment = self._cobranza_generate_pdf(partner, report_ref, stage)
+        # El PDF (copia auditable / chatter) llega ya generado desde el llamador
+        # para no renderizarlo dos veces. El que viaja por WA lo arma el composer
+        # desde template.report_id.
+        if attachment is None:
+            report_ref = REPORT_FULL if stage == 0 else REPORT_LIGHT
+            attachment = self._cobranza_generate_pdf(partner, report_ref, stage)
 
         importe = partner.cobranza_format_amount(snap['total_vencido'])
         # El mensaje va al contacto de facturación; el estado de cuenta se
@@ -220,7 +227,7 @@ class CristalAgentRun(models.Model):
         return True
 
     # ────────────────────── Ejecución: Email ──────────────────────
-    def _cobranza_do_email(self, partner, stage, snap, config, run):
+    def _cobranza_do_email(self, partner, stage, snap, config, run, attachment=None):
         """Manda el mismo estado de cuenta por email al contacto de facturación.
         Es independiente de WhatsApp: no depende de la aprobación de Meta."""
         recipient = partner._cobranza_billing_contact()
@@ -236,8 +243,9 @@ class CristalAgentRun(models.Model):
                                note="No hay plantilla de email para el día %s." % stage)
             return False
 
-        report_ref = REPORT_FULL if stage == 0 else REPORT_LIGHT
-        attachment = self._cobranza_generate_pdf(partner, report_ref, stage)
+        if attachment is None:
+            report_ref = REPORT_FULL if stage == 0 else REPORT_LIGHT
+            attachment = self._cobranza_generate_pdf(partner, report_ref, stage)
         try:
             template.sudo().send_mail(
                 partner.id, force_send=True,

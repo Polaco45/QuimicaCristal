@@ -53,24 +53,89 @@ class ResPartner(models.Model):
         'partner_id',
         string="Acciones de cobranza",
     )
+    # ── Dashboard de deuda en tiempo real (pestaña Cobranza de la ficha) ──
+    # Todos se calculan juntos en _compute_cobranza_dashboard (un solo snapshot).
+    cobranza_currency_id = fields.Many2one(
+        'res.currency', string="Moneda (cobranza)",
+        compute='_compute_cobranza_dashboard')
+    cobranza_total_vencido = fields.Monetary(
+        string="Total vencido", currency_field='cobranza_currency_id',
+        compute='_compute_cobranza_dashboard')
+    cobranza_total_por_vencer = fields.Monetary(
+        string="Por vencer (ventana)", currency_field='cobranza_currency_id',
+        compute='_compute_cobranza_dashboard')
+    cobranza_cant_vencidas = fields.Integer(
+        string="Facturas vencidas", compute='_compute_cobranza_dashboard')
+    cobranza_cant_por_vencer = fields.Integer(
+        string="Facturas por vencer", compute='_compute_cobranza_dashboard')
+    cobranza_dias_mora_max = fields.Integer(
+        string="Días de mora (máx.)", compute='_compute_cobranza_dashboard')
+    cobranza_gravedad = fields.Selection([
+        ('critica', 'Crítica'),
+        ('alta', 'Alta'),
+        ('media', 'Media'),
+        ('baja', 'Baja'),
+        ('none', 'Sin deuda vencida'),
+    ], string="Gravedad", compute='_compute_cobranza_dashboard')
+    cobranza_overdue_move_ids = fields.Many2many(
+        'account.move', string="Facturas vencidas (detalle)",
+        compute='_compute_cobranza_dashboard')
+    cobranza_upcoming_move_ids = fields.Many2many(
+        'account.move', string="Por vencer (detalle)",
+        compute='_compute_cobranza_dashboard')
     cobranza_total_vencido_display = fields.Char(
         string="Total vencido (autocompletar plantillas)",
-        compute='_compute_cobranza_total_vencido_display',
-        help="Total vencido formateado (ej: '$ 81.336,00'). Se usa para "
-             "autocompletar la variable {{2}} de las plantillas de cobranza "
-             "(de tipo Campo), así el importe sale SIEMPRE del sistema y no de "
-             "un valor cargado a mano. Se calcula al vuelo.",
+        compute='_compute_cobranza_dashboard',
+        help="Total vencido formateado (ej: '$ 81.336,00'). Autocompleta la "
+             "variable {{2}} de las plantillas de cobranza (de tipo Campo), así "
+             "el importe sale SIEMPRE del sistema y no de un valor a mano.",
     )
 
-    def _compute_cobranza_total_vencido_display(self):
+    @staticmethod
+    def _cobranza_calc_gravedad(monto, dias):
+        """Misma clasificación que el reporte de deudores por gravedad."""
+        if monto <= 0:
+            return 'none'
+        if monto >= 150000 or dias >= 120:
+            return 'critica'
+        if monto >= 60000 or dias >= 60:
+            return 'alta'
+        if monto >= 20000 or dias >= 30:
+            return 'media'
+        return 'baja'
+
+    def _compute_cobranza_dashboard(self):
+        AccountMove = self.env['account.move']
         for partner in self:
+            partner.cobranza_currency_id = partner._cobranza_currency()
             try:
                 snap = partner.cobranza_snapshot()
-                partner.cobranza_total_vencido_display = \
-                    partner.cobranza_format_amount(snap['total_vencido'])
-            except Exception:  # noqa: BLE001 — nunca romper la lectura del campo
+            except Exception:  # noqa: BLE001 — nunca romper la lectura de la ficha
+                snap = None
+            if not snap:
+                partner.cobranza_total_vencido = 0.0
+                partner.cobranza_total_por_vencer = 0.0
+                partner.cobranza_cant_vencidas = 0
+                partner.cobranza_cant_por_vencer = 0
+                partner.cobranza_dias_mora_max = 0
+                partner.cobranza_gravedad = 'none'
+                partner.cobranza_overdue_move_ids = AccountMove
+                partner.cobranza_upcoming_move_ids = AccountMove
                 partner.cobranza_total_vencido_display = \
                     partner.cobranza_format_amount(0.0)
+                continue
+            total_vencido = snap['total_vencido']
+            partner.cobranza_total_vencido = total_vencido
+            partner.cobranza_total_por_vencer = snap['total_por_vencer']
+            partner.cobranza_cant_vencidas = snap['cant_vencidas']
+            partner.cobranza_cant_por_vencer = snap['cant_por_vencer']
+            partner.cobranza_dias_mora_max = snap['dias_mora_max']
+            partner.cobranza_overdue_move_ids = snap['vencidas']
+            partner.cobranza_upcoming_move_ids = snap['por_vencer']
+            partner.cobranza_gravedad = partner._cobranza_calc_gravedad(
+                total_vencido, snap['dias_mora_max'])
+            partner.cobranza_total_vencido_display = \
+                partner.cobranza_format_amount(total_vencido)
 
     # ────────────────────── Núcleo ──────────────────────
     def _cobranza_open_moves(self):

@@ -143,7 +143,7 @@
     <template id="report_estado_cuenta">
         <t t-call="web.html_container">
             <t t-foreach="docs" t-as="o">
-                <t t-set="config" t-value="o.env['cristal.agent.config'].sudo().get_active()"/>
+                <t t-set="config" t-value="o.env['cristal.agent.config'].sudo().get_active() or o.env['cristal.agent.config']"/>
                 <t t-set="snap" t-value="o.cobranza_snapshot(config and config.cobranza_ventana_dias or 5)"/>
                 <t t-call="cristal_cobranza.report_estado_cuenta_page"/>
             </t>
@@ -154,7 +154,7 @@
     <template id="report_estado_cuenta_full">
         <t t-call="web.html_container">
             <t t-foreach="docs" t-as="o">
-                <t t-set="config" t-value="o.env['cristal.agent.config'].sudo().get_active()"/>
+                <t t-set="config" t-value="o.env['cristal.agent.config'].sudo().get_active() or o.env['cristal.agent.config']"/>
                 <t t-set="snap" t-value="o.cobranza_snapshot(config and config.cobranza_ventana_dias or 5)"/>
                 <t t-call="cristal_cobranza.report_estado_cuenta_page"/>
                 <!-- Cada factura vencida embebida como página propia -->
