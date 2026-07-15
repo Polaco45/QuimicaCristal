@@ -48,6 +48,14 @@ class ResPartner(models.Model):
     cobranza_last_action_date = fields.Date(
         string="Última acción de cobranza",
     )
+    cobranza_anchor_due = fields.Date(
+        string="Vencimiento ancla de la cadencia",
+        help="Vencimiento de la factura MÁS vencida que disparó la cadencia "
+             "actual. Mientras esa factura siga impaga, la cadencia avanza sobre "
+             "ella (aunque venzan facturas nuevas: no se reinicia ni spamea). "
+             "Si esa factura se cancela y queda otra deuda vencida, el ancla "
+             "cambia y la cadencia arranca de nuevo desde el día 0.",
+    )
     cobranza_action_ids = fields.One2many(
         'cristal.cobranza.action',
         'partner_id',

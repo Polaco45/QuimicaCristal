@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ══════════ Lista ══════════ -->
+    <record id="view_cobranza_report_list" model="ir.ui.view">
+        <field name="name">cristal.cobranza.report.list</field>
+        <field name="model">cristal.cobranza.report</field>
+        <field name="arch" type="xml">
+            <list string="Deuda por cliente" create="false" delete="false"
+                  default_order="total_vencido desc"
+                  decoration-danger="gravedad == 'critica'"
+                  decoration-warning="gravedad == 'alta'"
+                  decoration-muted="cobranza_exclude">
+                <field name="currency_id" column_invisible="1"/>
+                <field name="partner_id"/>
+                <field name="gravedad" widget="badge"
+                       decoration-danger="gravedad == 'critica'"
+                       decoration-warning="gravedad == 'alta'"
+                       decoration-info="gravedad == 'media'"
+                       decoration-muted="gravedad in ('baja', 'none')"/>
+                <field name="total_vencido" sum="Total vencido" widget="monetary"/>
+                <field name="cant_vencidas" sum="Facturas"/>
+                <field name="dias_mora_max"/>
+                <field name="oldest_due" optional="show"/>
+                <field name="total_por_vencer" sum="Por vencer" widget="monetary"
+                       optional="show"/>
+                <field name="cant_por_vencer" optional="hide"/>
+                <field name="total_adeudado" sum="Total adeudado" widget="monetary"
+                       optional="hide"/>
+                <field name="cobranza_last_stage" optional="show"/>
+                <field name="cobranza_exclude" optional="hide"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- ══════════ Pivot ══════════ -->
+    <record id="view_cobranza_report_pivot" model="ir.ui.view">
+        <field name="name">cristal.cobranza.report.pivot</field>
+        <field name="model">cristal.cobranza.report</field>
+        <field name="arch" type="xml">
+            <pivot string="Deuda por cliente" sample="0">
+                <field name="gravedad" type="row"/>
+                <field name="total_vencido" type="measure"/>
+                <field name="total_por_vencer" type="measure"/>
+                <field name="cant_vencidas" type="measure"/>
+            </pivot>
+        </field>
+    </record>
+
+    <!-- ══════════ Gráfico ══════════ -->
+    <record id="view_cobranza_report_graph" model="ir.ui.view">
+        <field name="name">cristal.cobranza.report.graph</field>
+        <field name="model">cristal.cobranza.report</field>
+        <field name="arch" type="xml">
+            <graph string="Deuda por gravedad" type="bar" sample="0">
+                <field name="gravedad"/>
+                <field name="total_vencido" type="measure"/>
+            </graph>
+        </field>
+    </record>
+
+    <!-- ══════════ Búsqueda / filtros ══════════ -->
+    <record id="view_cobranza_report_search" model="ir.ui.view">
+        <field name="name">cristal.cobranza.report.search</field>
+        <field name="model">cristal.cobranza.report</field>
+        <field name="arch" type="xml">
+            <search string="Deuda por cliente">
+                <field name="partner_id"/>
+                <filter name="con_vencido" string="Con deuda vencida"
+                        domain="[('total_vencido', '&gt;', 0)]"/>
+                <separator/>
+                <filter name="g_critica" string="Crítica"
+                        domain="[('gravedad', '=', 'critica')]"/>
+                <filter name="g_alta" string="Alta"
+                        domain="[('gravedad', '=', 'alta')]"/>
+                <filter name="g_media" string="Media"
+                        domain="[('gravedad', '=', 'media')]"/>
+                <filter name="g_baja" string="Baja"
+                        domain="[('gravedad', '=', 'baja')]"/>
+                <separator/>
+                <filter name="a_gestionar" string="A gestionar (no excluidos)"
+                        domain="[('cobranza_exclude', '=', False)]"/>
+                <filter name="excluidos" string="Excluidos de cobranza"
+                        domain="[('cobranza_exclude', '=', True)]"/>
+                <separator/>
+                <filter name="mora_60" string="Mora +60 días"
+                        domain="[('dias_mora_max', '&gt;=', 60)]"/>
+                <filter name="mora_120" string="Mora +120 días"
+                        domain="[('dias_mora_max', '&gt;=', 120)]"/>
+                <group expand="0" string="Agrupar por">
+                    <filter name="group_gravedad" string="Gravedad"
+                            context="{'group_by': 'gravedad'}"/>
+                    <filter name="group_stage" string="Último nivel enviado"
+                            context="{'group_by': 'cobranza_last_stage'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- ══════════ Acción ══════════ -->
+    <record id="action_cobranza_report" model="ir.actions.act_window">
+        <field name="name">Reporte de deuda</field>
+        <field name="res_model">cristal.cobranza.report</field>
+        <field name="view_mode">list,pivot,graph</field>
+        <field name="search_view_id" ref="view_cobranza_report_search"/>
+        <field name="context">{'search_default_con_vencido': 1, 'search_default_group_gravedad': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">No hay deuda para mostrar</p>
+            <p>Acá ves, en tiempo real, la deuda de todos los clientes clasificada
+               por gravedad: total vencido, por vencer, días de mora y en qué paso
+               de la cadencia está cada uno.</p>
+        </field>
+    </record>
+
+</odoo>

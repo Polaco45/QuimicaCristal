@@ -98,10 +98,11 @@ class CristalAgentRun(models.Model):
 
         # Sin vencido: si venía en cadencia, reseteamos para el próximo ciclo.
         if snap['total_vencido'] <= 0:
-            if partner.cobranza_last_stage:
+            if partner.cobranza_last_stage or partner.cobranza_anchor_due:
                 partner.sudo().write({
                     'cobranza_last_stage': False,
                     'cobranza_last_action_date': False,
+                    'cobranza_anchor_due': False,
                 })
                 return 'reset'
             return 'skipped'
@@ -125,11 +126,13 @@ class CristalAgentRun(models.Model):
             self._cobranza_do_activity(partner, stage, snap, config, run)
             outcome = 'activity'
 
-        # Avanzar estado del cliente (anti-spam) solo si se ejecutó algo.
+        # Avanzar estado del cliente (anti-spam) solo si se ejecutó algo. El ancla
+        # fija QUÉ factura está manejando esta cadencia.
         if outcome in ('whatsapp', 'activity'):
             partner.sudo().write({
                 'cobranza_last_stage': str(stage),
                 'cobranza_last_action_date': snap['today'],
+                'cobranza_anchor_due': snap['oldest_due'],
             })
         return outcome
 
@@ -140,9 +143,20 @@ class CristalAgentRun(models.Model):
             return None
         dias = snap['dias_mora_max']
         today = snap['today']
+        anchor = snap['oldest_due']
         last = int(partner.cobranza_last_stage) if partner.cobranza_last_stage else None
 
-        # Nunca contactado: arranca en el día 0 (entrega comprobantes + estado).
+        # Si la factura que venía manejando la cadencia se canceló y ahora la más
+        # vencida es OTRA, la deuda es nueva: la cadencia arranca de nuevo desde
+        # el día 0 (si no, una factura nueva heredaría el nivel viejo y podría
+        # saltar directo a "llamada", o quedar huérfana si el cliente estaba en 20).
+        if last is not None and partner.cobranza_anchor_due != anchor:
+            _logger.info(
+                "🔄 %s: cambió la factura más vencida (%s → %s). Reinicio la cadencia.",
+                partner.display_name, partner.cobranza_anchor_due, anchor)
+            last = None
+
+        # Nunca contactado (o cadencia reiniciada): arranca en el día 0.
         if last is None:
             return 0
 

@@ -6,6 +6,12 @@
               parent="cristal_agent.menu_cristal_agent_root"
               sequence="50"/>
 
+    <menuitem id="menu_cobranza_report"
+              name="Reporte de deuda"
+              parent="menu_cobranza_root"
+              action="action_cobranza_report"
+              sequence="5"/>
+
     <menuitem id="menu_cobranza_actions"
               name="Acciones de cobranza"
               parent="menu_cobranza_root"
