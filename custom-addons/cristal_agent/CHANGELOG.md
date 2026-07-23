@@ -7,6 +7,20 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.31.2] — 2026-07-22
+
+### Added — Lista de precios de UN solo nivel (ej: Oro para cliente preferencial)
+
+`generate_pricelist_pdf` acepta un parámetro nuevo **`only_level`** (`bronce` /
+`plata` / `oro`). Cuando se pasa, el PDF sale con **una sola columna de precio**
+de ese nivel (con el descuento ya aplicado: plata −5%, oro −10%), el box de
+niveles se reemplaza por un badge del nivel elegido, y el footer/nombre de archivo
+lo reflejan. Ideal para mandarle a un cliente preferencial su precio final sin
+mostrarle los otros niveles. Sin el parámetro, sigue saliendo la lista de 3
+columnas de siempre. (Solo código; no requiere migración.)
+
+---
+
 ## [18.0.1.31.1] — 2026-07-22
 
 ### Changed — Target mayorista afinado (comercios que revenden) + etiquetado temprano

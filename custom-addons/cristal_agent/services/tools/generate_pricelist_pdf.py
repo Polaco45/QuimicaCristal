@@ -82,6 +82,9 @@ class GeneratePricelistPdf(AgentTool):
         "precios por nivel con descuento aplicado, precio por litro calculado, "
         "y agrupación de variantes bajo cada producto. "
         "Usa productos con is_mayorista_catalog=True. "
+        "Podés pasar only_level='oro' (o 'plata'/'bronce') para generar la lista con UNA "
+        "sola columna de precio de ese nivel (descuento ya aplicado) — ideal para mandarle "
+        "a un cliente preferencial su precio final sin mostrar los otros niveles. "
         "Devuelve attachment_id para mandar por send_whatsapp(attachment_ids=[X])."
     )
     input_schema = {
@@ -95,11 +98,24 @@ class GeneratePricelistPdf(AgentTool):
                 "type": "integer",
                 "description": "ID de pricelist (alternativa a pricelist_name).",
             },
+            "only_level": {
+                "type": "string",
+                "enum": ["bronce", "plata", "oro"],
+                "description": "(Opcional) Genera la lista con UNA sola columna de precio "
+                               "de ese nivel (con el descuento ya aplicado: plata −5%, oro "
+                               "−10%). Útil para mandarle a un cliente preferencial su precio "
+                               "final sin mostrar los otros niveles. Si se omite, salen las 3 "
+                               "columnas (Bronce/Plata/Oro).",
+            },
         },
     }
 
     def _execute(self, env, run=None, pricelist_name='Lista Mayorista',
-                 pricelist_id=None, **kwargs):
+                 pricelist_id=None, only_level=None, **kwargs):
+        if only_level:
+            only_level = str(only_level).strip().lower()
+            if only_level not in LEVEL_DISCOUNTS:
+                return {"error": f"only_level inválido: '{only_level}'. Usá bronce, plata u oro."}
         Pricelist = env['product.pricelist'].sudo()
         if pricelist_id:
             pricelist = Pricelist.browse(int(pricelist_id))
@@ -135,16 +151,17 @@ class GeneratePricelistPdf(AgentTool):
         )
 
         try:
-            pdf_content = self._build_pdf(env, pricelist, templates)
+            pdf_content = self._build_pdf(env, pricelist, templates, only_level=only_level)
         except ImportError as e:
             return {"error": f"reportlab no instalado: {e}"}
         except Exception as e:
             _logger.exception("Error generando PDF: %s", e)
             return {"error": f"Error PDF: {e}"}
 
+        fname_suffix = f"_{only_level.capitalize()}" if only_level else "_Mayorista"
         try:
             attachment = env['ir.attachment'].sudo().create({
-                'name': f"Lista_{pricelist.name.replace(' ', '_')}_Mayorista.pdf",
+                'name': f"Lista_{pricelist.name.replace(' ', '_')}{fname_suffix}.pdf",
                 'type': 'binary',
                 'datas': base64.b64encode(pdf_content),
                 'res_model': 'product.pricelist',
@@ -161,12 +178,14 @@ class GeneratePricelistPdf(AgentTool):
             "pricelist": pricelist.name,
             "templates_count": len(templates),
             "summary": (
-                f"PDF Lista '{pricelist.name}' generado con {len(templates)} productos "
-                f"del Catálogo Mayorista. attachment_id={attachment.id}."
+                f"PDF Lista '{pricelist.name}'"
+                f"{' — solo nivel ' + only_level.upper() if only_level else ''} "
+                f"generado con {len(templates)} productos del Catálogo Mayorista. "
+                f"attachment_id={attachment.id}."
             ),
         }
 
-    def _build_pdf(self, env, pricelist, templates):
+    def _build_pdf(self, env, pricelist, templates, only_level=None):
         from reportlab.lib.pagesizes import A4
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
         from reportlab.platypus import (
@@ -186,6 +205,19 @@ class GeneratePricelistPdf(AgentTool):
         BRONZE = colors.HexColor('#CD7F32')
         SILVER = colors.HexColor('#9CA3AF')
         GOLD = colors.HexColor('#D4AF37')
+
+        # Modo "un solo nivel" (ej: Oro para cliente preferencial): una sola
+        # columna de precio con el descuento del nivel ya aplicado.
+        single = bool(only_level)
+        LEVEL_LABEL = {'bronce': 'BRONCE', 'plata': 'PLATA', 'oro': 'ORO'}
+        LEVEL_OFF = {'bronce': 'precio base', 'plata': '5% OFF', 'oro': '10% OFF'}
+        LEVEL_HEX = {'bronce': '#CD7F32', 'plata': '#9CA3AF', 'oro': '#D4AF37'}
+        sel_disc = LEVEL_DISCOUNTS.get(only_level, 0.0)
+        ncols = 4 if single else 6
+
+        def _blank_row(para):
+            """Fila que ocupa todo el ancho (section/line/tmpl) con el nº de columnas correcto."""
+            return [para] + [''] * (ncols - 1)
 
         buf = BytesIO()
         doc = SimpleDocTemplate(
@@ -270,35 +302,55 @@ class GeneratePricelistPdf(AgentTool):
         elements.append(Spacer(1, 8))
 
         # ═══ Box de niveles ═══
-        elements.append(Paragraph('NIVELES DE COMPRA MENSUAL', section_label))
-
-        level_cells = [
-            [
-                Paragraph(f'<font color="#CD7F32">●</font> &nbsp;BRONCE', level_title),
-                Paragraph(f'<font color="#9CA3AF">●</font> &nbsp;PLATA', level_title),
-                Paragraph(f'<font color="#D4AF37">●</font> &nbsp;ORO', level_title),
-            ],
-            [
-                Paragraph(LEVEL_RANGES['bronce'] + ' / mes', level_range),
-                Paragraph(LEVEL_RANGES['plata'] + ' / mes', level_range),
-                Paragraph(LEVEL_RANGES['oro'] + ' / mes', level_range),
-            ],
-            [
-                Paragraph('Precio base', level_discount),
-                Paragraph('5% off', level_discount),
-                Paragraph('10% off', level_discount),
-            ],
-        ]
-        levels_table = Table(level_cells, colWidths=[63 * mm, 63 * mm, 64 * mm])
-        levels_table.setStyle(TableStyle([
-            ('BOX', (0, 0), (-1, -1), 0.5, GREY),
-            ('LINEAFTER', (0, 0), (-2, -1), 0.5, GREY),
-            ('BACKGROUND', (0, 0), (-1, -1), LIGHT_GREY),
-            ('TOPPADDING', (0, 0), (-1, -1), 6),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-            ('LEFTPADDING', (0, 0), (-1, -1), 8),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 8),
-        ]))
+        if single:
+            elements.append(Paragraph('PRECIO PREFERENCIAL', section_label))
+            level_cells = [
+                [Paragraph(
+                    f'<font color="{LEVEL_HEX[only_level]}">●</font> &nbsp;NIVEL '
+                    f'{LEVEL_LABEL[only_level]}', level_title)],
+                [Paragraph(f'{LEVEL_RANGES[only_level]} / mes', level_range)],
+                [Paragraph(f'{LEVEL_OFF[only_level]} — precio final ya aplicado',
+                           level_discount)],
+            ]
+            levels_table = Table(level_cells, colWidths=[190 * mm])
+            level_style = [
+                ('BOX', (0, 0), (-1, -1), 0.5, GREY),
+                ('BACKGROUND', (0, 0), (-1, -1), LIGHT_GREY),
+                ('TOPPADDING', (0, 0), (-1, -1), 6),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+                ('LEFTPADDING', (0, 0), (-1, -1), 8),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+            ]
+        else:
+            elements.append(Paragraph('NIVELES DE COMPRA MENSUAL', section_label))
+            level_cells = [
+                [
+                    Paragraph(f'<font color="#CD7F32">●</font> &nbsp;BRONCE', level_title),
+                    Paragraph(f'<font color="#9CA3AF">●</font> &nbsp;PLATA', level_title),
+                    Paragraph(f'<font color="#D4AF37">●</font> &nbsp;ORO', level_title),
+                ],
+                [
+                    Paragraph(LEVEL_RANGES['bronce'] + ' / mes', level_range),
+                    Paragraph(LEVEL_RANGES['plata'] + ' / mes', level_range),
+                    Paragraph(LEVEL_RANGES['oro'] + ' / mes', level_range),
+                ],
+                [
+                    Paragraph('Precio base', level_discount),
+                    Paragraph('5% off', level_discount),
+                    Paragraph('10% off', level_discount),
+                ],
+            ]
+            levels_table = Table(level_cells, colWidths=[63 * mm, 63 * mm, 64 * mm])
+            level_style = [
+                ('BOX', (0, 0), (-1, -1), 0.5, GREY),
+                ('LINEAFTER', (0, 0), (-2, -1), 0.5, GREY),
+                ('BACKGROUND', (0, 0), (-1, -1), LIGHT_GREY),
+                ('TOPPADDING', (0, 0), (-1, -1), 6),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+                ('LEFTPADDING', (0, 0), (-1, -1), 8),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+            ]
+        levels_table.setStyle(TableStyle(level_style))
         elements.append(levels_table)
         elements.append(Spacer(1, 12))
 
@@ -373,15 +425,18 @@ class GeneratePricelistPdf(AgentTool):
                 return 'x litro'
             return 'x unidad'
 
-        def _prices(variant):
+        def _price_strings(variant):
+            """Devuelve la lista de strings de precio: 1 en modo single, 3 en modo full."""
             base = _get_pricelist_price(pricelist, variant)
             if not base or base <= 0:
-                return ('a consultar', '', '')
-            return (
+                return ['a consultar'] + ([] if single else ['', ''])
+            if single:
+                return [f"${base * (1 - sel_disc):,.0f}"]
+            return [
                 f"${base * (1 - LEVEL_DISCOUNTS['bronce']):,.0f}",
                 f"${base * (1 - LEVEL_DISCOUNTS['plata']):,.0f}",
                 f"${base * (1 - LEVEL_DISCOUNTS['oro']):,.0f}",
-            )
+            ]
 
         # Agrupar: sección → línea (nombre hoja) → [templates]
         groups = {'liquidos': defaultdict(list), 'distribucion': defaultdict(list)}
@@ -392,14 +447,20 @@ class GeneratePricelistPdf(AgentTool):
             groups[_section_of(tmpl)][line].append(tmpl)
 
         st_hdr_r = ParagraphStyle('hr', parent=st_hdr, alignment=TA_RIGHT)
+        LEVEL_HDR = {'bronce': 'BRONCE', 'plata': 'PLATA −5%', 'oro': 'ORO −10%'}
+        if single:
+            price_headers = [Paragraph(LEVEL_HDR[only_level], st_hdr_r)]
+        else:
+            price_headers = [
+                Paragraph('BRONCE', st_hdr_r),
+                Paragraph('PLATA −5%', st_hdr_r),
+                Paragraph('ORO −10%', st_hdr_r),
+            ]
         header_row = [
             Paragraph('CÓDIGO', st_hdr),
             Paragraph('PRODUCTO', st_hdr),
             Paragraph('UNIDAD', ParagraphStyle('hu', parent=st_hdr, alignment=TA_CENTER)),
-            Paragraph('BRONCE', st_hdr_r),
-            Paragraph('PLATA −5%', st_hdr_r),
-            Paragraph('ORO −10%', st_hdr_r),
-        ]
+        ] + price_headers
         rows = [header_row]
         row_meta = []
 
@@ -412,7 +473,7 @@ class GeneratePricelistPdf(AgentTool):
             lines = groups[sec_key]
             if not lines:
                 continue
-            rows.append([Paragraph(sec_title, st_section), '', '', '', '', ''])
+            rows.append(_blank_row(Paragraph(sec_title, st_section)))
             row_meta.append('section')
 
             def _line_key(l):
@@ -420,7 +481,7 @@ class GeneratePricelistPdf(AgentTool):
                 return (LIQUID_LINE_ORDER.get(ll, 99), ll) if sec_key == 'liquidos' else (0, ll)
 
             for line in sorted(lines.keys(), key=_line_key):
-                rows.append([Paragraph(line.upper(), st_line), '', '', '', '', ''])
+                rows.append(_blank_row(Paragraph(line.upper(), st_line)))
                 row_meta.append('line')
 
                 tmpls = sorted(
@@ -431,7 +492,7 @@ class GeneratePricelistPdf(AgentTool):
                     variants = tmpl.product_variant_ids.filtered(lambda v: v.sale_ok)
                     multi = len(variants) > 1
                     if multi:
-                        rows.append([Paragraph(tmpl.name, st_tmpl), '', '', '', '', ''])
+                        rows.append(_blank_row(Paragraph(tmpl.name, st_tmpl)))
                         row_meta.append('tmpl')
                     for v in variants:
                         if multi:
@@ -441,19 +502,19 @@ class GeneratePricelistPdf(AgentTool):
                             name_para = Paragraph(f"↳ {label}", st_variant)
                         else:
                             name_para = Paragraph(v.display_name, st_simple)
-                        pb, pp, po = _prices(v)
+                        price_cells = [Paragraph(p, st_price) for p in _price_strings(v)]
                         rows.append([
                             Paragraph(v.default_code or '—', st_code),
                             name_para,
                             Paragraph(_unit_of(v), st_unit),
-                            Paragraph(pb, st_price),
-                            Paragraph(pp, st_price),
-                            Paragraph(po, st_price),
-                        ])
+                        ] + price_cells)
                         row_meta.append('variant' if multi else 'simple')
 
-        # Anchos: total 190mm (6 columnas con Bronce/Plata/Oro)
-        col_widths = [18 * mm, 78 * mm, 20 * mm, 24 * mm, 24 * mm, 26 * mm]
+        # Anchos: total 190mm. 6 columnas (3 niveles) o 4 columnas (1 nivel).
+        if single:
+            col_widths = [20 * mm, 110 * mm, 24 * mm, 36 * mm]
+        else:
+            col_widths = [18 * mm, 78 * mm, 20 * mm, 24 * mm, 24 * mm, 26 * mm]
         products_table = Table(rows, colWidths=col_widths, repeatRows=1)
 
         style_cmds = [
@@ -505,11 +566,19 @@ class GeneratePricelistPdf(AgentTool):
 
         # ═══ Footer ═══
         elements.append(Spacer(1, 12))
-        elements.append(Paragraph(
-            '<b>Precios BRONCE (base).</b> Tu nivel define el descuento: PLATA −5% · ORO −10%. '
-            'Granel = precio por litro · Envasados = precio por unidad.',
-            footer_style
-        ))
+        if single:
+            elements.append(Paragraph(
+                f'<b>Precios nivel {LEVEL_LABEL[only_level]} ({LEVEL_OFF[only_level]}) — '
+                f'ya aplicado sobre esta lista.</b> '
+                'Granel = precio por litro · Envasados = precio por unidad.',
+                footer_style
+            ))
+        else:
+            elements.append(Paragraph(
+                '<b>Precios BRONCE (base).</b> Tu nivel define el descuento: PLATA −5% · ORO −10%. '
+                'Granel = precio por litro · Envasados = precio por unidad.',
+                footer_style
+            ))
         elements.append(Paragraph(
             'Precios en pesos argentinos · IVA incluido · Sujetos a modificación sin previo aviso',
             footer_style
