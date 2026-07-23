@@ -74,6 +74,33 @@ class EscalateToJoaco(AgentTool):
         if not internal_channel.exists():
             return {"error": "Canal interno (id 969 por default) no existe. Configuralo en AgentConfig."}
 
+        # THROTTLE anti-repetición: si ya se escaló algo PARECIDO al canal interno
+        # en las últimas 6 h, no lo repetimos. Joaco se quejó de que el bot le
+        # posteaba 3 veces lo mismo y de que cada aviso consumía. La huella son las
+        # primeras palabras del mensaje (típicamente el cliente + la acción).
+        import re as _re6
+        snippet = _re6.sub(r'<[^>]+>', '', message or '').strip()[:45]
+        if snippet:
+            try:
+                from datetime import datetime, timedelta
+                dup = env['mail.message'].sudo().search_count([
+                    ('model', '=', 'discuss.channel'),
+                    ('res_id', '=', internal_channel.id),
+                    ('author_id', '=', bot_partner.id),
+                    ('create_date', '>=', datetime.now() - timedelta(hours=6)),
+                    ('body', 'ilike', snippet),
+                ])
+                if dup:
+                    _logger.info("🔁 Escalación al canal interno OMITIDA (ya se avisó "
+                                 "algo igual en las últimas 6h): %s", snippet)
+                    return {
+                        "ok": True,
+                        "throttled": True,
+                        "summary": "Ya avisé algo parecido a Joaco hace poco; no lo repetí.",
+                    }
+            except Exception as e:
+                _logger.warning("Throttle de escalación interna falló (sigo y posteo): %s", e)
+
         # Armar el body
         urgency_prefix = "🚨 " if urgency == 'alta' else ""
         joaco_mention = (
@@ -134,63 +161,12 @@ class EscalateToJoaco(AgentTool):
             except Exception:
                 pass
 
-        # v1.22 — además del canal interno (log de respaldo), notificar a Joaco
-        # por WhatsApp para que responda desde ahí (canal de operador).
-        wa_ok = False
-        if getattr(config, 'notify_owner_via_whatsapp', False):
-            try:
-                wa_ok = self._notify_owner_whatsapp(env, config, message)
-            except Exception as e:
-                _logger.warning("No se pudo notificar a Joaco por WhatsApp: %s", e)
-
+        # v1.31 — Joaco pidió eliminar el chat por WhatsApp: las escalaciones van
+        # SOLO al canal interno de Odoo (concisas y sin repetir). Ya no se le manda
+        # nada al WhatsApp de Joaco.
         return {
             "ok": True,
             "channel_id": internal_channel.id,
-            "notified_whatsapp": wa_ok,
-            "summary": f"Escalado a Joaco (canal interno{' + WhatsApp' if wa_ok else ''})",
+            "summary": "Escalado a Joaco por el canal interno.",
         }
 
-    def _notify_owner_whatsapp(self, env, config, message):
-        """Manda la plantilla 'hola_mayorista_crm' al WhatsApp de Joaco con el
-        mensaje como texto libre, para que responda desde ahí. Devuelve True si OK."""
-        import re as _re
-        from datetime import timedelta
-        from odoo import fields as _fields
-        partner = config.owner_whatsapp_partner_id
-        if not partner:
-            return False
-        txt = _re.sub(r'<[^>]+>', '', message or '').strip()
-        if not txt:
-            return False
-
-        # THROTTLE anti-spam: si ya se le mandó a Joaco una escalación PARECIDA en
-        # las últimas 6 h, no la repetimos por WhatsApp. Mandar la MISMA plantilla
-        # muchas veces seguidas hace que Meta la acepte ("sent") pero DEJE de
-        # entregarla → Joaco no recibe nada. (El canal interno igual queda de log.)
-        try:
-            digits = config.get_owner_whatsapp_digits() or ''
-            # Huella: primeras palabras significativas del mensaje (ej. el cliente).
-            snippet = _re.sub(r'[%_]', ' ', txt)[:45].strip()
-            if digits and snippet:
-                since = _fields.Datetime.now() - timedelta(hours=6)
-                dup = env['whatsapp.message'].sudo().search_count([
-                    ('mobile_number', 'like', digits),
-                    ('create_date', '>=', since),
-                    ('body', 'ilike', snippet),
-                ])
-                if dup:
-                    _logger.info("🔁 Escalación a Joaco por WhatsApp OMITIDA (ya se "
-                                 "avisó algo igual en las últimas 6h): %s", snippet)
-                    return False
-        except Exception as e:
-            _logger.warning("Throttle de escalación falló (sigo y mando): %s", e)
-
-        # El template 'hola_mayorista_crm' tiene {{1}} = nombre (campo automático del
-        # partner) y {{2}} = UN solo texto libre. Por eso se pasa UNA sola variable
-        # (el mensaje). Pasar dos hacía que el nombre cayera en {{2}} y el mensaje se
-        # perdía → llegaban vacíos.
-        from .send_whatsapp_template import SendWhatsappTemplate
-        res = SendWhatsappTemplate()._execute(
-            env, partner_id=partner.id, template_name='hola_mayorista_crm',
-            variables=[txt[:900]])
-        return bool(res and res.get('ok'))

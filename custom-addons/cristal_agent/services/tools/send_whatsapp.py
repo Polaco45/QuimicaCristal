@@ -166,6 +166,14 @@ class SendWhatsApp(AgentTool):
         else:
             body_html = body
 
+        # Sanitizador de tono (solo para clientes): saca las muletillas de
+        # festejo prohibidas ("Perfecto", "Excelente", etc.) que Haiku igual
+        # mete pese al prompt. Costo $0, garantizado. El canal interno con Joaco
+        # no se toca (ahí el tono da igual).
+        if not is_internal_channel:
+            from ..helpers import sanitize_tone
+            body_html = sanitize_tone(body_html)
+
         # Resolver subtype
         try:
             subtype_id = env.ref('mail.mt_comment').id

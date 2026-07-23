@@ -90,10 +90,12 @@ class WhatsAppMessage(models.Model):
         except Exception:
             owner_digits = ''
         if owner_digits and owner_digits in re.sub(r'\D', '', phone_raw or ''):
-            if plain_body:
-                from ..services.claude_client import dispatch_agent_for_owner_whatsapp
-                dispatch_agent_for_owner_whatsapp(self.env, wa_message, plain_body)
-                _logger.info("🧑‍💼 Mensaje de Joaco (operador) procesado por WhatsApp.")
+            # v1.31 — El chat con Joaco por WhatsApp se ELIMINÓ (pedido de Joaco:
+            # "no sirve"). Sus mensajes por WhatsApp ya NO disparan al bot; para
+            # darle órdenes o preguntarle algo a Claudio, Joaco usa el CANAL
+            # INTERNO de Odoo. Igual NUNCA se lo trata como cliente.
+            _logger.info("🧑‍💼 Mensaje de Joaco por WhatsApp IGNORADO (el chat con "
+                         "Joaco es solo por el canal interno de Odoo).")
             return
 
         # 3.1) v1.13/v1.14 — ¿Es una nota de voz? (sin texto pero con audio adjunto).

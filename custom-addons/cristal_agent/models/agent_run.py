@@ -630,42 +630,21 @@ class CristalAgentRun(models.Model):
                     ('create_date', '>=', datetime.now() - timedelta(days=7)),
                 ])
                 if stuck_runs >= 2:
+                    # v1.31 — Claudio es ULTRAAUTÓNOMO: NO le carga actividades a
+                    # Joaco. Antes, un cliente "trabado" (sin canal WA / sin
+                    # template) generaba una actividad manual para Joaco. Ahora la
+                    # actividad se cierra sin más y queda el log; si de verdad hace
+                    # falta que Joaco intervenga, el bot ya escala por el canal
+                    # interno desde el propio run.
                     _logger.warning(
-                        "Actividad %s STUCK para %s (%s runs en 7d). "
-                        "Cerrando actividad y delegando a Joaco para revisión manual.",
+                        "Actividad %s STUCK para %s (%s runs en 7d). Cierro la "
+                        "actividad sin generar tarea para Joaco (ultraautónomo).",
                         activity.id, partner.name, stuck_runs
                     )
                     try:
-                        # Cerrar la actividad fallida
                         activity.action_done()
-                        # Crear actividad MANUAL para Joaco (no Claudio)
-                        config_local = self.env['cristal.agent.config'].sudo().get_active()
-                        joaco_user_id = config_local.owner_user_id.id if config_local.owner_user_id else 18
-                        activity_type = self.env['mail.activity.type'].sudo().search(
-                            [('name', '=', 'Llamada de teléfono')], limit=1
-                        ) or self.env['mail.activity.type'].sudo().browse(2)
-                        if activity_type.exists():
-                            self.env['mail.activity'].sudo().create({
-                                'res_model': activity.res_model,
-                                'res_model_id': self.env['ir.model']._get_id(activity.res_model),
-                                'res_id': activity.res_id,
-                                'activity_type_id': activity_type.id,
-                                'user_id': joaco_user_id,
-                                'date_deadline': fields.Date.today(),
-                                'summary': f"Contacto manual: {partner.name}",
-                                'note': (
-                                    f"Claudio intentó contactar a este cliente {stuck_runs} veces "
-                                    f"sin éxito (probablemente no tiene canal WA activo o "
-                                    f"falta template aprobado). Contactalo vos manualmente "
-                                    f"o ignorá si no corresponde."
-                                ),
-                            })
-                            _logger.info(
-                                "✅ Actividad manual creada para Joaco (user %s) — %s",
-                                joaco_user_id, partner.name
-                            )
                     except Exception as e:
-                        _logger.exception("Error delegando a Joaco: %s", e)
+                        _logger.exception("Error cerrando actividad trabada: %s", e)
                     continue
 
                 # Saltar si el partner tiene takeover humano activo

@@ -7,6 +7,45 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.31.0] — 2026-07-22
+
+### Changed — Iteración comercial: tono, canal con Joaco, autonomía, fuera de zona
+
+Sobre datos reales de producción (534 runs / 1040 mensajes salientes en la
+semana). Los problemas eran de formas y de negocio, no técnicos.
+
+- **Tono garantizado (costo $0).** El prompt prohíbe las muletillas de festejo
+  ("Perfecto", "Excelente", "Genial", etc.), pero Haiku igual las metía en
+  **~13,5% de los mensajes** (1 de cada 7). Nuevo sanitizador determinístico
+  `helpers.sanitize_tone()` que las saca del texto SALIENTE al cliente antes de
+  enviarlo (`send_whatsapp`), sin costo de tokens. Conservador: solo actúa sobre
+  muletillas de apertura, no sobre adjetivos legítimos. El canal interno no se toca.
+- **Se elimina el chat con Joaco por WhatsApp.** A pedido de Joaco. `escalate_to_joaco`
+  ahora escala **SOLO al canal interno de Odoo** (se quitó `_notify_owner_whatsapp`
+  y el envío de la plantilla a su WhatsApp). Se agrega **throttle anti-repetición**
+  al canal interno (no repite una escalación parecida en 6 h). `notify_owner_via_whatsapp`
+  pasa a `False`.
+- **Ultraautonomía: cero actividades para Joaco.** `cron_pending_activities` ya no
+  crea una actividad manual para Joaco cuando un cliente se "traba": cierra la
+  actividad y deja el log. Si de verdad necesita a Joaco, el bot escala por el
+  canal interno.
+- **Fuera de zona: SÍ se vende (retiro por comisionista).** Prompt v5: los clientes
+  fuera de Río Cuarto/Las Higueras ya no se rebotan — se cotiza y vende normal con
+  retiro por comisionista/encomienda en la planta de RC, y se los clasifica por
+  ciudad/zona para la futura ruta de reparto. (Antes el prompt decía "no cotices",
+  pero el bot ya vendía así igual — se oficializa y se pule.)
+- **Calificación menos fría (dar valor primero).** Prompt v5: si el cliente abre
+  pidiendo precio/lista/producto, el bot da eso PRIMERO (con el 20% OFF) y mete la
+  pregunta en el mismo mensaje. Ya no condiciona la lista a que dé el email antes;
+  el email se pide cuando hay interés. Menos interrogatorio, más venta.
+- **Datos de transferencia en la KB.** Nueva entrada de conocimiento con los datos
+  bancarios reales (Brubank / alias / CBU) para que el bot NUNCA invente un CBU
+  (caso Juliana, a quien le pasó un CBU inexistente). El prompt apunta a usarlos textual.
+
+Migración 1.31.0: recarga el prompt v5 y apaga `notify_owner_via_whatsapp`.
+
+---
+
 ## [18.0.1.30.0] — 2026-07-06
 
 ### Fixed — El broadcast semanal mandaba el NOMBRE en vez de la oferta
