@@ -7,6 +7,27 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.31.1] — 2026-07-22
+
+### Changed — Target mayorista afinado (comercios que revenden) + etiquetado temprano
+
+Joaco marcó que Claudio derivaba mal: muchos dicen *"es para mi despensa"* (revenden
+en su comercio) y el bot lo interpretaba como uso propio → derivaba a Compras.
+
+- **Comercio propio = REVENDE = MAYORISTA.** Prompt v5: si el cliente tiene o arma un
+  local donde le vende al público (despensa, kiosco, almacén, minimercado, dietética,
+  verdulería, forrajería, ferretería, bazar, polirrubro, distribuidora, etc.) → es
+  mayorista, NO uso propio. Derivar a Compras SOLO si es indudablemente institución de
+  otro rubro para consumo propio (fábrica, escuela, hospital, oficina, etc.).
+- **Ante la duda → ES MAYORISTA:** no derivar, no frenar; etiquetar, **mandar la lista**
+  y seguir. Si se confirma, se pregunta sin frenar la venta.
+- **Etiquetar al primer indicio:** al mínimo indicio de mayorista, `update_partner(
+  category_to_add='Mayorista')` de una, sin esperar a cerrar la calificación.
+
+Migración 1.31.1: recarga el prompt v5.
+
+---
+
 ## [18.0.1.31.0] — 2026-07-22
 
 ### Changed — Iteración comercial: tono, canal con Joaco, autonomía, fuera de zona
