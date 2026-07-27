@@ -133,10 +133,14 @@ class CreateSaleOrder(AgentTool):
 
         Pricelist = env['product.pricelist'].sudo()
         pricelist = Pricelist.search([('name', '=', pricelist_name)], limit=1)
+        if not pricelist and pricelist_name != 'Lista Mayorista':
+            pricelist = Pricelist.search([('name', '=', 'Lista Mayorista')], limit=1)
         if not pricelist:
-            pricelist = partner.property_product_pricelist
-        if not pricelist:
-            return {"error": f"No encontré pricelist '{pricelist_name}' ni en el partner"}
+            # NUNCA caer a la pricelist del partner: los consumidor final /
+            # re-etiquetados tienen L.C 1 y las cotizaciones mayoristas DEBEN ir
+            # SIEMPRE con la Lista Mayorista.
+            return {"error": "No encontré la 'Lista Mayorista'. Las cotizaciones "
+                             "mayoristas DEBEN usar esa lista. Escalá a Joaco."}
 
         # 1) Resolver líneas + validar mínimo a granel + stock
         resolved = []  # (product, qty)
@@ -225,6 +229,25 @@ class CreateSaleOrder(AgentTool):
                     'state': 'draft',
                 })
                 reused = False
+
+            # ── GARANTÍA: Lista Mayorista SIEMPRE ──
+            # Odoo pisa el pricelist del pedido con el del partner (pricelist_id se
+            # recomputa desde partner_id). Bug real: partners CF re-etiquetados
+            # mayorista (ej. Sandra) tenían L.C 1 → la cotización salía con precios
+            # de consumidor final. Forzamos la Lista Mayorista, recomputamos el
+            # precio de cada línea desde esa lista, y reaplicamos el descuento
+            # (cambiar el pricelist lo resetea).
+            if order.pricelist_id.id != pricelist.id:
+                order.pricelist_id = pricelist.id
+                for line in order.order_line:
+                    try:
+                        line.price_unit = pricelist._get_product_price(
+                            line.product_id, line.product_uom_qty or 1.0)
+                    except Exception:
+                        pass
+            if discount_percent and order.order_line:
+                order.order_line.write({'discount': float(discount_percent)})
+
             if note:
                 order.note = note
             order.opportunity_id = opp.id

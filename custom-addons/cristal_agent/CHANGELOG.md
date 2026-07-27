@@ -7,6 +7,26 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.31.3] — 2026-07-27
+
+### Fixed — CRÍTICO: cotizaciones mayoristas salían con L.C 1 (precio consumidor final)
+
+`create_sale_order` pedía la 'Lista Mayorista', pero Odoo **pisaba el pricelist del
+pedido con el del partner** (`pricelist_id` se recomputa desde `partner_id`). Los
+partners que eran consumidor final y se re-etiquetaron Mayorista conservaban su
+`property_product_pricelist` = **L.C 1**, así que la cotización salía con precios de
+consumidor final y se la pasaba al cliente (caso real: Sandra, S05330).
+
+- Ahora la tool **fuerza SIEMPRE la Lista Mayorista** después de crear/reusar el
+  borrador, **recomputa el precio de cada línea** desde esa lista y **reaplica el
+  descuento** (cambiar el pricelist lo resetea).
+- Resolución de pricelist **estricta**: si no existe la 'Lista Mayorista', NO cae a
+  la del partner — devuelve error y escala. Nunca más L.C 1 en una cotización mayorista.
+
+(Solo código; no requiere migración.)
+
+---
+
 ## [18.0.1.31.2] — 2026-07-22
 
 ### Added — Lista de precios de UN solo nivel (ej: Oro para cliente preferencial)
