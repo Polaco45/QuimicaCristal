@@ -10,10 +10,18 @@
                   create="0">
                 <field name="ruteo_sequence" string="#"/>
                 <field name="res_name" string="Cliente"/>
-                <field name="summary" string="Visita"/>
+                <field name="ruteo_visit_type" string="Tipo" widget="badge"
+                       decoration-danger="ruteo_visit_type == 'cierre'"
+                       decoration-success="ruteo_visit_type == 'primera_visita'"
+                       decoration-info="ruteo_visit_type == 'reposicion'"
+                       decoration-warning="ruteo_visit_type == 'reactivacion'"/>
                 <field name="note" string="Motivo"/>
-                <field name="date_deadline" string="Fecha"/>
+                <field name="date_deadline" string="Fecha" optional="hide"/>
                 <field name="user_id" string="Vendedor" optional="hide"/>
+                <button name="action_ruteo_navigate" type="object" icon="fa-map-signs"
+                        string="Cómo llegar" title="Cómo llegar"/>
+                <button name="action_ruteo_mark_visited" type="object" icon="fa-check"
+                        string="Visitado" title="Marcar visitado"/>
             </list>
         </field>
     </record>

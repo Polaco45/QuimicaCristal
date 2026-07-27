@@ -17,6 +17,7 @@ un cron por un fallo del proveedor.
 import logging
 import time
 from datetime import timedelta
+from urllib.parse import quote
 
 from odoo import api, fields, models
 
@@ -29,6 +30,15 @@ ADDRESS_TRIGGER_FIELDS = {'street', 'street2', 'city', 'zip', 'state_id', 'count
 RUTEO_FREQ_BY_LEVEL = {'oro': 7, 'plata': 15, 'bronce': 30}
 # Cadencia de captación para clientes nuevos/prospectos todavía sin nivel.
 RUTEO_FREQ_PROSPECT = 15
+
+# Tipos de visita (compartido con mail.activity para el badge de la ruta).
+RUTEO_VISIT_TYPES = [
+    ('primera_visita', 'Primera visita'),
+    ('relevamiento', 'Relevamiento'),
+    ('cierre', 'Cierre de venta'),
+    ('reposicion', 'Reposición'),
+    ('reactivacion', 'Reactivación'),
+]
 
 
 class ResPartner(models.Model):
@@ -81,13 +91,8 @@ class ResPartner(models.Model):
         help="Verdadero si ya pasó su fecha de próxima visita o nunca fue visitado.")
 
     # ─────────── Prioridad y tipo de visita (Pieza 4) ───────────
-    ruteo_visit_type = fields.Selection([
-        ('primera_visita', 'Primera visita'),
-        ('relevamiento', 'Relevamiento'),
-        ('cierre', 'Cierre de venta'),
-        ('reposicion', 'Reposición'),
-        ('reactivacion', 'Reactivación'),
-    ], string="Tipo de visita", compute='_compute_ruteo_priority',
+    ruteo_visit_type = fields.Selection(
+        RUTEO_VISIT_TYPES, string="Tipo de visita", compute='_compute_ruteo_priority',
         help="Qué clase de visita es, según la etapa del CRM y el estado del cliente.")
     ruteo_priority_score = fields.Integer(
         string="Prioridad de visita", compute='_compute_ruteo_priority',
@@ -250,6 +255,20 @@ class ResPartner(models.Model):
         """Botón de la ficha: ubicar este cliente ahora mismo."""
         self._ruteo_geolocalize_batch()
         return True
+
+    def action_ruteo_open_maps(self):
+        """Abre Google Maps con la dirección/coordenadas del cliente (navegación)."""
+        self.ensure_one()
+        if self.ruteo_is_located:
+            destination = "%s,%s" % (self.partner_latitude, self.partner_longitude)
+        else:
+            destination = ", ".join(
+                p for p in [self.street, self.city, (self.country_id.name or '')] if p)
+        return {
+            'type': 'ir.actions.act_url',
+            'url': "https://www.google.com/maps/dir/?api=1&destination=%s" % quote(destination or ''),
+            'target': 'new',
+        }
 
     def _ruteo_geolocalize_batch(self, throttle=False):
         """Geolocaliza cada partner de self con el proveedor configurado

@@ -24,6 +24,9 @@
                             <button name="action_ruteo_geolocalize" type="object"
                                     string="Geolocalizar ahora" icon="fa-map-marker"
                                     class="btn-primary"/>
+                            <button name="action_ruteo_open_maps" type="object"
+                                    string="Cómo llegar" icon="fa-map-signs"
+                                    invisible="not ruteo_is_located"/>
                             <p colspan="2" class="text-muted">
                                 Cargá la dirección de calle y la ciudad, guardá, y el
                                 sistema ubica al cliente en el mapa automáticamente
