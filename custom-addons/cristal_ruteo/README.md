@@ -55,9 +55,12 @@ Todo el geocodificado está envuelto en `try/except`: nunca rompe un guardado ni
 el cron por un fallo del proveedor. El estado queda visible en `ruteo_geo_status`
 (pendiente / ubicado / falló) con el detalle del error si lo hubo.
 
-**Proveedor:** usa el geocodificador configurado en Ajustes (por defecto
-OpenStreetMap / Nominatim, sin costo ni API key). El módulo depende de
-`base_geolocalize`.
+**Proveedor:** usa **georef** (apis.datos.gob.ar), el geocodificador oficial
+argentino — gratis, sin API key y mucho más preciso que OpenStreetMap para
+direcciones locales (OSM falla o erra en Río Cuarto). Si el cliente no tiene
+ciudad cargada, se asume Río Cuarto (o Las Higueras según la zona) para no
+geocodificar a ciegas. Si no matchea la altura exacta, ubica la calle y marca
+"Revisar". El módulo usa los campos de `base_geolocalize` (lat/long).
 
 ## Pieza 2 — Micro-zonas por día (PJP)
 

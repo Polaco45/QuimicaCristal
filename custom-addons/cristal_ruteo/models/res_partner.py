@@ -15,11 +15,18 @@ Todo el geocodificado va envuelto en try/except: NUNCA rompe un guardado ni
 un cron por un fallo del proveedor.
 """
 import logging
+import re
 import time
 from datetime import timedelta
 from urllib.parse import quote
 
+import requests
+
 from odoo import api, fields, models
+
+# Geocodificador oficial argentino (datos.gob.ar) — gratis, sin API key y mucho
+# más preciso que OpenStreetMap para direcciones locales.
+GEOREF_URL = 'https://apis.datos.gob.ar/georef/api/direcciones'
 
 _logger = logging.getLogger(__name__)
 
@@ -307,50 +314,97 @@ class ResPartner(models.Model):
             'target': 'new',
         }
 
+    def _ruteo_localidad_provincia(self):
+        """Localidad y provincia a usar en el geocodificado. Si el cliente no
+        tiene ciudad cargada, se asume la zona de reparto (Río Cuarto por defecto,
+        Las Higueras si corresponde), para no geocodificar 'a ciegas'."""
+        self.ensure_one()
+        localidad = (self.city or '').strip()
+        if not localidad:
+            localidad = 'Las Higueras' if self.agent_zone == 'las_higueras' else 'Río Cuarto'
+        provincia = (self.state_id.name or 'Córdoba').strip()
+        return localidad, provincia
+
+    @staticmethod
+    def _georef_lookup(direccion, localidad, provincia):
+        """Consulta georef (datos.gob.ar). Devuelve (lat, lon, nomenclatura) o None."""
+        if not direccion:
+            return None
+        params = {'direccion': direccion, 'localidad': localidad,
+                  'provincia': provincia, 'max': 1}
+        resp = requests.get(GEOREF_URL, params=params, timeout=15)
+        resp.raise_for_status()
+        data = resp.json().get('direcciones') or []
+        if not data:
+            return None
+        ubic = (data[0].get('ubicacion') or {})
+        lat, lon = ubic.get('lat'), ubic.get('lon')
+        if lat in (None, 0) or lon in (None, 0):
+            return None
+        return (lat, lon, data[0].get('nomenclatura'))
+
+    def _ruteo_geocode(self):
+        """Geocodifica el cliente con georef (preciso para direcciones argentinas).
+        Devuelve (lat, lon, etiqueta, exacto) o None. 'exacto' = matcheó con altura."""
+        self.ensure_one()
+        street = (self.street or '').strip()
+        if not street:
+            return None
+        localidad, provincia = self._ruteo_localidad_provincia()
+        result = self._georef_lookup(street, localidad, provincia)
+        if result:
+            return result + (True,)
+        # Reintento sin la altura (a veces frena el match): al menos ubica la calle.
+        street_no_num = re.sub(r'\d+', '', street).strip(' ,.-')
+        if street_no_num and street_no_num.lower() != street.lower():
+            result = self._georef_lookup(street_no_num, localidad, provincia)
+            if result:
+                return result + (False,)
+        return None
+
     def _ruteo_geolocalize_batch(self, throttle=False):
-        """Geolocaliza cada partner de self con el proveedor configurado
-        (OpenStreetMap por defecto). Tolerante a fallos y guardado."""
+        """Geolocaliza cada partner de self con georef (geocodificador oficial
+        argentino, gratis y preciso). Tolerante a fallos y guardado."""
         for partner in self:
             partner = partner.sudo()
             partner.ruteo_geo_last_try = fields.Datetime.now()
             try:
-                partner.geo_localize()
-                if partner.ruteo_is_located and partner._ruteo_coords_in_zone():
+                geo = partner._ruteo_geocode()
+                if geo:
+                    lat, lon, label, exacto = geo
                     partner.write({
-                        'ruteo_geo_pending': False,
-                        'ruteo_geo_status': 'ok',
-                        'ruteo_geo_message': False,
+                        'partner_latitude': lat,
+                        'partner_longitude': lon,
+                        'date_localization': fields.Date.context_today(partner),
                     })
-                    _logger.info(
-                        "📍 Ruteo: %s ubicado en (%s, %s)",
-                        partner.name, partner.partner_latitude, partner.partner_longitude,
-                    )
-                elif partner.ruteo_is_located:
-                    # Ubicado pero fuera de la zona de Río Cuarto: casi seguro el
-                    # geocodificador erró (centroide genérico). Se marca para revisar
-                    # en vez de darlo por bueno.
-                    partner.write({
-                        'ruteo_geo_pending': False,
-                        'ruteo_geo_status': 'review',
-                        'ruteo_geo_message': "Coordenadas fuera de la zona de Río Cuarto — revisá la dirección.",
-                    })
-                    _logger.warning(
-                        "📍 Ruteo: %s ubicado FUERA de zona (%s, %s) — a revisar",
-                        partner.name, partner.partner_latitude, partner.partner_longitude,
-                    )
+                    if not partner._ruteo_coords_in_zone():
+                        partner.write({
+                            'ruteo_geo_pending': False,
+                            'ruteo_geo_status': 'review',
+                            'ruteo_geo_message': "Fuera de zona de Río Cuarto — revisá: %s" % (label or ''),
+                        })
+                    elif exacto:
+                        partner.write({
+                            'ruteo_geo_pending': False,
+                            'ruteo_geo_status': 'ok',
+                            'ruteo_geo_message': label or False,
+                        })
+                        _logger.info("📍 Ruteo: %s → %s (%s, %s)", partner.name, label, lat, lon)
+                    else:
+                        # Ubicó la calle pero no la altura exacta.
+                        partner.write({
+                            'ruteo_geo_pending': False,
+                            'ruteo_geo_status': 'review',
+                            'ruteo_geo_message': "Altura aproximada (revisá): %s" % (label or ''),
+                        })
                 else:
-                    # Sale de la cola automática para no reintentar en loop ni
-                    # saturar al proveedor. Al corregir la dirección, write() lo
-                    # vuelve a encolar solo; o se reintenta con el botón.
                     partner.write({
                         'ruteo_geo_pending': False,
                         'ruteo_geo_status': 'failed',
-                        'ruteo_geo_message': "El geocodificador no devolvió coordenadas para esta dirección.",
+                        'ruteo_geo_message': "No se encontró la dirección. Revisá calle, altura y ciudad.",
                     })
-                    _logger.warning(
-                        "📍 Ruteo: sin coordenadas para %s (dir: %s, %s)",
-                        partner.name, partner.street, partner.city,
-                    )
+                    _logger.warning("📍 Ruteo: sin resultado para %s (dir: %s, %s)",
+                                    partner.name, partner.street, partner.city)
             except Exception as exc:  # noqa: BLE001 — nunca romper save/cron por geo
                 partner.write({
                     'ruteo_geo_pending': False,
@@ -359,8 +413,7 @@ class ResPartner(models.Model):
                 })
                 _logger.exception("📍 Ruteo: error geolocalizando %s", partner.name)
             if throttle:
-                # Política de uso de Nominatim: máximo 1 request por segundo.
-                time.sleep(1.1)
+                time.sleep(0.6)
 
     @api.model
     def _cron_ruteo_geocode_pending(self, limit=30):
