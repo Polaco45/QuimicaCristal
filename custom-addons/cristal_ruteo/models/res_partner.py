@@ -48,6 +48,14 @@ class ResPartner(models.Model):
         string="Ubicado en el mapa", compute='_compute_ruteo_is_located', store=True,
         help="Verdadero si tiene coordenadas válidas (no 0,0).")
 
+    # ─────────── Zona de ruteo (Pieza 2) ───────────
+    ruteo_zona_id = fields.Many2one(
+        'cristal.ruta.zona', string="Zona de ruteo", index=True, ondelete='set null',
+        help="Micro-zona geográfica a la que pertenece el cliente. Define en qué "
+             "día de la semana lo visita la vendedora (PJP).")
+    ruteo_weekday = fields.Selection(
+        related='ruteo_zona_id.weekday', string="Día de visita", store=True, index=True)
+
     # ─────────── Computeds ───────────
     @api.depends('partner_latitude', 'partner_longitude')
     def _compute_ruteo_is_located(self):

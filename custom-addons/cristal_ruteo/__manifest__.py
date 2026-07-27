@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 {
     'name': 'Cristal — Ruteo de Visitas',
-    'version': '18.0.1.0.0',
+    'version': '18.0.1.1.0',
     'summary': 'Planificador de rutas de visita para la fuerza de venta de calle: '
                'geolocalización automática de clientes, micro-zonas por día, '
                'priorización por etapa del CRM y ruta diaria en el celular.',
@@ -25,7 +25,10 @@ vendedora al estilo PJP (Plan de Jornada Permanente) de distribuidora:
     'license': 'LGPL-3',
     'depends': ['base_geolocalize', 'contacts', 'crm', 'cristal_agent'],
     'data': [
+        'security/ir.model.access.csv',
         'data/cron_jobs.xml',
+        'wizards/ruta_zona_autoassign_views.xml',
+        'views/cristal_ruta_zona_views.xml',
         'views/res_partner_views.xml',
     ],
     'application': False,

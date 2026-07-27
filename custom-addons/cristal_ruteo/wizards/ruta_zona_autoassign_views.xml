@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_ruta_zona_autoassign_form" model="ir.ui.view">
+        <field name="name">cristal.ruta.zona.autoassign.form</field>
+        <field name="model">cristal.ruta.zona.autoassign</field>
+        <field name="arch" type="xml">
+            <form string="Armar zonas automáticamente">
+                <div class="alert alert-info" role="status">
+                    Se agrupan los clientes <b>ya geolocalizados</b> del vendedor en
+                    zonas compactas por cercanía, y se le asigna a cada una un día de
+                    la semana (Lunes a Viernes, de oeste a este).
+                </div>
+                <group>
+                    <field name="user_id"/>
+                    <field name="located_count"/>
+                    <field name="n_zonas"/>
+                    <field name="reset_existing"/>
+                </group>
+                <footer>
+                    <button name="action_confirm" type="object"
+                            string="Armar zonas" class="btn-primary"/>
+                    <button string="Cancelar" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_ruta_zona_autoassign" model="ir.actions.act_window">
+        <field name="name">Armar zonas automáticamente</field>
+        <field name="res_model">cristal.ruta.zona.autoassign</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+    </record>
+
+</odoo>

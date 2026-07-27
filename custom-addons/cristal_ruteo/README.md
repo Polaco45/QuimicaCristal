@@ -7,8 +7,8 @@ la capa geográfica + de ruteo.
 
 ## Roadmap (pieza por pieza)
 
-1. **Geolocalización automática** ✅ *(este release — v18.0.1.0.0)*
-2. Micro-zonas de ruta (`cristal.ruta.zona`) con día de la semana asignado
+1. **Geolocalización automática** ✅ *(v18.0.1.0.0)*
+2. **Micro-zonas de ruta** (`cristal.ruta.zona`) con día de la semana ✅ *(v18.0.1.1.0)*
 3. Frecuencia por valor (oro=7d / plata=15d / bronce=30d) + próxima visita
 4. Score de prioridad de visita (etapa CRM + días sin comprar + churn + nivel)
 5. Generador de ruta diaria (cron) → actividades "Visitar Institución" numeradas
@@ -38,6 +38,23 @@ el cron por un fallo del proveedor. El estado queda visible en `ruteo_geo_status
 **Proveedor:** usa el geocodificador configurado en Ajustes (por defecto
 OpenStreetMap / Nominatim, sin costo ni API key). El módulo depende de
 `base_geolocalize`.
+
+## Pieza 2 — Micro-zonas por día (PJP)
+
+**Qué hace:** parte la cartera del vendedor en zonas geográficas compactas y le
+da a cada zona un día de la semana, para que la vendedora viaje concentrada
+(estilo Plan de Jornada Permanente de distribuidora).
+
+**Cómo se arma:** menú *Ruteo de Visitas → Armar zonas automáticamente*. Elegís
+el vendedor y la cantidad de zonas (5 = Lun a Vie). El sistema agrupa los
+clientes **ya geolocalizados** por cercanía (k-means puro, determinista, sin
+librerías externas por el sandbox de Odoo.sh) y ordena las zonas de oeste a
+este para asignar Lunes→Viernes. Todo editable a mano después.
+
+**Modelo `cristal.ruta.zona`:** nombre, vendedor (`user_id`), día (`weekday`),
+clientes (`partner_ids`), conteos y centroide (`center_latitude/longitude`).
+En `res.partner` se agrega `ruteo_zona_id` y `ruteo_weekday` (día de visita,
+derivado de la zona, filtrable).
 
 ## Campos nuevos en `res.partner`
 
