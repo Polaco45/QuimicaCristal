@@ -31,6 +31,18 @@
                             </p>
                         </group>
                     </group>
+                    <group>
+                        <group string="Plan de visita">
+                            <field name="ruteo_zona_id"/>
+                            <field name="ruteo_weekday"/>
+                            <field name="ruteo_frequency_days"/>
+                        </group>
+                        <group string="Seguimiento">
+                            <field name="ruteo_last_visit"/>
+                            <field name="ruteo_next_visit_due"/>
+                            <field name="ruteo_is_due"/>
+                        </group>
+                    </group>
                 </page>
             </xpath>
         </field>
@@ -50,6 +62,14 @@
                         domain="[('ruteo_geo_pending', '=', True)]"/>
                 <filter name="ruteo_geo_fallido" string="Geo fallida"
                         domain="[('ruteo_geo_status', '=', 'failed')]"/>
+                <separator/>
+                <filter name="ruteo_due" string="Le toca visita"
+                        domain="['|', ('ruteo_last_visit', '=', False),
+                                 ('ruteo_next_visit_due', '&lt;=', context_today().strftime('%Y-%m-%d'))]"/>
+                <filter name="ruteo_group_weekday" string="Día de visita"
+                        context="{'group_by': 'ruteo_weekday'}"/>
+                <filter name="ruteo_group_zona" string="Zona de ruteo"
+                        context="{'group_by': 'ruteo_zona_id'}"/>
             </xpath>
         </field>
     </record>

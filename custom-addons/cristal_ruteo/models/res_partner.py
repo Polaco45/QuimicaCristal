@@ -16,6 +16,7 @@ un cron por un fallo del proveedor.
 """
 import logging
 import time
+from datetime import timedelta
 
 from odoo import api, fields, models
 
@@ -23,6 +24,11 @@ _logger = logging.getLogger(__name__)
 
 # Campos de dirección que, al cambiar, disparan una nueva geolocalización.
 ADDRESS_TRIGGER_FIELDS = {'street', 'street2', 'city', 'zip', 'state_id', 'country_id'}
+
+# Frecuencia de visita (días) según el nivel mayorista que calcula cristal_agent.
+RUTEO_FREQ_BY_LEVEL = {'oro': 7, 'plata': 15, 'bronce': 30}
+# Cadencia de captación para clientes nuevos/prospectos todavía sin nivel.
+RUTEO_FREQ_PROSPECT = 15
 
 
 class ResPartner(models.Model):
@@ -55,6 +61,54 @@ class ResPartner(models.Model):
              "día de la semana lo visita la vendedora (PJP).")
     ruteo_weekday = fields.Selection(
         related='ruteo_zona_id.weekday', string="Día de visita", store=True, index=True)
+
+    # ─────────── Frecuencia y próxima visita (Pieza 3) ───────────
+    ruteo_frequency_days = fields.Integer(
+        string="Frecuencia de visita (días)", compute='_compute_ruteo_frequency_days',
+        store=True,
+        help="Cada cuántos días conviene visitar. Deriva del nivel mayorista: "
+             "oro=7, plata=15, bronce=30. Nuevos/prospectos = 15 (captación).")
+    ruteo_last_visit = fields.Date(
+        string="Última visita", copy=False, index=True,
+        help="Fecha de la última visita presencial registrada. La setea el cierre "
+             "de la actividad de visita.")
+    ruteo_next_visit_due = fields.Date(
+        string="Próxima visita", compute='_compute_ruteo_next_visit_due', store=True,
+        help="Cuándo le toca la próxima visita (última visita + frecuencia). "
+             "Vacío = nunca visitado, prioridad de primera visita.")
+    ruteo_is_due = fields.Boolean(
+        string="Le toca visita", compute='_compute_ruteo_is_due',
+        help="Verdadero si ya pasó su fecha de próxima visita o nunca fue visitado.")
+
+    @api.depends('agent_level')
+    def _compute_ruteo_frequency_days(self):
+        for partner in self:
+            partner.ruteo_frequency_days = RUTEO_FREQ_BY_LEVEL.get(
+                partner.agent_level, RUTEO_FREQ_PROSPECT)
+
+    @api.depends('ruteo_last_visit', 'ruteo_frequency_days')
+    def _compute_ruteo_next_visit_due(self):
+        for partner in self:
+            if partner.ruteo_last_visit:
+                partner.ruteo_next_visit_due = partner.ruteo_last_visit + timedelta(
+                    days=partner.ruteo_frequency_days or 0)
+            else:
+                partner.ruteo_next_visit_due = False
+
+    @api.depends('ruteo_next_visit_due', 'ruteo_last_visit')
+    def _compute_ruteo_is_due(self):
+        today = fields.Date.context_today(self)
+        for partner in self:
+            partner.ruteo_is_due = (
+                not partner.ruteo_last_visit
+                or (partner.ruteo_next_visit_due and partner.ruteo_next_visit_due <= today)
+            )
+
+    def _ruteo_register_visit(self, when=None):
+        """Registra una visita presencial hoy (o en la fecha dada). La usará el
+        cierre de la actividad de visita (Pieza 5)."""
+        visit_date = when or fields.Date.context_today(self)
+        self.write({'ruteo_last_visit': visit_date})
 
     # ─────────── Computeds ───────────
     @api.depends('partner_latitude', 'partner_longitude')

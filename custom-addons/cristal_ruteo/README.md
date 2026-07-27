@@ -9,7 +9,7 @@ la capa geográfica + de ruteo.
 
 1. **Geolocalización automática** ✅ *(v18.0.1.0.0)*
 2. **Micro-zonas de ruta** (`cristal.ruta.zona`) con día de la semana ✅ *(v18.0.1.1.0)*
-3. Frecuencia por valor (oro=7d / plata=15d / bronce=30d) + próxima visita
+3. **Frecuencia por valor + próxima visita** ✅ *(v18.0.1.2.0)*
 4. Score de prioridad de visita (etapa CRM + días sin comprar + churn + nivel)
 5. Generador de ruta diaria (cron) → actividades "Visitar Institución" numeradas
 6. Vistas "Mi ruta de hoy" (lista + mapa nativo) y tablero de zonas
@@ -56,6 +56,20 @@ clientes (`partner_ids`), conteos y centroide (`center_latitude/longitude`).
 En `res.partner` se agrega `ruteo_zona_id` y `ruteo_weekday` (día de visita,
 derivado de la zona, filtrable).
 
+## Pieza 3 — Frecuencia por valor + próxima visita
+
+Le dice al sistema **a quién le toca** cada semana. En `res.partner`:
+
+- `ruteo_frequency_days` (derivado del nivel): oro=7, plata=15, bronce=30,
+  nuevos/prospectos=15 (captación). Se actualiza solo cuando cambia el nivel.
+- `ruteo_last_visit`: fecha de la última visita presencial (la setea el cierre
+  de la actividad de visita — Pieza 5 — vía `_ruteo_register_visit()`).
+- `ruteo_next_visit_due`: última visita + frecuencia. Vacío = nunca visitado.
+- `ruteo_is_due`: le toca (ya venció la próxima o nunca fue visitado).
+
+Filtros nuevos en Contactos: **Le toca visita**, agrupar por **Día de visita**
+y por **Zona de ruteo**.
+
 ## Campos nuevos en `res.partner`
 
 | Campo | Descripción |
@@ -65,6 +79,9 @@ derivado de la zona, filtrable).
 | `ruteo_geo_pending` | Falta (re)ubicar tras un cambio de dirección. |
 | `ruteo_geo_last_try` | Último intento de geolocalización. |
 | `ruteo_geo_message` | Detalle del último resultado/error. |
+| `ruteo_zona_id` / `ruteo_weekday` | Micro-zona y día de visita. |
+| `ruteo_frequency_days` | Frecuencia de visita (días), según nivel. |
+| `ruteo_last_visit` / `ruteo_next_visit_due` / `ruteo_is_due` | Seguimiento de visitas. |
 
 ## Filtros nuevos (búsqueda de contactos)
 
