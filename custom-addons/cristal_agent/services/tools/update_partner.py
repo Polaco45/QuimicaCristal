@@ -121,6 +121,17 @@ class UpdatePartner(AgentTool):
             if pl:
                 vals['property_product_pricelist'] = pl.id
 
+        # Al etiquetar MAYORISTA, asegurar la Lista Mayorista como pricelist del
+        # partner (raíz del bug: partners consumidor final re-etiquetados mayorista
+        # conservaban L.C 1, y aunque la cotización ya se fuerza a Lista Mayorista,
+        # dejar la ficha bien evita que otros flujos coticen con precio CF).
+        if (kwargs.get('category_to_add') or '').strip().lower() == 'mayorista' \
+                and 'property_product_pricelist' not in vals:
+            mayorista_pl = env['product.pricelist'].sudo().search(
+                [('name', '=', 'Lista Mayorista')], limit=1)
+            if mayorista_pl:
+                vals['property_product_pricelist'] = mayorista_pl.id
+
         if not vals:
             return {"error": "No se especificó ningún campo válido para actualizar"}
 

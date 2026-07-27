@@ -7,6 +7,19 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.31.4] — 2026-07-27
+
+### Fixed — Al etiquetar Mayorista, setear la Lista Mayorista en la ficha (raíz)
+
+Complemento del fix de cotizaciones: `update_partner`, cuando agrega la etiqueta
+**Mayorista**, ahora también fija `property_product_pricelist` = 'Lista Mayorista'
+(salvo que se pase otra pricelist explícita). Así los partners consumidor final
+re-etiquetados mayorista dejan de conservar L.C 1 en su ficha, y cualquier flujo
+(no solo el bot) cotiza con la lista correcta. Corrige la raíz progresivamente a
+medida que el bot toca cada cliente. (Solo código; no requiere migración.)
+
+---
+
 ## [18.0.1.31.3] — 2026-07-27
 
 ### Fixed — CRÍTICO: cotizaciones mayoristas salían con L.C 1 (precio consumidor final)
