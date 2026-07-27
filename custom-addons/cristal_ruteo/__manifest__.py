@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 {
     'name': 'Cristal — Ruteo de Visitas',
-    'version': '18.0.1.4.0',
+    'version': '18.0.1.4.1',
     'summary': 'Planificador de rutas de visita para la fuerza de venta de calle: '
                'geolocalización automática de clientes, micro-zonas por día, '
                'priorización por etapa del CRM y ruta diaria en el celular.',

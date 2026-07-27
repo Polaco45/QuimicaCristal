@@ -36,8 +36,10 @@
                 <field name="user_id"/>
                 <filter name="ruteo_mias" string="Mías"
                         domain="[('user_id', '=', uid)]"/>
+                <separator/>
                 <filter name="ruteo_hoy" string="Hoy"
                         domain="[('date_deadline', '=', context_today().strftime('%Y-%m-%d'))]"/>
+                <separator/>
                 <filter name="ruteo_generated" string="Generadas por ruteo"
                         domain="[('ruteo_generated', '=', True)]"/>
                 <group expand="0" string="Agrupar por">
