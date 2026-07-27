@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Pestaña "Ruteo de visitas" en la ficha del cliente -->
+    <record id="view_partner_form_ruteo" model="ir.ui.view">
+        <field name="name">res.partner.form.ruteo</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="base.view_partner_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//notebook" position="inside">
+                <page string="Ruteo de visitas" name="ruteo">
+                    <group>
+                        <group string="Ubicación en el mapa">
+                            <field name="ruteo_is_located"/>
+                            <field name="ruteo_geo_status"/>
+                            <field name="partner_latitude"/>
+                            <field name="partner_longitude"/>
+                            <field name="date_localization"/>
+                            <field name="ruteo_geo_last_try"/>
+                            <field name="ruteo_geo_message"
+                                   invisible="not ruteo_geo_message"/>
+                        </group>
+                        <group string="Acciones">
+                            <button name="action_ruteo_geolocalize" type="object"
+                                    string="Geolocalizar ahora" icon="fa-map-marker"
+                                    class="btn-primary"/>
+                            <p colspan="2" class="text-muted">
+                                Cargá la dirección de calle y la ciudad, guardá, y el
+                                sistema ubica al cliente en el mapa automáticamente
+                                (o tocá el botón para hacerlo al instante).
+                            </p>
+                        </group>
+                    </group>
+                </page>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- Filtros útiles para el seguimiento del geocodificado -->
+    <record id="view_res_partner_filter_ruteo" model="ir.ui.view">
+        <field name="name">res.partner.select.ruteo</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="base.view_res_partner_filter"/>
+        <field name="arch" type="xml">
+            <xpath expr="//search" position="inside">
+                <separator/>
+                <filter name="ruteo_sin_ubicar" string="Sin ubicar en el mapa"
+                        domain="[('ruteo_is_located', '=', False), ('user_id', '!=', False)]"/>
+                <filter name="ruteo_geo_pendiente" string="Geo pendiente"
+                        domain="[('ruteo_geo_pending', '=', True)]"/>
+                <filter name="ruteo_geo_fallido" string="Geo fallida"
+                        domain="[('ruteo_geo_status', '=', 'failed')]"/>
+            </xpath>
+        </field>
+    </record>
+
+</odoo>
