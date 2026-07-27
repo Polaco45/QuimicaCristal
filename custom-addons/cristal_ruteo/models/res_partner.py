@@ -31,7 +31,7 @@ RUTEO_FREQ_BY_LEVEL = {'oro': 7, 'plata': 15, 'bronce': 30}
 # Cadencia de captación para clientes nuevos/prospectos todavía sin nivel.
 RUTEO_FREQ_PROSPECT = 15
 
-# Tipos de visita (compartido con mail.activity para el badge de la ruta).
+# Tipos de visita (compartido con la visita de ruta para el badge).
 RUTEO_VISIT_TYPES = [
     ('primera_visita', 'Primera visita'),
     ('relevamiento', 'Relevamiento'),
@@ -39,6 +39,12 @@ RUTEO_VISIT_TYPES = [
     ('reposicion', 'Reposición'),
     ('reactivacion', 'Reactivación'),
 ]
+
+# Caja geográfica de la zona de trabajo (Río Cuarto y alrededores). Si el
+# geocodificador devuelve un punto fuera de esta caja, seguro erró (ej. el
+# centroide genérico de la provincia) → se marca para revisar en vez de darlo
+# por bueno.
+RUTEO_GEO_BBOX = {'lat_min': -34.6, 'lat_max': -32.0, 'lng_min': -65.6, 'lng_max': -63.4}
 
 
 class ResPartner(models.Model):
@@ -48,7 +54,9 @@ class ResPartner(models.Model):
     ruteo_geo_status = fields.Selection([
         ('pending', 'Pendiente de ubicar'),
         ('ok', 'Ubicado'),
+        ('review', 'Revisar (fuera de zona)'),
         ('failed', 'No se pudo ubicar'),
+        ('no_address', 'Sin dirección'),
     ], string="Estado geolocalización", index=True, copy=False,
         help="Estado del geocodificado automático para el ruteo de visitas.")
 
@@ -227,14 +235,28 @@ class ResPartner(models.Model):
         self.ensure_one()
         return bool(self.street or self.city)
 
+    def _ruteo_coords_in_zone(self):
+        """¿Las coordenadas caen dentro de la zona de trabajo (Río Cuarto)?"""
+        self.ensure_one()
+        b = RUTEO_GEO_BBOX
+        return (b['lat_min'] <= self.partner_latitude <= b['lat_max']
+                and b['lng_min'] <= self.partner_longitude <= b['lng_max'])
+
     def _ruteo_flag_pending(self):
-        """Marca los partners geocodificables de self como pendientes de ubicar.
-        Escribe solo flags (no campos de dirección) → no reentra en write()."""
+        """Marca los partners geocodificables como pendientes de ubicar, y los
+        que no tienen dirección como 'Sin dirección' (para que no se pierdan en
+        silencio). Escribe solo flags → no reentra en write()."""
         to_flag = self.filtered(lambda p: p._ruteo_has_geocodable_address())
         if to_flag:
             super(ResPartner, to_flag.sudo()).write({
                 'ruteo_geo_pending': True,
                 'ruteo_geo_status': 'pending',
+            })
+        no_addr = (self - to_flag).filtered(lambda p: not p.ruteo_is_located)
+        if no_addr:
+            super(ResPartner, no_addr.sudo()).write({
+                'ruteo_geo_pending': False,
+                'ruteo_geo_status': 'no_address',
             })
 
     # ─────────── Enganches create/write ───────────
@@ -254,6 +276,21 @@ class ResPartner(models.Model):
     def action_ruteo_geolocalize(self):
         """Botón de la ficha: ubicar este cliente ahora mismo."""
         self._ruteo_geolocalize_batch()
+        return True
+
+    def action_ruteo_geolocalize_selected(self):
+        """Acción masiva: geolocaliza los seleccionados que tengan dirección y
+        marca 'Sin dirección' a los que no. Pensado para el menú Acción de la
+        lista de contactos / oportunidades (seleccionar varios y ubicarlos)."""
+        con_direccion = self.filtered(lambda p: p._ruteo_has_geocodable_address())
+        sin_direccion = (self - con_direccion).filtered(lambda p: not p.ruteo_is_located)
+        if sin_direccion:
+            sin_direccion.sudo().write({
+                'ruteo_geo_pending': False, 'ruteo_geo_status': 'no_address'})
+        if con_direccion:
+            con_direccion._ruteo_geolocalize_batch(throttle=True)
+        _logger.info("📍 Ruteo: geolocalización masiva — %s con dirección, %s sin dirección",
+                     len(con_direccion), len(sin_direccion))
         return True
 
     def action_ruteo_open_maps(self):
@@ -278,7 +315,7 @@ class ResPartner(models.Model):
             partner.ruteo_geo_last_try = fields.Datetime.now()
             try:
                 partner.geo_localize()
-                if partner.ruteo_is_located:
+                if partner.ruteo_is_located and partner._ruteo_coords_in_zone():
                     partner.write({
                         'ruteo_geo_pending': False,
                         'ruteo_geo_status': 'ok',
@@ -286,6 +323,19 @@ class ResPartner(models.Model):
                     })
                     _logger.info(
                         "📍 Ruteo: %s ubicado en (%s, %s)",
+                        partner.name, partner.partner_latitude, partner.partner_longitude,
+                    )
+                elif partner.ruteo_is_located:
+                    # Ubicado pero fuera de la zona de Río Cuarto: casi seguro el
+                    # geocodificador erró (centroide genérico). Se marca para revisar
+                    # en vez de darlo por bueno.
+                    partner.write({
+                        'ruteo_geo_pending': False,
+                        'ruteo_geo_status': 'review',
+                        'ruteo_geo_message': "Coordenadas fuera de la zona de Río Cuarto — revisá la dirección.",
+                    })
+                    _logger.warning(
+                        "📍 Ruteo: %s ubicado FUERA de zona (%s, %s) — a revisar",
                         partner.name, partner.partner_latitude, partner.partner_longitude,
                     )
                 else:

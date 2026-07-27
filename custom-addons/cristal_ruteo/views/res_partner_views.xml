@@ -67,6 +67,10 @@
                         domain="[('ruteo_geo_pending', '=', True)]"/>
                 <filter name="ruteo_geo_fallido" string="Geo fallida"
                         domain="[('ruteo_geo_status', '=', 'failed')]"/>
+                <filter name="ruteo_geo_revisar" string="Geo a revisar (fuera de zona)"
+                        domain="[('ruteo_geo_status', '=', 'review')]"/>
+                <filter name="ruteo_sin_direccion" string="Sin dirección"
+                        domain="[('ruteo_geo_status', '=', 'no_address')]"/>
                 <separator/>
                 <filter name="ruteo_due" string="Le toca visita"
                         domain="['|', ('ruteo_last_visit', '=', False),

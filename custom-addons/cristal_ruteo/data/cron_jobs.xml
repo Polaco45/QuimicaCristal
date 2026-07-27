@@ -34,5 +34,21 @@
             <field name="active" eval="True"/>
         </record>
 
+        <!--
+            Reporte diario a la gerencia: resumen de qué pasó con cada cliente.
+            Corre a la noche (00:00 UTC = 21:00 ARG). Envía email a los usuarios
+            del grupo "Gerente de ventas".
+        -->
+        <record id="cron_ruteo_daily_report" model="ir.cron">
+            <field name="name">Cristal Ruteo: Reporte diario de visitas</field>
+            <field name="model_id" ref="model_cristal_ruta_visita"/>
+            <field name="state">code</field>
+            <field name="code">model._cron_ruteo_daily_report()</field>
+            <field name="interval_number">1</field>
+            <field name="interval_type">days</field>
+            <field name="nextcall">2026-07-28 00:00:00</field>
+            <field name="active" eval="True"/>
+        </record>
+
     </data>
 </odoo>

@@ -2,3 +2,6 @@ id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
 access_cristal_ruta_zona_salesman,cristal.ruta.zona salesman,model_cristal_ruta_zona,sales_team.group_sale_salesman,1,1,1,0
 access_cristal_ruta_zona_manager,cristal.ruta.zona manager,model_cristal_ruta_zona,sales_team.group_sale_manager,1,1,1,1
 access_cristal_ruta_zona_autoassign,cristal.ruta.zona.autoassign salesman,model_cristal_ruta_zona_autoassign,sales_team.group_sale_salesman,1,1,1,1
+access_cristal_ruta_visita_salesman,cristal.ruta.visita salesman,model_cristal_ruta_visita,sales_team.group_sale_salesman,1,1,1,1
+access_cristal_ruta_visita_manager,cristal.ruta.visita manager,model_cristal_ruta_visita,sales_team.group_sale_manager,1,1,1,1
+access_cristal_ruta_visita_postpone,cristal.ruta.visita.postpone salesman,model_cristal_ruta_visita_postpone,sales_team.group_sale_salesman,1,1,1,1

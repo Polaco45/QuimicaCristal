@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 {
     'name': 'Cristal — Ruteo de Visitas',
-    'version': '18.0.1.4.1',
+    'version': '18.0.2.0.0',
     'summary': 'Planificador de rutas de visita para la fuerza de venta de calle: '
-               'geolocalización automática de clientes, micro-zonas por día, '
-               'priorización por etapa del CRM y ruta diaria en el celular.',
+               'geolocalización automática, micro-zonas por día, priorización por '
+               'etapa del CRM, ruta diaria en Kanban y control de visitas.',
     'description': """
 Cristal — Ruteo de Visitas
 ==========================
@@ -23,13 +23,15 @@ vendedora al estilo PJP (Plan de Jornada Permanente) de distribuidora:
     'author': 'Química Cristal',
     'category': 'Sales/CRM',
     'license': 'LGPL-3',
-    'depends': ['base_geolocalize', 'contacts', 'crm', 'cristal_agent'],
+    'depends': ['base_geolocalize', 'contacts', 'crm', 'mail', 'cristal_agent'],
     'data': [
         'security/ir.model.access.csv',
         'data/cron_jobs.xml',
+        'data/server_actions.xml',
         'wizards/ruta_zona_autoassign_views.xml',
+        'wizards/ruta_visita_postpone_views.xml',
         'views/cristal_ruta_zona_views.xml',
-        'views/mail_activity_views.xml',
+        'views/cristal_ruta_visita_views.xml',
         'views/res_partner_views.xml',
     ],
     'application': False,

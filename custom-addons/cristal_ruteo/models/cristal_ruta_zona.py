@@ -189,26 +189,19 @@ class CristalRutaZona(models.Model):
             remaining.remove(nxt)
         return ordered
 
-    def _ruteo_activity_type(self):
-        """Tipo de actividad 'Visitar Institución' (o la primera de categoría reunión)."""
-        AT = self.env['mail.activity.type']
-        return (AT.search([('name', 'ilike', 'Visitar')], limit=1)
-                or AT.search([('category', '=', 'meeting')], limit=1))
-
     @api.model
     def _cron_generate_daily_routes(self, target_date=None, max_visits=9):
         """Arma la ruta del día: para cada zona cuyo día coincide con la fecha,
         toma los clientes que le tocan, los ordena por prioridad + cercanía y crea
-        una actividad 'Visitar Institución' numerada en cada uno."""
+        una Visita numerada en cada uno. Idempotente: no duplica ni pisa las
+        visitas ya cargadas (manuales o ya trabajadas) de esa fecha."""
         target = target_date or fields.Date.context_today(self)
         weekday = str(fields.Date.from_string(target).weekday())  # Lunes=0
         zonas = self.search([('weekday', '=', weekday)])
         if not zonas:
-            return
-        Activity = self.env['mail.activity']
+            return 0
+        Visita = self.env['cristal.ruta.visita']
         Partner = self.env['res.partner']
-        act_type = self._ruteo_activity_type()
-        model_id = self.env['ir.model']._get_id('res.partner')
 
         total = 0
         for zona in zonas:
@@ -219,36 +212,38 @@ class CristalRutaZona(models.Model):
             scored = due.sorted(key=lambda p: p.ruteo_priority_score, reverse=True)[:max_visits]
             if not scored:
                 continue
-            pts = [(p.id, p.partner_latitude, p.partner_longitude) for p in scored]
+
+            # Clientes que ya tienen una visita ese día (no duplicar).
+            ya_cargados = Visita.search([
+                ('visit_date', '=', target),
+                ('user_id', '=', zona.user_id.id),
+                ('partner_id', 'in', scored.ids),
+            ]).mapped('partner_id')
+            pendientes = scored - ya_cargados
+            if not pendientes:
+                continue
+
+            pts = [(p.id, p.partner_latitude, p.partner_longitude) for p in pendientes]
             start = (zona.center_latitude, zona.center_longitude)
             ordered = self._nearest_neighbor_order(pts, start)
 
-            # Limpiar las actividades de ruta previas de esta fecha para estos clientes
-            # (regenerar es idempotente; no toca actividades cargadas a mano).
-            Activity.search([
-                ('ruteo_generated', '=', True),
-                ('date_deadline', '=', target),
-                ('res_model', '=', 'res.partner'),
-                ('res_id', 'in', scored.ids),
-            ]).unlink()
-
             for idx, (pid, _lat, _lng) in enumerate(ordered, start=1):
                 partner = Partner.browse(pid)
-                type_label = dict(partner._fields['ruteo_visit_type'].selection).get(
-                    partner.ruteo_visit_type, '')
-                Activity.create({
-                    'res_model_id': model_id,
-                    'res_id': pid,
-                    'activity_type_id': act_type.id if act_type else False,
+                Visita.create({
+                    'partner_id': pid,
                     'user_id': zona.user_id.id or self.env.uid,
-                    'date_deadline': target,
-                    'summary': "Visita #%s · %s" % (idx, type_label),
-                    'note': partner._ruteo_visit_reason(),
-                    'ruteo_generated': True,
-                    'ruteo_sequence': idx,
+                    'zona_id': zona.id,
+                    'lead_id': partner._ruteo_best_open_lead().id or False,
+                    'visit_date': target,
+                    'sequence': idx,
+                    'visit_type': partner.ruteo_visit_type,
+                    'priority_score': partner.ruteo_priority_score,
+                    'reason': partner._ruteo_visit_reason(),
+                    'state': 'pendiente',
+                    'origin': 'auto',
                 })
                 total += 1
-        _logger.info("🚗 Ruteo: %s visitas generadas para %s", total, target)
+        _logger.info("🚗 Ruteo: %s visita(s) generada(s) para %s", total, target)
         return total
 
     def _action_generate_today(self):
@@ -257,9 +252,8 @@ class CristalRutaZona(models.Model):
         return {
             'type': 'ir.actions.act_window',
             'name': _("Mi ruta de hoy"),
-            'res_model': 'mail.activity',
-            'view_mode': 'list,form',
-            'domain': [('ruteo_generated', '=', True),
-                       ('date_deadline', '=', fields.Date.context_today(self))],
-            'context': {'search_default_ruteo_mias': 1},
+            'res_model': 'cristal.ruta.visita',
+            'view_mode': 'kanban,list,form',
+            'domain': [('visit_date', '=', fields.Date.context_today(self))],
+            'context': {'search_default_group_state': 1},
         }

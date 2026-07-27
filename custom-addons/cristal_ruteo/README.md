@@ -7,6 +7,26 @@ la capa geográfica + de ruteo.
 
 ## Roadmap (pieza por pieza)
 
+### v2.0 — Operación y control (v18.0.2.0.0)
+
+- **Modelo `cristal.ruta.visita`**: registro de trabajo/control de cada visita
+  (estado, resultado, notas, posposiciones, origen auto/manual, vínculo a la
+  oportunidad del CRM). Reemplaza a las actividades nativas como fuente de verdad.
+- **Vista Kanban dinámica** ("Mi ruta de hoy"): tarjetas por estado, arrastrar y
+  soltar, botones *Cómo llegar* / *Visité* / *Posponer*. La vendedora puede
+  **agregar** visitas a mano (Nuevo), **posponer** (asistente) y **sacar** de la ruta.
+- **Control de visitas** (para gerencia): lista + pivot de qué pasó con cada
+  cliente por día/vendedor/estado/resultado, y **reporte diario por email**.
+- **Geolocalización en masa**: acción *"Geolocalizar seleccionados"* en la lista
+  de contactos y de oportunidades (seleccionar varios → ubicar todos).
+- **Sin dirección**: los clientes sin calle/ciudad quedan con estado *"Sin
+  dirección"* (filtro), no se pierden en silencio.
+- **Geo más segura**: chequeo de caja geográfica — si el geocodificador devuelve
+  un punto fuera de Río Cuarto (centroide genérico), se marca *"Revisar"* en
+  vez de darlo por bueno.
+
+### v1 — Piezas base
+
 1. **Geolocalización automática** ✅ *(v18.0.1.0.0)*
 2. **Micro-zonas de ruta** (`cristal.ruta.zona`) con día de la semana ✅ *(v18.0.1.1.0)*
 3. **Frecuencia por valor + próxima visita** ✅ *(v18.0.1.2.0)*

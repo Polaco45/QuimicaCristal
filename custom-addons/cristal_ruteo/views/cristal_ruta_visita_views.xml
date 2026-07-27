@@ -1,0 +1,227 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ══════════ KANBAN: la vista dinámica de la vendedora ══════════ -->
+    <record id="view_cristal_ruta_visita_kanban" model="ir.ui.view">
+        <field name="name">cristal.ruta.visita.kanban</field>
+        <field name="model">cristal.ruta.visita</field>
+        <field name="arch" type="xml">
+            <kanban default_group_by="state" class="o_kanban_small_column"
+                    records_draggable="1" default_order="sequence, id">
+                <field name="state"/>
+                <field name="partner_id"/>
+                <field name="visit_type"/>
+                <field name="reason"/>
+                <field name="sequence"/>
+                <field name="partner_city"/>
+                <field name="partner_is_located"/>
+                <field name="lead_id"/>
+                <templates>
+                    <t t-name="kanban-box">
+                        <div class="oe_kanban_card oe_kanban_global_click">
+                            <div class="o_kanban_record_top">
+                                <div class="o_kanban_record_headings">
+                                    <strong class="o_kanban_record_title">
+                                        <field name="sequence"/>. <field name="partner_id"/>
+                                    </strong>
+                                </div>
+                                <field name="visit_type" widget="badge"
+                                       decoration-danger="visit_type == 'cierre'"
+                                       decoration-success="visit_type == 'primera_visita'"
+                                       decoration-info="visit_type == 'reposicion'"
+                                       decoration-warning="visit_type == 'reactivacion'"/>
+                            </div>
+                            <div class="o_kanban_record_body">
+                                <small class="text-muted">
+                                    <field name="reason"/>
+                                    <t t-if="record.partner_city.raw_value"> · <field name="partner_city"/></t>
+                                </small>
+                            </div>
+                            <div class="o_kanban_record_bottom">
+                                <div class="oe_kanban_bottom_left">
+                                    <button name="action_navigate" type="object"
+                                            class="btn btn-sm btn-link px-1"
+                                            invisible="not partner_is_located">
+                                        <i class="fa fa-map-signs" role="img" aria-label="Cómo llegar"/> Cómo llegar
+                                    </button>
+                                </div>
+                                <div class="oe_kanban_bottom_right">
+                                    <button name="action_posponer" type="object"
+                                            class="btn btn-sm btn-link text-muted px-1"
+                                            invisible="state != 'pendiente'" title="Posponer">
+                                        <i class="fa fa-clock-o" role="img" aria-label="Posponer"/>
+                                    </button>
+                                    <button name="action_visitada" type="object"
+                                            class="btn btn-sm btn-success px-2"
+                                            invisible="state == 'visitada'">
+                                        <i class="fa fa-check" role="img" aria-label="Visité"/> Visité
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
+    <!-- ══════════ LISTA ══════════ -->
+    <record id="view_cristal_ruta_visita_list" model="ir.ui.view">
+        <field name="name">cristal.ruta.visita.list</field>
+        <field name="model">cristal.ruta.visita</field>
+        <field name="arch" type="xml">
+            <list string="Visitas" default_order="visit_date desc, sequence">
+                <field name="visit_date"/>
+                <field name="sequence" string="#" optional="show"/>
+                <field name="partner_id"/>
+                <field name="user_id" optional="show"/>
+                <field name="visit_type" optional="show"/>
+                <field name="reason" optional="hide"/>
+                <field name="state" widget="badge"
+                       decoration-success="state == 'visitada'"
+                       decoration-warning="state == 'pospuesta'"
+                       decoration-danger="state == 'no_visitada'"
+                       decoration-muted="state == 'cancelada'"/>
+                <field name="outcome" optional="show"/>
+                <field name="origin" optional="show"/>
+                <field name="lead_id" optional="hide"/>
+                <button name="action_navigate" type="object" icon="fa-map-signs"
+                        string="Cómo llegar" title="Cómo llegar"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- ══════════ FORM ══════════ -->
+    <record id="view_cristal_ruta_visita_form" model="ir.ui.view">
+        <field name="name">cristal.ruta.visita.form</field>
+        <field name="model">cristal.ruta.visita</field>
+        <field name="arch" type="xml">
+            <form string="Visita">
+                <header>
+                    <button name="action_visitada" string="Visité" type="object"
+                            class="btn-primary" invisible="state == 'visitada'"/>
+                    <button name="action_no_visitada" string="No estaba" type="object"
+                            invisible="state in ('visitada', 'no_visitada')"/>
+                    <button name="action_posponer" string="Posponer" type="object"/>
+                    <button name="action_navigate" string="Cómo llegar" type="object"
+                            invisible="not partner_is_located"/>
+                    <button name="action_open_lead" string="Abrir oportunidad" type="object"
+                            invisible="not lead_id"/>
+                    <button name="action_cancelar" string="Sacar de la ruta" type="object"
+                            invisible="state == 'cancelada'"/>
+                    <field name="state" widget="statusbar"
+                           statusbar_visible="pendiente,visitada"/>
+                </header>
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="partner_id"/>
+                            <field name="visit_date"/>
+                            <field name="user_id"/>
+                            <field name="zona_id"/>
+                            <field name="origin"/>
+                        </group>
+                        <group>
+                            <field name="visit_type"/>
+                            <field name="priority_score"/>
+                            <field name="reason"/>
+                            <field name="lead_id"/>
+                            <field name="postponed_to" invisible="state != 'pospuesta'"/>
+                            <field name="visited_at" invisible="not visited_at"/>
+                            <field name="partner_is_located" invisible="1"/>
+                        </group>
+                    </group>
+                    <group string="Resultado de la visita">
+                        <field name="outcome"/>
+                        <field name="notes" placeholder="Detalle de lo que pasó en la visita…"/>
+                    </group>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <!-- ══════════ PIVOT (control) ══════════ -->
+    <record id="view_cristal_ruta_visita_pivot" model="ir.ui.view">
+        <field name="name">cristal.ruta.visita.pivot</field>
+        <field name="model">cristal.ruta.visita</field>
+        <field name="arch" type="xml">
+            <pivot string="Control de visitas">
+                <field name="user_id" type="row"/>
+                <field name="state" type="col"/>
+            </pivot>
+        </field>
+    </record>
+
+    <!-- ══════════ BÚSQUEDA ══════════ -->
+    <record id="view_cristal_ruta_visita_search" model="ir.ui.view">
+        <field name="name">cristal.ruta.visita.search</field>
+        <field name="model">cristal.ruta.visita</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="partner_id"/>
+                <field name="user_id"/>
+                <field name="zona_id"/>
+                <filter name="mias" string="Mías" domain="[('user_id', '=', uid)]"/>
+                <separator/>
+                <filter name="hoy" string="Hoy"
+                        domain="[('visit_date', '=', context_today().strftime('%Y-%m-%d'))]"/>
+                <separator/>
+                <filter name="pendientes" string="Por visitar" domain="[('state', '=', 'pendiente')]"/>
+                <filter name="visitadas" string="Visitadas" domain="[('state', '=', 'visitada')]"/>
+                <filter name="manuales" string="Agregadas a mano" domain="[('origin', '=', 'manual')]"/>
+                <group expand="0" string="Agrupar por">
+                    <filter name="group_state" string="Estado" context="{'group_by': 'state'}"/>
+                    <filter name="group_user" string="Vendedor" context="{'group_by': 'user_id'}"/>
+                    <filter name="group_date" string="Fecha" context="{'group_by': 'visit_date'}"/>
+                    <filter name="group_zona" string="Zona" context="{'group_by': 'zona_id'}"/>
+                    <filter name="group_outcome" string="Resultado" context="{'group_by': 'outcome'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- ══════════ ACCIONES ══════════ -->
+    <record id="action_ruteo_mi_ruta_hoy" model="ir.actions.act_window">
+        <field name="name">Mi ruta de hoy</field>
+        <field name="res_model">cristal.ruta.visita</field>
+        <field name="view_mode">kanban,list,form</field>
+        <field name="search_view_id" ref="view_cristal_ruta_visita_search"/>
+        <field name="context">{'search_default_mias': 1, 'search_default_hoy': 1,
+            'search_default_group_state': 1, 'default_origin': 'manual'}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">No hay visitas para hoy</p>
+            <p>Se generan solas cada mañana, o con <b>Generar ruta de hoy</b>. También
+               podés agregar una visita a mano con el botón <b>Nuevo</b>.</p>
+        </field>
+    </record>
+
+    <record id="action_ruteo_control" model="ir.actions.act_window">
+        <field name="name">Control de visitas</field>
+        <field name="res_model">cristal.ruta.visita</field>
+        <field name="view_mode">list,pivot,kanban,form</field>
+        <field name="search_view_id" ref="view_cristal_ruta_visita_search"/>
+        <field name="context">{'search_default_hoy': 1, 'search_default_group_user': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">Todavía no hay visitas registradas</p>
+            <p>Acá ves qué pasó con cada cliente cada día: visitadas, pospuestas,
+               agregadas a mano, con su resultado y notas.</p>
+        </field>
+    </record>
+
+    <record id="action_ruteo_generate_today" model="ir.actions.server">
+        <field name="name">Generar ruta de hoy</field>
+        <field name="model_id" ref="model_cristal_ruta_zona"/>
+        <field name="state">code</field>
+        <field name="code">action = model._action_generate_today()</field>
+    </record>
+
+    <!-- ══════════ MENÚS ══════════ -->
+    <menuitem id="menu_ruteo_mi_ruta_hoy" name="Mi ruta de hoy"
+              parent="menu_ruteo_root" action="action_ruteo_mi_ruta_hoy" sequence="5"/>
+    <menuitem id="menu_ruteo_control" name="Control de visitas"
+              parent="menu_ruteo_root" action="action_ruteo_control" sequence="8"/>
+    <menuitem id="menu_ruteo_generate_today" name="Generar ruta de hoy"
+              parent="menu_ruteo_root" action="action_ruteo_generate_today" sequence="15"/>
+
+</odoo>
