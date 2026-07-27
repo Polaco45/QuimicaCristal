@@ -10,9 +10,9 @@ la capa geográfica + de ruteo.
 1. **Geolocalización automática** ✅ *(v18.0.1.0.0)*
 2. **Micro-zonas de ruta** (`cristal.ruta.zona`) con día de la semana ✅ *(v18.0.1.1.0)*
 3. **Frecuencia por valor + próxima visita** ✅ *(v18.0.1.2.0)*
-4. Score de prioridad de visita (etapa CRM + días sin comprar + churn + nivel)
-5. Generador de ruta diaria (cron) → actividades "Visitar Institución" numeradas
-6. Vistas "Mi ruta de hoy" (lista + mapa nativo) y tablero de zonas
+4. **Score de prioridad + tipo de visita** ✅ *(v18.0.1.3.0)*
+5. **Generador de ruta diaria** (cron → actividades numeradas) ✅ *(v18.0.1.3.0)*
+6. **Vista "Mi ruta de hoy"** ✅ *(v18.0.1.3.0)*
 
 ## Pieza 1 — Geolocalización automática
 
@@ -69,6 +69,29 @@ Le dice al sistema **a quién le toca** cada semana. En `res.partner`:
 
 Filtros nuevos en Contactos: **Le toca visita**, agrupar por **Día de visita**
 y por **Zona de ruteo**.
+
+## Piezas 4-6 — Prioridad, ruta diaria y "Mi ruta de hoy"
+
+**Pieza 4 — Prioridad y tipo de visita.** En `res.partner` (computados):
+`ruteo_visit_type` (primera visita / relevamiento / cierre / reposición /
+reactivación) según la etapa de la mejor oportunidad abierta del cliente + si
+ya es cliente + churn; `ruteo_priority_score` (base por tipo + urgencia si le
+toca + churn + nivel) que define el orden; `ruteo_pin_color` para el mapa/kanban.
+
+**Pieza 5 — Generador de ruta diaria.** Cron *"Cristal Ruteo: Generar ruta del
+día"* (06:00 ARG): para cada zona cuyo día coincide con hoy, toma los clientes
+que le tocan, los ordena por prioridad y luego por cercanía (vecino más cercano
+desde el centroide de la zona), cap 9 visitas, y crea una actividad **"Visitar
+Institución"** numerada en cada cliente. Es idempotente (regenera sin duplicar).
+Al **cerrar** la actividad se registra `ruteo_last_visit` y se recalcula la
+próxima visita. Botón/menú **Generar ruta de hoy** para dispararlo a demanda.
+
+**Pieza 6 — Mi ruta de hoy.** Menú *Ruteo de Visitas → Mi ruta de hoy*: lista de
+las visitas del día del vendedor logueado, ordenadas por el recorrido, con
+cliente, tipo de visita y motivo. Filtros Hoy / Mías / Generadas por ruteo.
+
+> Mapa visual con la línea de ruta = pendiente (requiere token MapBox; se difirió).
+> La lista ordenada + navegación por Google Maps cubre el uso diario sin costo.
 
 ## Campos nuevos en `res.partner`
 

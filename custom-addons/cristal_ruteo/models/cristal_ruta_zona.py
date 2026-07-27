@@ -173,3 +173,93 @@ class CristalRutaZona(models.Model):
             if ids:
                 clusters.append({'ids': ids, 'center': (centers[c][0], centers[c][1])})
         return clusters
+
+    # ─────────── Generador de ruta diaria (Pieza 5) ───────────
+    @staticmethod
+    def _nearest_neighbor_order(points, start):
+        """Ordena los puntos por cercanía (vecino más cercano) desde 'start'.
+        points: [(id, lat, lng)]; start: (lat, lng). Devuelve la lista ordenada."""
+        remaining = list(points)
+        ordered = []
+        cur = start
+        while remaining:
+            nxt = min(remaining, key=lambda p: (p[1] - cur[0]) ** 2 + (p[2] - cur[1]) ** 2)
+            ordered.append(nxt)
+            cur = (nxt[1], nxt[2])
+            remaining.remove(nxt)
+        return ordered
+
+    def _ruteo_activity_type(self):
+        """Tipo de actividad 'Visitar Institución' (o la primera de categoría reunión)."""
+        AT = self.env['mail.activity.type']
+        return (AT.search([('name', 'ilike', 'Visitar')], limit=1)
+                or AT.search([('category', '=', 'meeting')], limit=1))
+
+    @api.model
+    def _cron_generate_daily_routes(self, target_date=None, max_visits=9):
+        """Arma la ruta del día: para cada zona cuyo día coincide con la fecha,
+        toma los clientes que le tocan, los ordena por prioridad + cercanía y crea
+        una actividad 'Visitar Institución' numerada en cada uno."""
+        target = target_date or fields.Date.context_today(self)
+        weekday = str(fields.Date.from_string(target).weekday())  # Lunes=0
+        zonas = self.search([('weekday', '=', weekday)])
+        if not zonas:
+            return
+        Activity = self.env['mail.activity']
+        Partner = self.env['res.partner']
+        act_type = self._ruteo_activity_type()
+        model_id = self.env['ir.model']._get_id('res.partner')
+
+        total = 0
+        for zona in zonas:
+            located = zona.partner_ids.filtered('ruteo_is_located')
+            if not located:
+                continue
+            due = located.filtered('ruteo_is_due') or located
+            scored = due.sorted(key=lambda p: p.ruteo_priority_score, reverse=True)[:max_visits]
+            if not scored:
+                continue
+            pts = [(p.id, p.partner_latitude, p.partner_longitude) for p in scored]
+            start = (zona.center_latitude, zona.center_longitude)
+            ordered = self._nearest_neighbor_order(pts, start)
+
+            # Limpiar las actividades de ruta previas de esta fecha para estos clientes
+            # (regenerar es idempotente; no toca actividades cargadas a mano).
+            Activity.search([
+                ('ruteo_generated', '=', True),
+                ('date_deadline', '=', target),
+                ('res_model', '=', 'res.partner'),
+                ('res_id', 'in', scored.ids),
+            ]).unlink()
+
+            for idx, (pid, _lat, _lng) in enumerate(ordered, start=1):
+                partner = Partner.browse(pid)
+                type_label = dict(partner._fields['ruteo_visit_type'].selection).get(
+                    partner.ruteo_visit_type, '')
+                Activity.create({
+                    'res_model_id': model_id,
+                    'res_id': pid,
+                    'activity_type_id': act_type.id if act_type else False,
+                    'user_id': zona.user_id.id or self.env.uid,
+                    'date_deadline': target,
+                    'summary': "Visita #%s · %s" % (idx, type_label),
+                    'note': partner._ruteo_visit_reason(),
+                    'ruteo_generated': True,
+                    'ruteo_sequence': idx,
+                })
+                total += 1
+        _logger.info("🚗 Ruteo: %s visitas generadas para %s", total, target)
+        return total
+
+    def _action_generate_today(self):
+        """Botón/acción: genera la ruta de hoy y muestra las visitas del día."""
+        self._cron_generate_daily_routes()
+        return {
+            'type': 'ir.actions.act_window',
+            'name': _("Mi ruta de hoy"),
+            'res_model': 'mail.activity',
+            'view_mode': 'list,form',
+            'domain': [('ruteo_generated', '=', True),
+                       ('date_deadline', '=', fields.Date.context_today(self))],
+            'context': {'search_default_ruteo_mias': 1},
+        }

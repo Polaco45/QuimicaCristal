@@ -41,6 +41,8 @@
                             <field name="ruteo_last_visit"/>
                             <field name="ruteo_next_visit_due"/>
                             <field name="ruteo_is_due"/>
+                            <field name="ruteo_visit_type"/>
+                            <field name="ruteo_priority_score"/>
                         </group>
                     </group>
                 </page>
