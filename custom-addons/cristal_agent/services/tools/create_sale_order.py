@@ -116,6 +116,17 @@ class CreateSaleOrder(AgentTool):
                 for w in words:
                     domain_words.append(('name', 'ilike', w))
                 product = Product.search(domain_words, limit=1)
+            # Fallback interpretativo: la palabra más significativa sola, para no
+            # fallar por diferencias de wording (ej: "perfume textil" no matchea
+            # "Perfume p/ropa" con TODAS las palabras, pero sí con "perfume").
+            if not product and words:
+                key = max(words, key=len)
+                product = Product.search(
+                    [('product_tmpl_id.is_mayorista_catalog', '=', True),
+                     ('sale_ok', '=', True), ('name', 'ilike', key)], limit=1)
+                if not product:
+                    product = Product.search(
+                        [('sale_ok', '=', True), ('name', 'ilike', key)], limit=1)
             if not product:
                 product = Product.search([('name', 'ilike', name), ('sale_ok', '=', True)], limit=1)
         return product

@@ -7,6 +7,28 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.31.5] — 2026-07-28
+
+### Changed — Búsqueda de productos INTERPRETATIVA (no literal)
+
+El cliente casi nunca usa el nombre exacto del sistema. `search_products` hacía
+match de TODAS las palabras (AND), así que *"perfume textil"* no encontraba
+*"Perfume p/ropa"* (falta "textil") → el bot escalaba o decía que no había.
+
+- `search_products`: si el match exacto falla, **relaja la búsqueda** con un mapa
+  de sinónimos del rubro (textil↔ropa, lavavajilla→detergente, hipoclorito→lavandina,
+  aromatizante→perfume, etc.) + búsqueda por la **palabra clave** sola, y devuelve
+  candidatos marcados como `approximate` para que el bot elija el que corresponde.
+- `create_sale_order` (`_resolver_producto`): mismo fallback por palabra clave al
+  resolver productos para cotizar.
+- Prompt v5: regla de interpretar el pedido (ej: "perfume textil" = "Perfume p/ropa",
+  "lavavajilla" = "Detergente") y NO escalar ni decir "no tenemos" por diferencias
+  de wording.
+
+Migración 1.31.5: recarga el prompt v5.
+
+---
+
 ## [18.0.1.31.4] — 2026-07-27
 
 ### Fixed — Al etiquetar Mayorista, setear la Lista Mayorista en la ficha (raíz)

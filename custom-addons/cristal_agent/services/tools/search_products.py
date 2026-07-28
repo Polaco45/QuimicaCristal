@@ -6,6 +6,20 @@ from ..tool_registry import ToolRegistry
 
 _logger = logging.getLogger(__name__)
 
+# Sinónimos del rubro para que la búsqueda sea INTERPRETATIVA: el cliente usa
+# una palabra y el producto está cargado con otra (ej: "perfume textil" →
+# "Perfume p/ropa"). Se expande la búsqueda con estos equivalentes.
+SYNONYMS = {
+    'textil': ['ropa'], 'ropa': ['textil'],
+    'hipoclorito': ['lavandina'], 'lavandina': ['hipoclorito'],
+    'lavavajilla': ['detergente'], 'lavavajillas': ['detergente'],
+    'lavaplatos': ['detergente'], 'platos': ['detergente'],
+    'aromatizante': ['perfume', 'aroma'], 'aroma': ['aromatizante', 'perfume'],
+    'blanqueador': ['optico', 'blanq'], 'optico': ['blanqueador'],
+    'piso': ['pisos'], 'pisos': ['piso'],
+    'manos': ['mano'], 'jabon': ['jabón'], 'jabón': ['jabon'],
+}
+
 
 @ToolRegistry.register
 class SearchProducts(AgentTool):
@@ -49,21 +63,41 @@ class SearchProducts(AgentTool):
         # Estrategia 2: búsqueda por palabras separadas — TODAS deben aparecer
         # en el name (en cualquier orden). Esto resuelve casos como "Ariel granel"
         # que no haría match con "Detergente Ariel a Granel 200L" con ilike directo.
-        if not exact:
-            words = [w for w in query.split() if len(w) > 1]
-            if words:
-                word_domain = []
-                for w in words:
-                    word_domain.append(('name', 'ilike', w))
-                products = Product.search(word_domain, limit=int(limit or 10))
-            else:
-                # query de 1 letra: usar ilike directo
-                products = Product.search([
-                    '|', ('name', 'ilike', query),
-                    ('default_code', 'ilike', query),
-                ], limit=int(limit or 10))
-        else:
+        approximate = False
+        words = [w for w in query.split() if len(w) > 1]
+        if exact:
             products = exact
+        elif words:
+            word_domain = [('name', 'ilike', w) for w in words]
+            products = Product.search(word_domain, limit=int(limit or 10))
+        else:
+            # query de 1 letra: usar ilike directo
+            products = Product.search([
+                '|', ('name', 'ilike', query),
+                ('default_code', 'ilike', query),
+            ], limit=int(limit or 10))
+
+        # Estrategia 3 — FALLBACK INTERPRETATIVO. Si el match exacto de TODAS las
+        # palabras no dio nada, relajamos para no fallar por diferencias de
+        # wording (ej: cliente pide "perfume textil" y el producto es "Perfume
+        # p/ropa"). (a) expandimos con sinónimos y buscamos con OR; (b) si sigue
+        # vacío, buscamos por la palabra más significativa sola. Marcamos los
+        # resultados como aproximados para que el bot elija el que corresponde.
+        if not exact and not products and words:
+            approximate = True
+            expanded = set(w.lower() for w in words)
+            for w in list(expanded):
+                for syn in SYNONYMS.get(w, []):
+                    expanded.add(syn)
+            terms = [w for w in expanded if len(w) > 2]
+            if terms:
+                or_domain = ['|'] * (len(terms) - 1) + [('name', 'ilike', w) for w in terms]
+                products = Product.search(
+                    [('sale_ok', '=', True)] + or_domain, limit=int(limit or 10))
+            if not products:
+                key = max(words, key=len)
+                products = Product.search(
+                    [('sale_ok', '=', True), ('name', 'ilike', key)], limit=int(limit or 10))
 
         # Pricelist: este bot es mayorista, así que el precio que cotizamos es el
         # de 'Lista Mayorista'. Si no existe, caemos a la del partner / list_price.
@@ -101,7 +135,7 @@ class SearchProducts(AgentTool):
                 'is_mayorista_catalog': bool(p.product_tmpl_id.is_mayorista_catalog),
             })
 
-        # Mensaje útil para el bot si encontró 0
+        # Mensaje útil para el bot
         msg = None
         if not results:
             msg = (
@@ -110,11 +144,20 @@ class SearchProducts(AgentTool):
                 f"ESCALA a Joaco con escalate_to_joaco preguntando si tenemos este producto "
                 f"(puede existir con otro nombre, o haber que crearlo)."
             )
+        elif approximate:
+            msg = (
+                f"No hubo match EXACTO de '{query}', pero estos productos se parecen "
+                f"(búsqueda relajada por sinónimos/palabra clave). ELEGÍ el que "
+                f"claramente es lo que pidió el cliente (ej: 'perfume textil' = "
+                f"'Perfume p/ropa', 'lavavajilla' = 'Detergente') y ofrecéselo. "
+                f"NO escales ni digas 'no tenemos' por una diferencia de palabras."
+            )
 
         return {
             "ok": True,
             "count": len(results),
             "products": results,
+            "approximate": approximate,
             "search_terms": query.split(),
             "message_for_bot": msg,
         }
