@@ -21,16 +21,26 @@ class StockPicking(models.Model):
     def _action_done(self):
         res = super()._action_done()
         for picking in self:
-            pt = picking.picking_type_id
-            if pt.code == 'outgoing' and picking.reparto_id:
-                # Entrega hecha → avisar al próximo de la vuelta.
-                picking._reparto_notify_next()
-            elif pt.warehouse_id and pt.warehouse_id.pack_type_id == pt:
-                # PACK validada → sumar la entrega (OUT) a la vuelta del día.
-                out = picking._reparto_find_out()
-                if out:
-                    self.env['cristal.reparto']._add_picking(out)
+            # Blindado: la lógica de reparto NUNCA debe romper la validación de
+            # una transferencia. Corre con sudo (evita errores de permisos) y
+            # tolera cualquier fallo.
+            try:
+                picking.sudo()._reparto_on_done()
+            except Exception:  # noqa: BLE001
+                _logger.exception("Reparto: fallo post-validación en %s", picking.name)
         return res
+
+    def _reparto_on_done(self):
+        self.ensure_one()
+        pt = self.picking_type_id
+        if pt.code == 'outgoing' and self.reparto_id:
+            # Entrega hecha → avisar al próximo de la vuelta.
+            self._reparto_notify_next()
+        elif pt.warehouse_id and pt.warehouse_id.pack_type_id == pt:
+            # PACK validada → sumar la entrega (OUT) a la vuelta del día.
+            out = self._reparto_find_out()
+            if out:
+                self.env['cristal.reparto']._add_picking(out)
 
     def _reparto_find_out(self):
         """Desde una PACK, encuentra la orden de entrega (OUT) río abajo."""
