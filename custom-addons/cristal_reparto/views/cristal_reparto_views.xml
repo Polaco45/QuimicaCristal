@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Form de la vuelta de reparto -->
+    <record id="view_cristal_reparto_form" model="ir.ui.view">
+        <field name="name">cristal.reparto.form</field>
+        <field name="model">cristal.reparto</field>
+        <field name="arch" type="xml">
+            <form string="Vuelta de reparto">
+                <header>
+                    <button name="action_optimize_order" type="object"
+                            string="Ordenar por cercanía" icon="fa-location-arrow"
+                            invisible="state == 'finalizada'"/>
+                    <button name="action_start" type="object" string="Iniciar reparto"
+                            class="btn-primary" invisible="state != 'draft'"/>
+                    <button name="action_finish" type="object" string="Finalizar reparto"
+                            invisible="state != 'en_ruta'"/>
+                    <button name="action_reset_draft" type="object" string="Volver a preparar"
+                            invisible="state != 'finalizada'"/>
+                    <field name="state" widget="statusbar"
+                           statusbar_visible="draft,en_ruta,finalizada"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1><field name="name"/></h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="date"/>
+                            <field name="driver_id"/>
+                        </group>
+                        <group>
+                            <field name="progress" widget="progressbar"/>
+                            <label for="delivered_count" string="Entregadas / total"/>
+                            <div>
+                                <field name="delivered_count" class="oe_inline"/> /
+                                <field name="total_count" class="oe_inline"/>
+                            </div>
+                            <field name="last_delivered_id"/>
+                            <field name="next_pending_id"/>
+                        </group>
+                    </group>
+                    <field name="picking_ids">
+                        <list default_order="reparto_sequence" create="0" delete="0">
+                            <field name="reparto_sequence" widget="handle"/>
+                            <field name="name"/>
+                            <field name="partner_id"/>
+                            <field name="reparto_notified" optional="show"/>
+                            <field name="state" widget="badge"
+                                   decoration-success="state == 'done'"
+                                   decoration-info="state == 'assigned'"
+                                   decoration-muted="state == 'cancel'"/>
+                            <button name="action_reparto_delivered" type="object"
+                                    string="Entregado" icon="fa-check"
+                                    invisible="state in ('done', 'cancel')"/>
+                        </list>
+                    </field>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <!-- Lista de vueltas -->
+    <record id="view_cristal_reparto_list" model="ir.ui.view">
+        <field name="name">cristal.reparto.list</field>
+        <field name="model">cristal.reparto</field>
+        <field name="arch" type="xml">
+            <list string="Vueltas de reparto">
+                <field name="name"/>
+                <field name="date"/>
+                <field name="driver_id"/>
+                <field name="delivered_count"/>
+                <field name="total_count"/>
+                <field name="progress" widget="progressbar"/>
+                <field name="state" widget="badge"
+                       decoration-info="state == 'en_ruta'"
+                       decoration-success="state == 'finalizada'"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="action_cristal_reparto" model="ir.actions.act_window">
+        <field name="name">Vueltas de reparto</field>
+        <field name="res_model">cristal.reparto</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <record id="action_reparto_hoy" model="ir.actions.server">
+        <field name="name">Reparto de hoy</field>
+        <field name="model_id" ref="model_cristal_reparto"/>
+        <field name="state">code</field>
+        <field name="code">action = model.action_open_today()</field>
+    </record>
+
+    <!-- Menús -->
+    <menuitem id="menu_reparto_root" name="Reparto" sequence="46"/>
+    <menuitem id="menu_reparto_hoy" name="Reparto de hoy"
+              parent="menu_reparto_root" action="action_reparto_hoy" sequence="5"/>
+    <menuitem id="menu_reparto_all" name="Vueltas de reparto"
+              parent="menu_reparto_root" action="action_cristal_reparto" sequence="10"/>
+
+</odoo>

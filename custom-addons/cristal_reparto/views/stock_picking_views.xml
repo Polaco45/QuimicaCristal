@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_picking_form_reparto" model="ir.ui.view">
+        <field name="name">stock.picking.form.reparto</field>
+        <field name="model">stock.picking</field>
+        <field name="inherit_id" ref="stock.view_picking_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//notebook" position="inside">
+                <page string="Reparto" name="reparto"
+                      invisible="picking_type_code != 'outgoing'">
+                    <group>
+                        <field name="reparto_id"/>
+                        <field name="reparto_sequence"/>
+                        <field name="reparto_notified"/>
+                    </group>
+                </page>
+            </xpath>
+        </field>
+    </record>
+
+</odoo>
