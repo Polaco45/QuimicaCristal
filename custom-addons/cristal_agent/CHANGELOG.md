@@ -7,6 +7,26 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.31.6] — 2026-08-03
+
+### Added — Promos con precio cerrado (campañas / Meta Ads), NO acumulables con el 20%
+
+Joaco lanzó un AD de "Jabón Ariel y Skip a $600 el litro". El bot no debía sumarle
+el 20% de primera compra encima (el descuento no es acumulable).
+
+- `create_sale_order`: las líneas aceptan **`price_unit`** (precio por unidad FIJO).
+  Cuando viene, esa línea usa ese precio y **NO se le aplica `discount_percent`** (ni
+  el 20%). El precio fijo se fuerza al final para que Odoo no lo recompute desde el
+  pricelist. Las líneas sin `price_unit` siguen igual (20% / lista normal).
+- Prompt v5: regla de **promos con precio cerrado** — cotizar con `price_unit` = el
+  precio de la promo y sin `discount_percent`; NUNCA acumular el 20% encima.
+- Oferta cargada (`cristal.agent.offer` #8): "Ariel + Skip a $600/L", con la nota de
+  no-acumulable, prioridad baja (no interfiere con el broadcast).
+
+Migración 1.31.6: recarga el prompt v5.
+
+---
+
 ## [18.0.1.31.5] — 2026-07-28
 
 ### Changed — Búsqueda de productos INTERPRETATIVA (no literal)

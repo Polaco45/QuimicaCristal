@@ -42,6 +42,9 @@ class CreateSaleOrder(AgentTool):
         "Reglas que la tool valida sola: mínimo 20 L por producto a granel (sin "
         "excepción), y piso de compra $39.990 (no se puede cotizar por menos). "
         "Pasá discount_percent=20 para el 20% OFF de primera compra. "
+        "PROMOS CON PRECIO CERRADO (ej: campaña 'Ariel y Skip a $600 el litro'): pasá "
+        "price_unit en la línea (el precio por unidad final de la promo) y NO pases "
+        "discount_percent — esos precios NO se acumulan con el 20% de primera compra. "
         "Fijate el campo 'upsell' y 'sin_stock' de la respuesta: si vienen, "
         "comunicáselos al cliente (upsell para llegar a $50.000, alternativa si "
         "algo está sin stock)."
@@ -60,6 +63,13 @@ class CreateSaleOrder(AgentTool):
                         "product_id": {"type": "integer"},
                         "product_name": {"type": "string"},
                         "qty": {"type": "number"},
+                        "price_unit": {
+                            "type": "number",
+                            "description": "(Opcional) Precio por unidad FIJO para esta línea "
+                                           "(promos con precio cerrado, ej: $600/litro). Si lo "
+                                           "pasás, se usa ese precio y a esa línea NO se le "
+                                           "aplica discount_percent (no acumulable).",
+                        },
                     },
                 },
             },
@@ -67,7 +77,9 @@ class CreateSaleOrder(AgentTool):
             "note": {"type": "string", "description": "(Opcional) Nota interna."},
             "discount_percent": {
                 "type": "number",
-                "description": "Descuento % a TODAS las líneas. 20 = primera compra.",
+                "description": "Descuento % que se aplica a las líneas SIN price_unit fijo. "
+                               "20 = primera compra. NO lo pases junto con promos de precio "
+                               "cerrado (price_unit) — no son acumulables.",
             },
         },
         "required": ["partner_id", "lines"],
@@ -154,7 +166,8 @@ class CreateSaleOrder(AgentTool):
                              "mayoristas DEBEN usar esa lista. Escalá a Joaco."}
 
         # 1) Resolver líneas + validar mínimo a granel + stock
-        resolved = []  # (product, qty)
+        resolved = []  # (product, qty, fixed_price)
+        fixed_price_pids = set()  # productos con precio de promo cerrado (no 20%)
         problems = []
         sin_stock = []
         for i, ln in enumerate(lines):
@@ -179,7 +192,15 @@ class CreateSaleOrder(AgentTool):
             disp = self._disponibilidad(product)
             if disp is not None and disp <= 0:
                 sin_stock.append(product.display_name)
-            resolved.append((product, qty))
+            # Precio fijo de promo (opcional): esa línea NO lleva el 20% (no acumulable)
+            fp = ln.get('price_unit')
+            try:
+                fixed_price = float(fp) if fp not in (None, '', 0, 0.0) else None
+            except (TypeError, ValueError):
+                fixed_price = None
+            if fixed_price is not None:
+                fixed_price_pids.add(product.id)
+            resolved.append((product, qty, fixed_price))
 
         if not resolved:
             return {
@@ -213,24 +234,31 @@ class CreateSaleOrder(AgentTool):
         try:
             if order:
                 # Mergear en el borrador existente (una sola cotización)
-                for product, qty in resolved:
+                for product, qty, fixed_price in resolved:
                     existing = order.order_line.filtered(
                         lambda l: l.product_id.id == product.id)
                     if existing:
                         existing[0].product_uom_qty = qty
-                        if discount_percent:
+                        if fixed_price is not None:
+                            existing[0].price_unit = fixed_price
+                            existing[0].discount = 0.0
+                        elif discount_percent:
                             existing[0].discount = float(discount_percent)
                     else:
                         vals_line = {'product_id': product.id, 'product_uom_qty': qty}
-                        if discount_percent:
+                        if fixed_price is not None:
+                            vals_line['price_unit'] = fixed_price
+                        elif discount_percent:
                             vals_line['discount'] = float(discount_percent)
                         order.write({'order_line': [(0, 0, vals_line)]})
                 reused = True
             else:
                 order_lines = []
-                for product, qty in resolved:
+                for product, qty, fixed_price in resolved:
                     vals_line = {'product_id': product.id, 'product_uom_qty': qty}
-                    if discount_percent:
+                    if fixed_price is not None:
+                        vals_line['price_unit'] = fixed_price
+                    elif discount_percent:
                         vals_line['discount'] = float(discount_percent)
                     order_lines.append((0, 0, vals_line))
                 order = SaleOrder.create({
@@ -247,17 +275,34 @@ class CreateSaleOrder(AgentTool):
             # mayorista (ej. Sandra) tenían L.C 1 → la cotización salía con precios
             # de consumidor final. Forzamos la Lista Mayorista, recomputamos el
             # precio de cada línea desde esa lista, y reaplicamos el descuento
-            # (cambiar el pricelist lo resetea).
+            # (cambiar el pricelist lo resetea). Las líneas con precio FIJO de promo
+            # se saltean (mantienen su precio cerrado).
             if order.pricelist_id.id != pricelist.id:
                 order.pricelist_id = pricelist.id
                 for line in order.order_line:
+                    if line.product_id.id in fixed_price_pids:
+                        continue
                     try:
                         line.price_unit = pricelist._get_product_price(
                             line.product_id, line.product_uom_qty or 1.0)
                     except Exception:
                         pass
             if discount_percent and order.order_line:
-                order.order_line.write({'discount': float(discount_percent)})
+                # El 20% (u otro %) NO se aplica a las líneas con precio de promo cerrado.
+                order.order_line.filtered(
+                    lambda l: l.product_id.id not in fixed_price_pids
+                ).write({'discount': float(discount_percent)})
+
+            # Forzar el precio fijo de promo por si Odoo lo recomputó desde el
+            # pricelist al setear product/pricelist (última palabra sobre esas líneas).
+            if fixed_price_pids:
+                for product, qty, fixed_price in resolved:
+                    if fixed_price is None:
+                        continue
+                    fp_lines = order.order_line.filtered(
+                        lambda l: l.product_id.id == product.id)
+                    if fp_lines:
+                        fp_lines.write({'price_unit': fixed_price, 'discount': 0.0})
 
             if note:
                 order.note = note
