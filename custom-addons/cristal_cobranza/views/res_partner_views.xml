@@ -41,8 +41,9 @@
                             <field name="name" string="Comprobante"/>
                             <field name="invoice_date" string="Fecha"/>
                             <field name="invoice_date_due" string="Vencimiento"/>
-                            <field name="amount_total" string="Total" widget="monetary"/>
-                            <field name="amount_residual" string="Saldo" widget="monetary"/>
+                            <field name="move_type" string="Tipo" optional="show"/>
+                            <field name="amount_total_signed" string="Total" widget="monetary"/>
+                            <field name="amount_residual_signed" string="Saldo" widget="monetary"/>
                             <field name="payment_state" widget="badge"
                                    decoration-danger="payment_state == 'not_paid'"
                                    decoration-warning="payment_state == 'partial'"/>
@@ -58,7 +59,7 @@
                             <field name="currency_id" column_invisible="1"/>
                             <field name="name" string="Comprobante"/>
                             <field name="invoice_date_due" string="Vencimiento"/>
-                            <field name="amount_residual" string="Saldo" widget="monetary"/>
+                            <field name="amount_residual_signed" string="Saldo" widget="monetary"/>
                         </list>
                     </field>
 
