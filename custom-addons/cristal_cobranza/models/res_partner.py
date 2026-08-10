@@ -183,11 +183,19 @@ class ResPartner(models.Model):
         por_vencer = moves.filtered(
             lambda m: m.invoice_date_due and today <= m.invoice_date_due <= limite)
 
-        total_vencido = sum(vencidas.mapped('amount_residual'))
-        total_por_vencer = sum(por_vencer.mapped('amount_residual'))
+        # Neteo de notas de crédito: uso el residual CON SIGNO (las facturas
+        # suman, las NC restan). Con amount_residual "a secas" (siempre positivo)
+        # una NC de venta se contaría como deuda de más. Ej: factura $3.992 + NC
+        # $3.200 → real $792, no $7.192.
+        total_vencido = sum(vencidas.mapped('amount_residual_signed'))
+        total_por_vencer = sum(por_vencer.mapped('amount_residual_signed'))
 
-        if vencidas:
-            oldest_due = min(vencidas.mapped('invoice_date_due'))
+        # La mora y el vencimiento más antiguo se calculan SOLO sobre facturas
+        # impagas (una nota de crédito no genera mora).
+        vencidas_fact = vencidas.filtered(lambda m: m.move_type == 'out_invoice')
+        por_vencer_fact = por_vencer.filtered(lambda m: m.move_type == 'out_invoice')
+        if vencidas_fact:
+            oldest_due = min(vencidas_fact.mapped('invoice_date_due'))
             dias_mora_max = (today - oldest_due).days
         else:
             oldest_due = False
@@ -203,8 +211,8 @@ class ResPartner(models.Model):
             'total_adeudado': total_vencido + total_por_vencer,
             'oldest_due': oldest_due,
             'dias_mora_max': dias_mora_max,
-            'cant_vencidas': len(vencidas),
-            'cant_por_vencer': len(por_vencer),
+            'cant_vencidas': len(vencidas_fact),
+            'cant_por_vencer': len(por_vencer_fact),
         }
 
     # ────────────────────── Helpers de formato ──────────────────────

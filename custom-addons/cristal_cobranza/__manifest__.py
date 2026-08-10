@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 {
     'name': "Cristal Cobranza — Recordatorios de pago por WhatsApp",
-    'version': '18.0.1.3.0',
+    'version': '18.0.1.4.0',
     'summary': "Cadencia de cobranza (0/5/10/15/20 días) por WhatsApp con estado de cuenta + comprobantes",
     'description': """
 Cristal Cobranza

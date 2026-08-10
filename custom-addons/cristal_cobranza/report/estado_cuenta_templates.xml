@@ -57,7 +57,7 @@
                             <td class="text-center">
                                 <span t-esc="o.cobranza_dias_mora(inv, snap['today'])"/></td>
                             <td class="text-end">
-                                <span t-esc="o.cobranza_format_amount(inv.amount_residual)"/></td>
+                                <span t-esc="o.cobranza_format_amount(inv.amount_residual_signed)"/></td>
                         </tr>
                     </tbody>
                     <tfoot>
@@ -89,7 +89,7 @@
                                 <td class="text-center">
                                     <span t-esc="inv.invoice_date_due and inv.invoice_date_due.strftime('%d/%m/%Y') or ''"/></td>
                                 <td class="text-end">
-                                    <span t-esc="o.cobranza_format_amount(inv.amount_residual)"/></td>
+                                    <span t-esc="o.cobranza_format_amount(inv.amount_residual_signed)"/></td>
                             </tr>
                         </tbody>
                         <tfoot>

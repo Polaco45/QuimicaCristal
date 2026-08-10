@@ -84,19 +84,23 @@ class CristalCobranzaReport(models.Model):
                         am.commercial_partner_id AS partner_id,
                         MIN(am.currency_id) AS currency_id,
                         COALESCE(SUM(CASE WHEN am.invoice_date_due < CURRENT_DATE
-                                          THEN am.amount_residual ELSE 0 END), 0)
+                                          THEN am.amount_residual_signed ELSE 0 END), 0)
                             AS total_vencido,
                         COALESCE(SUM(CASE WHEN am.invoice_date_due >= CURRENT_DATE
-                                          THEN am.amount_residual ELSE 0 END), 0)
+                                          THEN am.amount_residual_signed ELSE 0 END), 0)
                             AS total_por_vencer,
                         COUNT(CASE WHEN am.invoice_date_due < CURRENT_DATE
+                                   AND am.move_type = 'out_invoice'
                                    THEN 1 END) AS cant_vencidas,
                         COUNT(CASE WHEN am.invoice_date_due >= CURRENT_DATE
+                                   AND am.move_type = 'out_invoice'
                                    THEN 1 END) AS cant_por_vencer,
                         COALESCE(MAX(CASE WHEN am.invoice_date_due < CURRENT_DATE
+                                          AND am.move_type = 'out_invoice'
                                           THEN (CURRENT_DATE - am.invoice_date_due)
                                           ELSE 0 END), 0) AS dias_mora_max,
                         MIN(CASE WHEN am.invoice_date_due < CURRENT_DATE
+                                 AND am.move_type = 'out_invoice'
                                  THEN am.invoice_date_due END) AS oldest_due,
                         bool_or(COALESCE(rp.cobranza_exclude, FALSE))
                             AS cobranza_exclude,
