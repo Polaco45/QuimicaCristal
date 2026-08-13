@@ -35,7 +35,7 @@
                         <group string="Agenda">
                             <field name="visit_last" invisible="not visit_plan_active"/>
                             <field name="visit_next" invisible="not visit_plan_active"/>
-                            <field name="ruteo_visit_type" string="Tipo de visita (según CRM)"
+                            <field name="visit_purpose" string="Tipo de visita (según CRM)"
                                    invisible="not visit_plan_active"/>
                             <field name="visit_ultima_compra" invisible="not visit_plan_active"/>
                             <field name="visit_dias_sin_comprar" invisible="not visit_plan_active"/>
@@ -74,7 +74,7 @@
                       string="Calendario de visitas" quick_create="0" event_open_popup="1">
                 <field name="user_id"/>
                 <field name="visit_frequency"/>
-                <field name="ruteo_visit_type"/>
+                <field name="visit_purpose"/>
             </calendar>
         </field>
     </record>
@@ -88,11 +88,11 @@
                 <field name="visit_day_order" widget="handle"/>
                 <field name="visit_next"/>
                 <field name="name" string="Cliente"/>
-                <field name="ruteo_visit_type" string="Tipo" widget="badge"
-                       decoration-danger="ruteo_visit_type == 'cierre'"
-                       decoration-success="ruteo_visit_type == 'primera_visita'"
-                       decoration-info="ruteo_visit_type == 'reposicion'"
-                       decoration-warning="ruteo_visit_type == 'reactivacion'"/>
+                <field name="visit_purpose" string="Tipo" widget="badge"
+                       decoration-danger="visit_purpose == 'cierre'"
+                       decoration-success="visit_purpose == 'primera_visita'"
+                       decoration-info="visit_purpose == 'reposicion'"
+                       decoration-warning="visit_purpose == 'reactivacion'"/>
                 <field name="visit_objetivo" string="Objetivo"/>
                 <field name="visit_dias_sin_comprar" string="Días s/comprar" optional="show"/>
                 <field name="city" optional="hide"/>

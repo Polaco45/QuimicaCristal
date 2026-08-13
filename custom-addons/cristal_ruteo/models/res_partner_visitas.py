@@ -102,6 +102,67 @@ class ResPartner(models.Model):
                 parts.append("cliente %s" % partner.agent_level)
             partner.visit_objetivo = " · ".join(parts)
 
+    # ─────────── Tipo de visita por FAMILIA (oportunidades + compras) ───────────
+    visit_purpose = fields.Selection(
+        RUTEO_VISIT_TYPES, string="Tipo de visita", compute='_compute_visit_purpose',
+        help="Propósito de la visita, según el CRM y las compras de TODA la familia "
+             "comercial (no solo del contacto exacto).")
+
+    def _visit_family_best_lead(self):
+        """La oportunidad abierta más avanzada de toda la familia comercial."""
+        self.ensure_one()
+        commercial = self.commercial_partner_id or self
+        leads = self.env['crm.lead'].search([
+            ('partner_id', 'child_of', commercial.id),
+            ('type', '=', 'opportunity'),
+        ])
+        if not leads:
+            return self.env['crm.lead']
+        return max(leads, key=lambda lead: lead.stage_id.sequence or 0)
+
+    def _compute_visit_purpose(self):
+        for partner in self:
+            dias = partner.visit_dias_sin_comprar
+            churn = partner.agent_churn_score or 0.0
+            stage = partner._visit_family_best_lead().stage_id
+            vt = None
+            if stage:
+                seq = stage.sequence or 0
+                name = (stage.name or '').lower()
+                if 'tibio' in name:
+                    vt = 'reactivacion'
+                elif 5 <= seq <= 8:            # Propuesta..Consulta final
+                    vt = 'cierre'
+                elif seq in (2, 3, 4):         # Calificado..Relevado
+                    vt = 'relevamiento'
+            if not vt:
+                if dias < 0:                   # la familia nunca compró
+                    vt = 'primera_visita'
+                elif dias >= 45 or churn >= 50:
+                    vt = 'reactivacion'
+                else:
+                    vt = 'reposicion'
+            partner.visit_purpose = vt
+
+    # ─────────── Alta masiva al plan (onboarding rápido) ───────────
+    def action_visit_bulk_plan(self):
+        """Pone en plan de visita a los seleccionados, con frecuencia sugerida por
+        nivel (oro=semanal, plata=quincenal, bronce=mensual) y la 1ª programada.
+        No pisa a los que ya están en plan."""
+        freq_by_level = {'oro': 'semanal', 'plata': 'quincenal', 'bronce': 'mensual'}
+        today = fields.Date.context_today(self)
+        for partner in self:
+            if partner.visit_plan_active:
+                continue
+            partner.write({
+                'visit_plan_active': True,
+                'visit_frequency': freq_by_level.get(partner.agent_level,
+                                                     partner.visit_frequency or 'quincenal'),
+            })
+            if not partner.visit_next:
+                partner.visit_next = partner._visit_first_date(today)
+        return True
+
     # ─────────── Ficha "listo para pedir" (avisa, no bloquea) ───────────
     visit_ficha_cuit = fields.Boolean(string="CUIT / DNI", compute='_compute_visit_ficha')
     visit_ficha_iva = fields.Boolean(string="Condición IVA", compute='_compute_visit_ficha')
@@ -138,7 +199,7 @@ class ResPartner(models.Model):
             'primera_visita': "Presentarse y dejar muestra",
         }
         for partner in self:
-            paso = pasos.get(partner.ruteo_visit_type, "Seguimiento")
+            paso = pasos.get(partner.visit_purpose, "Seguimiento")
             if partner.visit_ficha_estado != 'completo':
                 paso += " · completar la ficha antes de facturar"
             partner.visit_proximo_paso = paso
@@ -229,10 +290,10 @@ class ResPartner(models.Model):
             'visit_date': fields.Date.context_today(self),
             'user_id': self.user_id.id or self.env.uid,
             'action_type': action_type,
-            'visit_type': self.ruteo_visit_type,
+            'visit_type': self.visit_purpose,
             'outcome': outcome or False,
             'note': note or False,
-            'lead_id': self._ruteo_best_open_lead().id or False,
+            'lead_id': self._visit_family_best_lead().id or False,
         })
 
     def _visit_register_done(self, note=None, outcome=None):

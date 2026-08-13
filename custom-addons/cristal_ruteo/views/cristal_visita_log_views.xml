@@ -12,6 +12,8 @@
                 <field name="user_id"/>
                 <field name="action_type"/>
                 <field name="visit_type" optional="show"/>
+                <field name="outcome" optional="show"/>
+                <field name="genero_pedido" optional="show"/>
                 <field name="note"/>
                 <field name="lead_id" optional="hide"/>
             </list>
