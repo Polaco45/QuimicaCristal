@@ -5,3 +5,4 @@ access_cristal_ruta_zona_autoassign,cristal.ruta.zona.autoassign salesman,model_
 access_cristal_ruta_visita_salesman,cristal.ruta.visita salesman,model_cristal_ruta_visita,sales_team.group_sale_salesman,1,1,1,1
 access_cristal_ruta_visita_manager,cristal.ruta.visita manager,model_cristal_ruta_visita,sales_team.group_sale_manager,1,1,1,1
 access_cristal_ruta_visita_postpone,cristal.ruta.visita.postpone salesman,model_cristal_ruta_visita_postpone,sales_team.group_sale_salesman,1,1,1,1
+access_cristal_visita_wizard,cristal.visita.wizard salesman,model_cristal_visita_wizard,sales_team.group_sale_salesman,1,1,1,1

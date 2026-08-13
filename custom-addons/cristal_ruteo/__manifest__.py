@@ -1,24 +1,27 @@
 # -*- coding: utf-8 -*-
 {
-    'name': 'Cristal — Ruteo de Visitas',
-    'version': '18.0.2.1.0',
-    'summary': 'Planificador de rutas de visita para la fuerza de venta de calle: '
-               'geolocalización automática, micro-zonas por día, priorización por '
-               'etapa del CRM, ruta diaria en Kanban y control de visitas.',
+    'name': 'Cristal — Plan de Visitas',
+    'version': '18.0.3.0.0',
+    'summary': 'Plan de visitas manual pegado al CRM: cada oportunidad lleva una regla '
+               '(frecuencia + día), el calendario se arma solo, y el vendedor organiza '
+               '"Mi día", pospone y registra en las notas al cerrar. Rústico, sin '
+               'geolocalización ni ruteo automático.',
     'description': """
-Cristal — Ruteo de Visitas
-==========================
-Capa fina sobre cristal_agent + CRM que arma el recorrido diario de la
-vendedora al estilo PJP (Plan de Jornada Permanente) de distribuidora:
+Cristal — Plan de Visitas (manual)
+==================================
+La regla vive en la oportunidad (crm.lead): frecuencia (semanal/quincenal/mensual)
++ día de la semana. Desde la "próxima visita" se arma el Calendario y "Mi día".
 
-  1. Geolocalización automática (Pieza 1 — este release):
-     La vendedora carga la dirección de calle del cliente y el sistema lo
-     ubica solo en el mapa (proveedor OpenStreetMap, sin costo). Un cron de
-     respaldo procesa los pendientes cada pocos minutos y hay un botón para
-     ubicar al instante.
+  · El vendedor organiza a la mañana (Mi día): reordena, pospone, agrega.
+  · Al cerrar: "Visité hoy" registra en las notas internas con fecha, marca la
+    actividad de visita como hecha y agenda la próxima; "Posponer" mueve la fecha.
+  · Todo pegado al CRM (contacto, notas, cotizaciones, actividades, etapa).
 
-  Próximas piezas: micro-zonas por día, frecuencia por valor, score de
-  prioridad y generador de ruta diaria como actividades "Visitar Institución".
+Rústico a propósito: sin geolocalización automática, sin zonas por cercanía, sin
+ruteo por mapa ni crons. El vendedor manda; el sistema ordena y recuerda.
+
+(Los modelos de geo/zonas quedan disponibles pero sin interfaz; el módulo de
+reparto reusa el geocodificador cuando hace falta.)
 """,
     'author': 'Química Cristal',
     'category': 'Sales/CRM',
@@ -26,13 +29,8 @@ vendedora al estilo PJP (Plan de Jornada Permanente) de distribuidora:
     'depends': ['base_geolocalize', 'contacts', 'crm', 'mail', 'cristal_agent'],
     'data': [
         'security/ir.model.access.csv',
-        'data/cron_jobs.xml',
-        'data/server_actions.xml',
-        'wizards/ruta_zona_autoassign_views.xml',
-        'wizards/ruta_visita_postpone_views.xml',
-        'views/cristal_ruta_zona_views.xml',
-        'views/cristal_ruta_visita_views.xml',
-        'views/res_partner_views.xml',
+        'wizards/visita_wizard_views.xml',
+        'views/crm_lead_views.xml',
     ],
     'application': False,
     'installable': True,
