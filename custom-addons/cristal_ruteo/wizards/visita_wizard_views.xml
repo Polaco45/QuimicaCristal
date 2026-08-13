@@ -6,7 +6,6 @@
         <field name="model">cristal.visita.wizard</field>
         <field name="arch" type="xml">
             <form string="Registrar visita">
-                <field name="lead_id" invisible="1"/>
                 <field name="modo" invisible="1"/>
                 <group>
                     <field name="partner_id" readonly="1"/>
