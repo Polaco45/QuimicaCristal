@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-Plan de visitas manual — vive en la oportunidad (crm.lead).
+Plan de visitas manual — vive en la FICHA DEL CLIENTE (res.partner).
 
-Regla simple por cliente (frecuencia + día) → el calendario se arma solo desde
-la 'próxima visita'. El vendedor organiza a mano (Mi día), pospone, y al cerrar
-registra en la nota interna con fecha, marca la actividad hecha y se agenda la
-próxima. Rústico: sin geolocalización ni ruteo automático.
+La regla (frecuencia + día) es del cliente y lo acompaña toda la vida: prospecto
+→ cliente → recurrente. Ganar una oportunidad NO corta las visitas; el propósito
+de la visita lo deduce el CRM (se reusa `ruteo_visit_type`: captación/cierre/
+reposición/reactivación). Rústico: sin geolocalización ni ruteo automático.
 """
 import logging
 from datetime import timedelta
@@ -26,8 +26,8 @@ VISIT_WEEKDAYS = [
 ]
 
 
-class CrmLead(models.Model):
-    _inherit = 'crm.lead'
+class ResPartner(models.Model):
+    _inherit = 'res.partner'
 
     visit_plan_active = fields.Boolean(
         string="En plan de visita", index=True, tracking=True,
@@ -42,19 +42,20 @@ class CrmLead(models.Model):
     visit_frequency_days = fields.Integer(
         string="Frecuencia (días)", compute='_compute_visit_frequency_days', store=True)
     visit_is_today = fields.Boolean(
-        string="Le toca hoy", compute='_compute_visit_is_today', search='_search_visit_is_today')
+        string="Le toca hoy", compute='_compute_visit_is_today',
+        search='_search_visit_is_today')
 
     @api.depends('visit_frequency')
     def _compute_visit_frequency_days(self):
-        for lead in self:
-            lead.visit_frequency_days = VISIT_FREQ_DAYS.get(lead.visit_frequency, 15)
+        for partner in self:
+            partner.visit_frequency_days = VISIT_FREQ_DAYS.get(partner.visit_frequency, 15)
 
-    @api.depends('visit_next')
+    @api.depends('visit_next', 'visit_plan_active')
     def _compute_visit_is_today(self):
         today = fields.Date.context_today(self)
-        for lead in self:
-            lead.visit_is_today = bool(lead.visit_next and lead.visit_next <= today
-                                       and lead.visit_plan_active)
+        for partner in self:
+            partner.visit_is_today = bool(
+                partner.visit_plan_active and partner.visit_next and partner.visit_next <= today)
 
     def _search_visit_is_today(self, operator, value):
         today = fields.Date.context_today(self)
@@ -63,9 +64,8 @@ class CrmLead(models.Model):
             return ['!'] + domain
         return domain
 
-    # ─────────── Helpers ───────────
+    # ─────────── Helpers de fechas ───────────
     def _visit_next_from(self, base_date):
-        """Próxima fecha = base + frecuencia, alineada al día de la semana elegido."""
         self.ensure_one()
         days = VISIT_FREQ_DAYS.get(self.visit_frequency, 15)
         d = base_date + timedelta(days=days)
@@ -74,7 +74,6 @@ class CrmLead(models.Model):
         return d
 
     def _visit_first_date(self, from_date):
-        """Primera visita = próxima ocurrencia del día elegido (o hoy si no hay día)."""
         self.ensure_one()
         if self.visit_weekday:
             return from_date + timedelta(days=(int(self.visit_weekday) - from_date.weekday()) % 7)
@@ -97,11 +96,11 @@ class CrmLead(models.Model):
             try:
                 act.action_feedback(feedback="Visita registrada")
             except Exception:  # noqa: BLE001
-                _logger.exception("Visitas: no se pudo cerrar la actividad de %s", self.display_name)
+                _logger.exception("Visitas: no se pudo cerrar actividad de %s", self.display_name)
         if next_date:
             try:
                 self.env['mail.activity'].create({
-                    'res_model_id': self.env['ir.model']._get_id('crm.lead'),
+                    'res_model_id': self.env['ir.model']._get_id('res.partner'),
                     'res_id': self.id,
                     'activity_type_id': vtype.id,
                     'date_deadline': next_date,
@@ -109,41 +108,55 @@ class CrmLead(models.Model):
                     'user_id': self.user_id.id or self.env.uid,
                 })
             except Exception:  # noqa: BLE001
-                _logger.exception("Visitas: no se pudo agendar la próxima de %s", self.display_name)
+                _logger.exception("Visitas: no se pudo agendar próxima de %s", self.display_name)
 
     # ─────────── Acciones ───────────
+    def _visit_log(self, action_type, note=None):
+        """Deja el asiento en el registro de control (siempre, vía sudo)."""
+        self.ensure_one()
+        self.env['cristal.visita.log'].sudo().create({
+            'partner_id': self.id,
+            'visit_date': fields.Date.context_today(self),
+            'user_id': self.user_id.id or self.env.uid,
+            'action_type': action_type,
+            'visit_type': self.ruteo_visit_type,
+            'note': note or False,
+            'lead_id': self._ruteo_best_open_lead().id or False,
+        })
+
     def _visit_register_done(self, note=None):
         today = fields.Date.context_today(self)
-        for lead in self:
-            nxt = lead._visit_next_from(today)
-            lead.write({'visit_last': today, 'visit_next': nxt, 'visit_plan_active': True})
+        for partner in self:
+            nxt = partner._visit_next_from(today)
+            partner.write({'visit_last': today, 'visit_next': nxt, 'visit_plan_active': True})
             body = "🚗 <b>Visita realizada</b> — %s" % fields.Date.to_string(today)
             if note:
                 body += "<br/>%s" % note
-            lead.message_post(body=body)
-            lead._visit_close_and_reschedule(nxt)
+            partner.message_post(body=body)
+            partner._visit_close_and_reschedule(nxt)
+            partner._visit_log('visita', note=note)
         return True
 
     def _visit_postpone(self, new_date, reason=None):
-        for lead in self:
-            old = lead.visit_next
-            lead.visit_next = new_date
+        for partner in self:
+            old = partner.visit_next
+            partner.visit_next = new_date
             body = "🔁 <b>Visita pospuesta</b> — %s → %s" % (
                 fields.Date.to_string(old) if old else '?', fields.Date.to_string(new_date))
             if reason:
                 body += " (%s)" % reason
-            lead.message_post(body=body)
-            lead._visit_close_and_reschedule(new_date)
+            partner.message_post(body=body)
+            partner._visit_close_and_reschedule(new_date)
+            partner._visit_log('posposicion', note=reason)
         return True
 
     def action_visit_schedule(self):
-        """Programa la visita: fija la próxima si falta y agenda la actividad."""
         today = fields.Date.context_today(self)
-        for lead in self:
-            lead.visit_plan_active = True
-            if not lead.visit_next:
-                lead.visit_next = lead._visit_first_date(today)
-            lead._visit_close_and_reschedule(lead.visit_next)
+        for partner in self:
+            partner.visit_plan_active = True
+            if not partner.visit_next:
+                partner.visit_next = partner._visit_first_date(today)
+            partner._visit_close_and_reschedule(partner.visit_next)
         return True
 
     def action_visit_done_wizard(self):
@@ -161,5 +174,5 @@ class CrmLead(models.Model):
             'res_model': 'cristal.visita.wizard',
             'view_mode': 'form',
             'target': 'new',
-            'context': {'default_lead_id': self.id, 'default_modo': modo},
+            'context': {'default_partner_id': self.id, 'default_modo': modo},
         }

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+
+        <record id="module_category_visitas" model="ir.module.category">
+            <field name="name">Visitas</field>
+            <field name="sequence">20</field>
+        </record>
+
+        <!-- Grupo de control (gerencia): ve el registro y el reporte. Asignar solo
+             a quien deba controlar (ej. Joaco). -->
+        <record id="group_visitas_control" model="res.groups">
+            <field name="name">Visitas: Control</field>
+            <field name="category_id" ref="module_category_visitas"/>
+        </record>
+
+    </data>
+</odoo>

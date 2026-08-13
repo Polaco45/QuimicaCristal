@@ -2,7 +2,7 @@
 """Asistente de cierre de visita: registrar (con nota) o posponer."""
 from datetime import timedelta
 
-from odoo import api, fields, models
+from odoo import fields, models
 from odoo.exceptions import UserError
 
 
@@ -10,8 +10,7 @@ class CristalVisitaWizard(models.TransientModel):
     _name = 'cristal.visita.wizard'
     _description = 'Registrar / posponer visita'
 
-    lead_id = fields.Many2one('crm.lead', string="Oportunidad", required=True)
-    partner_id = fields.Many2one(related='lead_id.partner_id', string="Cliente")
+    partner_id = fields.Many2one('res.partner', string="Cliente", required=True)
     modo = fields.Selection([
         ('done', 'Visité'),
         ('posponer', 'Posponer'),
@@ -27,9 +26,9 @@ class CristalVisitaWizard(models.TransientModel):
     def action_confirm(self):
         self.ensure_one()
         if self.modo == 'done':
-            self.lead_id._visit_register_done(note=self.note)
+            self.partner_id._visit_register_done(note=self.note)
         else:
             if not self.new_date or self.new_date <= fields.Date.context_today(self):
                 raise UserError("Elegí una fecha futura para posponer.")
-            self.lead_id._visit_postpone(self.new_date, reason=self.reason)
+            self.partner_id._visit_postpone(self.new_date, reason=self.reason)
         return {'type': 'ir.actions.act_window_close'}

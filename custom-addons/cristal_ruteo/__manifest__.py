@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 {
     'name': 'Cristal — Plan de Visitas',
-    'version': '18.0.3.0.0',
-    'summary': 'Plan de visitas manual pegado al CRM: cada oportunidad lleva una regla '
-               '(frecuencia + día), el calendario se arma solo, y el vendedor organiza '
-               '"Mi día", pospone y registra en las notas al cerrar. Rústico, sin '
-               'geolocalización ni ruteo automático.',
+    'version': '18.0.3.2.0',
+    'summary': 'Plan de visitas manual en la ficha del cliente: regla (frecuencia + día), '
+               'el calendario se arma solo, y el vendedor organiza "Mi día", pospone y '
+               'registra en las notas al cerrar. El plan sigue al cliente toda la vida '
+               '(prospecto → ganado → reposición). Rústico, sin geolocalización.',
     'description': """
 Cristal — Plan de Visitas (manual)
 ==================================
@@ -28,9 +28,12 @@ reparto reusa el geocodificador cuando hace falta.)
     'license': 'LGPL-3',
     'depends': ['base_geolocalize', 'contacts', 'crm', 'mail', 'cristal_agent'],
     'data': [
+        'security/visitas_security.xml',
         'security/ir.model.access.csv',
+        'data/cron_jobs.xml',
         'wizards/visita_wizard_views.xml',
-        'views/crm_lead_views.xml',
+        'views/res_partner_visitas_views.xml',
+        'views/cristal_visita_log_views.xml',
     ],
     'application': False,
     'installable': True,
