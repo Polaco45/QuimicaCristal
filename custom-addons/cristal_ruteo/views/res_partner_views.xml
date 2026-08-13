@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Pestaña "Ruteo de visitas" en la ficha del cliente -->
+    <record id="view_partner_form_ruteo" model="ir.ui.view">
+        <field name="name">res.partner.form.ruteo</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="base.view_partner_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//notebook" position="inside">
+                <page string="Ruteo de visitas" name="ruteo">
+                    <group>
+                        <group string="Ubicación en el mapa">
+                            <field name="ruteo_is_located"/>
+                            <field name="ruteo_geo_status"/>
+                            <field name="partner_latitude"/>
+                            <field name="partner_longitude"/>
+                            <field name="date_localization"/>
+                            <field name="ruteo_geo_last_try"/>
+                            <field name="ruteo_geo_message"
+                                   invisible="not ruteo_geo_message"/>
+                        </group>
+                        <group string="Acciones">
+                            <button name="action_ruteo_geolocalize" type="object"
+                                    string="Geolocalizar ahora" icon="fa-map-marker"
+                                    class="btn-primary"/>
+                            <button name="action_ruteo_open_maps" type="object"
+                                    string="Cómo llegar" icon="fa-map-signs"
+                                    invisible="not ruteo_is_located"/>
+                            <p colspan="2" class="text-muted">
+                                Cargá la dirección de calle y la ciudad, guardá, y el
+                                sistema ubica al cliente en el mapa automáticamente
+                                (o tocá el botón para hacerlo al instante).
+                            </p>
+                        </group>
+                    </group>
+                    <group>
+                        <group string="Plan de visita">
+                            <field name="ruteo_zona_id"/>
+                            <field name="ruteo_weekday"/>
+                            <field name="ruteo_frequency_days"/>
+                        </group>
+                        <group string="Seguimiento">
+                            <field name="ruteo_last_visit"/>
+                            <field name="ruteo_next_visit_due"/>
+                            <field name="ruteo_is_due"/>
+                            <field name="ruteo_visit_type"/>
+                            <field name="ruteo_priority_score"/>
+                        </group>
+                    </group>
+                </page>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- Filtros útiles para el seguimiento del geocodificado -->
+    <record id="view_res_partner_filter_ruteo" model="ir.ui.view">
+        <field name="name">res.partner.select.ruteo</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="base.view_res_partner_filter"/>
+        <field name="arch" type="xml">
+            <xpath expr="//search" position="inside">
+                <separator/>
+                <filter name="ruteo_sin_ubicar" string="Sin ubicar en el mapa"
+                        domain="[('ruteo_is_located', '=', False), ('user_id', '!=', False)]"/>
+                <filter name="ruteo_geo_pendiente" string="Geo pendiente"
+                        domain="[('ruteo_geo_pending', '=', True)]"/>
+                <filter name="ruteo_geo_fallido" string="Geo fallida"
+                        domain="[('ruteo_geo_status', '=', 'failed')]"/>
+                <filter name="ruteo_geo_revisar" string="Geo a revisar (fuera de zona)"
+                        domain="[('ruteo_geo_status', '=', 'review')]"/>
+                <filter name="ruteo_sin_direccion" string="Sin dirección"
+                        domain="[('ruteo_geo_status', '=', 'no_address')]"/>
+                <separator/>
+                <filter name="ruteo_due" string="Le toca visita"
+                        domain="['|', ('ruteo_last_visit', '=', False),
+                                 ('ruteo_next_visit_due', '&lt;=', context_today().strftime('%Y-%m-%d'))]"/>
+                <filter name="ruteo_group_weekday" string="Día de visita"
+                        context="{'group_by': 'ruteo_weekday'}"/>
+                <filter name="ruteo_group_zona" string="Zona de ruteo"
+                        context="{'group_by': 'ruteo_zona_id'}"/>
+            </xpath>
+        </field>
+    </record>
+
+</odoo>

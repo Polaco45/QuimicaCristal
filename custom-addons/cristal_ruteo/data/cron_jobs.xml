@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+
+        <!--
+            Backstop de geolocalización: procesa los clientes marcados como
+            pendientes (cambió su dirección) y los ubica en el mapa.
+            El sandbox de ir.cron no permite imports: el code sólo invoca el
+            método real del modelo.
+        -->
+        <record id="cron_ruteo_geocode_pending" model="ir.cron">
+            <field name="name">Cristal Ruteo: Geolocalizar clientes pendientes</field>
+            <field name="model_id" ref="base.model_res_partner"/>
+            <field name="state">code</field>
+            <field name="code">model._cron_ruteo_geocode_pending()</field>
+            <field name="interval_number">10</field>
+            <field name="interval_type">minutes</field>
+            <field name="active" eval="True"/>
+        </record>
+
+        <!--
+            Generador de ruta diaria: arma las visitas del día para las zonas
+            cuyo día de la semana coincide con hoy. Corre temprano (09:00 UTC =
+            06:00 ARG) para que la vendedora ya lo tenga al abrir el celu.
+        -->
+        <record id="cron_ruteo_generate_daily" model="ir.cron">
+            <field name="name">Cristal Ruteo: Generar ruta del día</field>
+            <field name="model_id" ref="model_cristal_ruta_zona"/>
+            <field name="state">code</field>
+            <field name="code">model._cron_generate_daily_routes()</field>
+            <field name="interval_number">1</field>
+            <field name="interval_type">days</field>
+            <field name="nextcall">2026-07-28 09:00:00</field>
+            <field name="active" eval="True"/>
+        </record>
+
+        <!--
+            Reporte diario a la gerencia: resumen de qué pasó con cada cliente.
+            Corre a la noche (00:00 UTC = 21:00 ARG). Envía email a los usuarios
+            del grupo "Gerente de ventas".
+        -->
+        <record id="cron_ruteo_daily_report" model="ir.cron">
+            <field name="name">Cristal Ruteo: Reporte diario de visitas</field>
+            <field name="model_id" ref="model_cristal_ruta_visita"/>
+            <field name="state">code</field>
+            <field name="code">model._cron_ruteo_daily_report()</field>
+            <field name="interval_number">1</field>
+            <field name="interval_type">days</field>
+            <field name="nextcall">2026-07-28 00:00:00</field>
+            <field name="active" eval="True"/>
+        </record>
+
+    </data>
+</odoo>

@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Lista de zonas -->
+    <record id="view_cristal_ruta_zona_list" model="ir.ui.view">
+        <field name="name">cristal.ruta.zona.list</field>
+        <field name="model">cristal.ruta.zona</field>
+        <field name="arch" type="xml">
+            <list string="Zonas de visita">
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+                <field name="user_id"/>
+                <field name="weekday"/>
+                <field name="partner_count"/>
+                <field name="located_count"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Ficha de zona -->
+    <record id="view_cristal_ruta_zona_form" model="ir.ui.view">
+        <field name="name">cristal.ruta.zona.form</field>
+        <field name="model">cristal.ruta.zona</field>
+        <field name="arch" type="xml">
+            <form string="Zona de visita">
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_view_partners" type="object"
+                                class="oe_stat_button" icon="fa-users">
+                            <field name="partner_count" widget="statinfo" string="Clientes"/>
+                        </button>
+                    </div>
+                    <div class="oe_title">
+                        <label for="name"/>
+                        <h1><field name="name" placeholder="Ej: Alejandra — Lunes"/></h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="user_id"/>
+                            <field name="weekday"/>
+                            <field name="color" invisible="1"/>
+                        </group>
+                        <group>
+                            <field name="located_count"/>
+                            <field name="center_latitude"/>
+                            <field name="center_longitude"/>
+                            <field name="active" invisible="1"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Clientes de la zona" name="clientes">
+                            <field name="partner_ids">
+                                <list>
+                                    <field name="name"/>
+                                    <field name="city"/>
+                                    <field name="ruteo_is_located"/>
+                                    <field name="agent_level"/>
+                                    <field name="agent_days_since_last_purchase"/>
+                                </list>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Búsqueda -->
+    <record id="view_cristal_ruta_zona_search" model="ir.ui.view">
+        <field name="name">cristal.ruta.zona.search</field>
+        <field name="model">cristal.ruta.zona</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="name"/>
+                <field name="user_id"/>
+                <filter name="group_user" string="Vendedor" context="{'group_by': 'user_id'}"/>
+                <filter name="group_weekday" string="Día" context="{'group_by': 'weekday'}"/>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_cristal_ruta_zona" model="ir.actions.act_window">
+        <field name="name">Zonas de visita</field>
+        <field name="res_model">cristal.ruta.zona</field>
+        <field name="view_mode">list,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">Todavía no hay zonas de visita</p>
+            <p>Usá <b>Armar zonas automáticamente</b> para agrupar la cartera de la
+               vendedora por cercanía y asignarle un día a cada zona.</p>
+        </field>
+    </record>
+
+    <!-- Menús -->
+    <menuitem id="menu_ruteo_root" name="Ruteo de Visitas" sequence="45"/>
+    <menuitem id="menu_ruteo_zonas" name="Zonas de visita"
+              parent="menu_ruteo_root" action="action_cristal_ruta_zona" sequence="10"/>
+    <menuitem id="menu_ruteo_autoassign" name="Armar zonas automáticamente"
+              parent="menu_ruteo_root" action="action_ruta_zona_autoassign" sequence="20"/>
+
+</odoo>

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_ruta_visita_postpone_form" model="ir.ui.view">
+        <field name="name">cristal.ruta.visita.postpone.form</field>
+        <field name="model">cristal.ruta.visita.postpone</field>
+        <field name="arch" type="xml">
+            <form string="Posponer visita">
+                <group>
+                    <field name="visita_id" invisible="1"/>
+                    <field name="partner_id" readonly="1"/>
+                    <field name="new_date"/>
+                    <field name="reason" placeholder="Ej: cerrado, no estaba el encargado…"/>
+                </group>
+                <footer>
+                    <button name="action_confirm" type="object"
+                            string="Posponer" class="btn-primary"/>
+                    <button string="Cancelar" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+</odoo>
