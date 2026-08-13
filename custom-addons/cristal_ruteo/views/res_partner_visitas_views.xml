@@ -19,6 +19,11 @@
                         <button name="action_visit_postpone_wizard" type="object"
                                 string="Posponer"
                                 invisible="not visit_plan_active or not visit_next"/>
+                        <button name="action_visit_crear_pedido" type="object"
+                                string="Armar pedido" class="btn-secondary"/>
+                    </div>
+                    <div class="alert alert-info" role="status" invisible="not visit_plan_active">
+                        <b>Próximo paso:</b> <field name="visit_proximo_paso" class="oe_inline" readonly="1"/>
                     </div>
                     <group>
                         <group string="Regla">
@@ -34,6 +39,13 @@
                             <field name="visit_frequency_days" invisible="1"/>
                             <field name="visit_is_today" invisible="1"/>
                         </group>
+                    </group>
+                    <group string="Listo para pedir (antes del 1er pedido)">
+                        <field name="visit_ficha_estado"/>
+                        <field name="visit_ficha_cuit"/>
+                        <field name="visit_ficha_iva"/>
+                        <field name="visit_ficha_direccion"/>
+                        <field name="visit_ficha_contacto"/>
                     </group>
                     <p class="text-muted" invisible="not visit_plan_active">
                         Este cliente aparece en el <b>Calendario</b> y en <b>Mi día</b> en su próxima
@@ -82,6 +94,8 @@
                 <field name="user_id" optional="hide"/>
                 <button name="action_visit_done_wizard" type="object"
                         string="Visité" icon="fa-check" title="Registrar visita"/>
+                <button name="action_visit_crear_pedido" type="object"
+                        string="Pedido" icon="fa-shopping-cart" title="Armar pedido"/>
                 <button name="action_visit_postpone_wizard" type="object"
                         string="Posponer" icon="fa-clock-o" title="Posponer"/>
             </list>

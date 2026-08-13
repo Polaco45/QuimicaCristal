@@ -67,6 +67,59 @@ class ResPartner(models.Model):
         for partner in self:
             partner.visit_objetivo = partner._ruteo_visit_reason()
 
+    # ─────────── Ficha "listo para pedir" (avisa, no bloquea) ───────────
+    visit_ficha_cuit = fields.Boolean(string="CUIT / DNI", compute='_compute_visit_ficha')
+    visit_ficha_iva = fields.Boolean(string="Condición IVA", compute='_compute_visit_ficha')
+    visit_ficha_direccion = fields.Boolean(string="Dirección de entrega", compute='_compute_visit_ficha')
+    visit_ficha_contacto = fields.Boolean(string="Contacto", compute='_compute_visit_ficha')
+    visit_ficha_estado = fields.Selection([
+        ('completo', 'Ficha completa'),
+        ('casi', 'Casi lista'),
+        ('incompleto', 'Incompleta'),
+    ], string="Listo para pedir", compute='_compute_visit_ficha')
+    visit_proximo_paso = fields.Char(string="Próximo paso", compute='_compute_visit_proximo_paso')
+
+    def _compute_visit_ficha(self):
+        for partner in self:
+            partner.visit_ficha_cuit = bool(partner.vat)
+            partner.visit_ficha_direccion = bool(partner.street and partner.city)
+            partner.visit_ficha_contacto = bool(partner.phone or partner.mobile or partner.email)
+            if 'l10n_ar_afip_responsibility_type_id' in partner._fields:
+                partner.visit_ficha_iva = bool(partner.l10n_ar_afip_responsibility_type_id)
+            else:
+                partner.visit_ficha_iva = bool(partner.vat)
+            checks = [partner.visit_ficha_cuit, partner.visit_ficha_iva,
+                      partner.visit_ficha_direccion, partner.visit_ficha_contacto]
+            n = sum(1 for c in checks if c)
+            partner.visit_ficha_estado = (
+                'completo' if n == 4 else ('casi' if n >= 2 else 'incompleto'))
+
+    def _compute_visit_proximo_paso(self):
+        pasos = {
+            'cierre': "Cerrar la propuesta enviada",
+            'relevamiento': "Hacer el relevamiento",
+            'reactivacion': "Reactivar: ofrecer combo / promo",
+            'reposicion': "Tomar el pedido de reposición",
+            'primera_visita': "Presentarse y dejar muestra",
+        }
+        for partner in self:
+            paso = pasos.get(partner.ruteo_visit_type, "Seguimiento")
+            if partner.visit_ficha_estado != 'completo':
+                paso += " · completar la ficha antes de facturar"
+            partner.visit_proximo_paso = paso
+
+    def action_visit_crear_pedido(self):
+        """Abre una cotización nueva para el cliente (visita → pedido)."""
+        self.ensure_one()
+        return {
+            'type': 'ir.actions.act_window',
+            'name': "Nuevo pedido",
+            'res_model': 'sale.order',
+            'view_mode': 'form',
+            'target': 'current',
+            'context': {'default_partner_id': self.id},
+        }
+
     @api.depends('visit_frequency')
     def _compute_visit_frequency_days(self):
         for partner in self:
