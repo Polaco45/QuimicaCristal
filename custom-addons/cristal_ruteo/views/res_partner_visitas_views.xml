@@ -7,7 +7,8 @@
         <field name="model">res.partner</field>
         <field name="inherit_id" ref="base.view_partner_form"/>
         <field name="arch" type="xml">
-            <xpath expr="//notebook" position="inside">
+            <!-- Plan de visita como 3ra pestaña (después de "Ventas y compra") -->
+            <xpath expr="//notebook/page[2]" position="after">
                 <page string="Plan de visita" name="plan_visita">
                     <div class="oe_button_box" name="visit_buttons">
                         <button name="action_visit_schedule" type="object"
@@ -56,6 +57,10 @@
                         fecha), se marca la actividad hecha y se agenda la próxima.
                     </p>
                 </page>
+            </xpath>
+            <!-- Affiliate Details como última pestaña -->
+            <xpath expr="//notebook" position="inside">
+                <xpath expr="//page[@name='affilite_detail']" position="move"/>
             </xpath>
         </field>
     </record>
