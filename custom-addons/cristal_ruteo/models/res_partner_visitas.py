@@ -12,6 +12,8 @@ from datetime import timedelta
 
 from odoo import api, fields, models
 
+from .res_partner import RUTEO_VISIT_TYPES
+
 _logger = logging.getLogger(__name__)
 
 VISIT_FREQ = [
