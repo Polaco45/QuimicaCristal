@@ -2,4 +2,5 @@
 from . import cristal_ruta_zona
 from . import res_partner
 from . import cristal_ruta_visita
-from . import crm_lead
+from . import res_partner_visitas
+from . import cristal_visita_log

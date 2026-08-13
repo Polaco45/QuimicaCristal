@@ -1,0 +1,177 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ══════════ Plan de visita en la ficha del cliente ══════════ -->
+    <record id="view_partner_form_visitas" model="ir.ui.view">
+        <field name="name">res.partner.form.visitas</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="base.view_partner_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//notebook" position="inside">
+                <page string="Plan de visita" name="plan_visita">
+                    <div class="oe_button_box" name="visit_buttons">
+                        <button name="action_visit_schedule" type="object"
+                                string="Programar visita" class="btn-secondary"
+                                invisible="not visit_plan_active or visit_next"/>
+                        <button name="action_visit_done_wizard" type="object"
+                                string="Visité hoy" class="btn-primary"
+                                invisible="not visit_plan_active or not visit_next"/>
+                        <button name="action_visit_postpone_wizard" type="object"
+                                string="Posponer"
+                                invisible="not visit_plan_active or not visit_next"/>
+                        <button name="action_visit_crear_pedido" type="object"
+                                string="Armar pedido" class="btn-secondary"/>
+                    </div>
+                    <div class="alert alert-info" role="status" invisible="not visit_plan_active">
+                        <b>Próximo paso:</b> <field name="visit_proximo_paso" class="oe_inline" readonly="1"/>
+                    </div>
+                    <group>
+                        <group string="Regla">
+                            <field name="visit_plan_active"/>
+                            <field name="visit_frequency" invisible="not visit_plan_active"/>
+                            <field name="visit_weekday" invisible="not visit_plan_active"/>
+                        </group>
+                        <group string="Agenda">
+                            <field name="visit_last" invisible="not visit_plan_active"/>
+                            <field name="visit_next" invisible="not visit_plan_active"/>
+                            <field name="ruteo_visit_type" string="Tipo de visita (según CRM)"
+                                   invisible="not visit_plan_active"/>
+                            <field name="visit_frequency_days" invisible="1"/>
+                            <field name="visit_is_today" invisible="1"/>
+                        </group>
+                    </group>
+                    <group string="Listo para pedir (antes del 1er pedido)">
+                        <field name="visit_ficha_estado"/>
+                        <field name="visit_ficha_cuit"/>
+                        <field name="visit_ficha_iva"/>
+                        <field name="visit_ficha_direccion"/>
+                        <field name="visit_ficha_contacto"/>
+                    </group>
+                    <p class="text-muted" invisible="not visit_plan_active">
+                        Este cliente aparece en el <b>Calendario</b> y en <b>Mi día</b> en su próxima
+                        visita — <b>siempre</b>, sea prospecto o cliente ganado (ahí la visita es de
+                        <i>reposición</i>). Al tocar <b>Visité hoy</b> se registra en las notas (con
+                        fecha), se marca la actividad hecha y se agenda la próxima.
+                    </p>
+                </page>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- ══════════ Calendario de visitas ══════════ -->
+    <record id="view_partner_calendar_visitas" model="ir.ui.view">
+        <field name="name">res.partner.calendar.visitas</field>
+        <field name="model">res.partner</field>
+        <field name="arch" type="xml">
+            <calendar date_start="visit_next" color="user_id" mode="month"
+                      string="Calendario de visitas" quick_create="0" event_open_popup="1">
+                <field name="user_id"/>
+                <field name="visit_frequency"/>
+                <field name="ruteo_visit_type"/>
+            </calendar>
+        </field>
+    </record>
+
+    <!-- ══════════ Lista (Mi día / Plan) ══════════ -->
+    <record id="view_partner_list_visitas" model="ir.ui.view">
+        <field name="name">res.partner.list.visitas</field>
+        <field name="model">res.partner</field>
+        <field name="arch" type="xml">
+            <list string="Visitas" default_order="visit_day_order, visit_next" create="0">
+                <field name="visit_day_order" widget="handle"/>
+                <field name="visit_next"/>
+                <field name="name" string="Cliente"/>
+                <field name="ruteo_visit_type" string="Tipo" widget="badge"
+                       decoration-danger="ruteo_visit_type == 'cierre'"
+                       decoration-success="ruteo_visit_type == 'primera_visita'"
+                       decoration-info="ruteo_visit_type == 'reposicion'"
+                       decoration-warning="ruteo_visit_type == 'reactivacion'"/>
+                <field name="visit_objetivo" string="Objetivo"/>
+                <field name="visit_dias_sin_comprar" string="Días s/comprar" optional="show"/>
+                <field name="city" optional="hide"/>
+                <field name="visit_frequency" optional="hide"/>
+                <field name="visit_weekday" optional="hide"/>
+                <field name="user_id" optional="hide"/>
+                <button name="action_visit_done_wizard" type="object"
+                        string="Visité" icon="fa-check" title="Registrar visita"/>
+                <button name="action_visit_crear_pedido" type="object"
+                        string="Pedido" icon="fa-shopping-cart" title="Armar pedido"/>
+                <button name="action_visit_postpone_wizard" type="object"
+                        string="Posponer" icon="fa-clock-o" title="Posponer"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- ══════════ Búsqueda ══════════ -->
+    <record id="view_partner_search_visitas" model="ir.ui.view">
+        <field name="name">res.partner.search.visitas</field>
+        <field name="model">res.partner</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="name" string="Cliente"/>
+                <field name="user_id"/>
+                <filter name="v_mias" string="Míos" domain="[('user_id', '=', uid)]"/>
+                <separator/>
+                <filter name="v_hoy" string="Le toca (hoy o vencidas)"
+                        domain="[('visit_is_today', '=', True)]"/>
+                <filter name="v_semana" string="Esta semana"
+                        domain="[('visit_next', '&gt;=', context_today().strftime('%Y-%m-%d')),
+                                 ('visit_next', '&lt;=', (context_today() + relativedelta(days=7)).strftime('%Y-%m-%d'))]"/>
+                <separator/>
+                <filter name="v_plan" string="En plan de visita"
+                        domain="[('visit_plan_active', '=', True)]"/>
+                <group expand="0" string="Agrupar por">
+                    <filter name="g_weekday" string="Día de visita" context="{'group_by': 'visit_weekday'}"/>
+                    <filter name="g_freq" string="Frecuencia" context="{'group_by': 'visit_frequency'}"/>
+                    <filter name="g_user" string="Vendedor" context="{'group_by': 'user_id'}"/>
+                    <filter name="g_next" string="Próxima visita" context="{'group_by': 'visit_next'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- ══════════ Acciones ══════════ -->
+    <record id="action_visitas_mi_dia" model="ir.actions.act_window">
+        <field name="name">Mi día</field>
+        <field name="res_model">res.partner</field>
+        <field name="view_mode">list,form,calendar</field>
+        <field name="view_id" ref="view_partner_list_visitas"/>
+        <field name="search_view_id" ref="view_partner_search_visitas"/>
+        <field name="domain">[('visit_plan_active', '=', True)]</field>
+        <field name="context">{'search_default_v_mias': 1, 'search_default_v_hoy': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">No tenés visitas para hoy</p>
+            <p>Marcá clientes “En plan de visita” en su ficha para que aparezcan acá.</p>
+        </field>
+    </record>
+
+    <record id="action_visitas_calendario" model="ir.actions.act_window">
+        <field name="name">Calendario de visitas</field>
+        <field name="res_model">res.partner</field>
+        <field name="view_mode">calendar,list,form</field>
+        <field name="view_id" ref="view_partner_calendar_visitas"/>
+        <field name="search_view_id" ref="view_partner_search_visitas"/>
+        <field name="domain">[('visit_plan_active', '=', True)]</field>
+        <field name="context">{'search_default_v_mias': 1}</field>
+    </record>
+
+    <record id="action_visitas_plan" model="ir.actions.act_window">
+        <field name="name">Plan de visitas</field>
+        <field name="res_model">res.partner</field>
+        <field name="view_mode">list,calendar,form</field>
+        <field name="view_id" ref="view_partner_list_visitas"/>
+        <field name="search_view_id" ref="view_partner_search_visitas"/>
+        <field name="domain">[('visit_plan_active', '=', True)]</field>
+        <field name="context">{'search_default_v_plan': 1, 'search_default_g_weekday': 1}</field>
+    </record>
+
+    <!-- ══════════ Menús ══════════ -->
+    <menuitem id="menu_visitas_root" name="Visitas" sequence="45"/>
+    <menuitem id="menu_visitas_mi_dia" name="Mi día"
+              parent="menu_visitas_root" action="action_visitas_mi_dia" sequence="5"/>
+    <menuitem id="menu_visitas_calendario" name="Calendario"
+              parent="menu_visitas_root" action="action_visitas_calendario" sequence="10"/>
+    <menuitem id="menu_visitas_plan" name="Plan de visitas"
+              parent="menu_visitas_root" action="action_visitas_plan" sequence="15"/>
+
+</odoo>

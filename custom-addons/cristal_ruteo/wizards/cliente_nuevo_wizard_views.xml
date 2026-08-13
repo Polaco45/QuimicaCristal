@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_cliente_nuevo_wizard_form" model="ir.ui.view">
+        <field name="name">cristal.cliente.nuevo.wizard.form</field>
+        <field name="model">cristal.cliente.nuevo.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Cliente nuevo">
+                <div class="alert alert-info" role="status">
+                    Primero fijate si el cliente <b>ya está cargado</b> (para no duplicar).
+                    Si no aparece, cargá los datos abajo y crealo.
+                </div>
+                <group>
+                    <field name="existing_partner_id" options="{'no_create': True}"
+                           placeholder="Buscá por nombre…"/>
+                </group>
+                <group string="…o crear uno nuevo" invisible="existing_partner_id">
+                    <field name="name"/>
+                    <field name="phone"/>
+                    <field name="city"/>
+                    <field name="is_company"/>
+                </group>
+                <footer>
+                    <button name="action_use_existing" type="object" string="Usar el existente"
+                            class="btn-primary" invisible="not existing_partner_id"/>
+                    <button name="action_create_new" type="object" string="Crear cliente nuevo"
+                            class="btn-primary" invisible="existing_partner_id"/>
+                    <button string="Cancelar" special="cancel" class="btn-secondary"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_cliente_nuevo" model="ir.actions.act_window">
+        <field name="name">Cliente nuevo</field>
+        <field name="res_model">cristal.cliente.nuevo.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+    </record>
+
+    <menuitem id="menu_visitas_cliente_nuevo" name="Cliente nuevo"
+              parent="menu_visitas_root" action="action_cliente_nuevo" sequence="3"/>
+
+</odoo>

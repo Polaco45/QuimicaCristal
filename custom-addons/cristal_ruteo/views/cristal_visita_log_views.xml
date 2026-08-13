@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_cristal_visita_log_list" model="ir.ui.view">
+        <field name="name">cristal.visita.log.list</field>
+        <field name="model">cristal.visita.log</field>
+        <field name="arch" type="xml">
+            <list string="Registro de visitas" create="0">
+                <field name="visit_date"/>
+                <field name="partner_id"/>
+                <field name="partner_city" optional="show"/>
+                <field name="user_id"/>
+                <field name="action_type"/>
+                <field name="visit_type" optional="show"/>
+                <field name="note"/>
+                <field name="lead_id" optional="hide"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_cristal_visita_log_pivot" model="ir.ui.view">
+        <field name="name">cristal.visita.log.pivot</field>
+        <field name="model">cristal.visita.log</field>
+        <field name="arch" type="xml">
+            <pivot string="Control de visitas">
+                <field name="user_id" type="row"/>
+                <field name="action_type" type="col"/>
+            </pivot>
+        </field>
+    </record>
+
+    <record id="view_cristal_visita_log_search" model="ir.ui.view">
+        <field name="name">cristal.visita.log.search</field>
+        <field name="model">cristal.visita.log</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="partner_id"/>
+                <field name="user_id"/>
+                <filter name="hoy" string="Hoy"
+                        domain="[('visit_date', '=', context_today().strftime('%Y-%m-%d'))]"/>
+                <filter name="ayer" string="Ayer"
+                        domain="[('visit_date', '=', (context_today() - relativedelta(days=1)).strftime('%Y-%m-%d'))]"/>
+                <filter name="semana" string="Últimos 7 días"
+                        domain="[('visit_date', '&gt;=', (context_today() - relativedelta(days=7)).strftime('%Y-%m-%d'))]"/>
+                <separator/>
+                <filter name="visitas" string="Visitas" domain="[('action_type', '=', 'visita')]"/>
+                <filter name="pospuestas" string="Pospuestas" domain="[('action_type', '=', 'posposicion')]"/>
+                <group expand="0" string="Agrupar por">
+                    <filter name="g_date" string="Fecha" context="{'group_by': 'visit_date'}"/>
+                    <filter name="g_user" string="Vendedor" context="{'group_by': 'user_id'}"/>
+                    <filter name="g_type" string="Tipo de visita" context="{'group_by': 'visit_type'}"/>
+                    <filter name="g_action" string="Acción" context="{'group_by': 'action_type'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_cristal_visita_log" model="ir.actions.act_window">
+        <field name="name">Control de visitas</field>
+        <field name="res_model">cristal.visita.log</field>
+        <field name="view_mode">list,pivot</field>
+        <field name="search_view_id" ref="view_cristal_visita_log_search"/>
+        <field name="context">{'search_default_semana': 1, 'search_default_g_date': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">Todavía no hay visitas registradas</p>
+            <p>Acá se registra, día a día, cada visita y posposición: cliente, vendedor,
+               tipo y detalle. Además te llega el resumen del día anterior a las 8am.</p>
+        </field>
+    </record>
+
+    <menuitem id="menu_visitas_control" name="Control"
+              parent="menu_visitas_root" action="action_cristal_visita_log"
+              groups="cristal_ruteo.group_visitas_control" sequence="20"/>
+
+</odoo>
