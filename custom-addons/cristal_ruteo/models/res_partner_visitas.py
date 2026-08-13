@@ -59,13 +59,48 @@ class ResPartner(models.Model):
         help="Orden en que la vendedora recorre el día (arrastrar arriba/abajo).")
     visit_objetivo = fields.Char(
         string="Objetivo", compute='_compute_visit_objetivo',
-        help="Qué hacer en esta visita, deducido del CRM.")
+        help="Qué hacer en esta visita, deducido del CRM y las compras de la familia.")
+    visit_ultima_compra = fields.Date(
+        string="Última compra (familia)", compute='_compute_visit_compras',
+        help="Última compra del cliente O de cualquiera de sus contactos hijos.")
     visit_dias_sin_comprar = fields.Integer(
-        related='agent_days_since_last_purchase', string="Días sin comprar")
+        string="Días sin comprar", compute='_compute_visit_compras',
+        help="Días desde la última compra de toda la familia comercial "
+             "(cliente madre + subcontactos). -1 = nunca compró.")
+
+    def _compute_visit_compras(self):
+        """Mira las compras de TODA la familia comercial (madre + hijos), no solo
+        del contacto exacto — las ventas pueden estar en un subcontacto."""
+        SaleOrder = self.env['sale.order'].sudo()
+        today = fields.Date.context_today(self)
+        for partner in self:
+            commercial = partner.commercial_partner_id or partner
+            order = SaleOrder.search([
+                ('commercial_partner_id', '=', commercial.id),
+                ('state', 'in', ['sale', 'done']),
+            ], order='date_order desc', limit=1)
+            if order and order.date_order:
+                fecha = order.date_order.date()
+                partner.visit_ultima_compra = fecha
+                partner.visit_dias_sin_comprar = (today - fecha).days
+            else:
+                partner.visit_ultima_compra = False
+                partner.visit_dias_sin_comprar = -1
 
     def _compute_visit_objetivo(self):
         for partner in self:
-            partner.visit_objetivo = partner._ruteo_visit_reason()
+            dias = partner.visit_dias_sin_comprar
+            es_cliente = dias >= 0  # tiene alguna compra en la familia
+            parts = []
+            if not es_cliente:
+                parts.append("primera visita / captación")
+            elif dias > 0:
+                parts.append("%s días sin comprar" % dias)
+            else:
+                parts.append("compró hoy")
+            if partner.agent_level and partner.agent_level != 'none':
+                parts.append("cliente %s" % partner.agent_level)
+            partner.visit_objetivo = " · ".join(parts)
 
     # ─────────── Ficha "listo para pedir" (avisa, no bloquea) ───────────
     visit_ficha_cuit = fields.Boolean(string="CUIT / DNI", compute='_compute_visit_ficha')

@@ -36,6 +36,8 @@
                             <field name="visit_next" invisible="not visit_plan_active"/>
                             <field name="ruteo_visit_type" string="Tipo de visita (según CRM)"
                                    invisible="not visit_plan_active"/>
+                            <field name="visit_ultima_compra" invisible="not visit_plan_active"/>
+                            <field name="visit_dias_sin_comprar" invisible="not visit_plan_active"/>
                             <field name="visit_frequency_days" invisible="1"/>
                             <field name="visit_is_today" invisible="1"/>
                         </group>
