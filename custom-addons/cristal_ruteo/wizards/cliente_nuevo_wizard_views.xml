@@ -39,6 +39,6 @@
     </record>
 
     <menuitem id="menu_visitas_cliente_nuevo" name="Cliente nuevo"
-              parent="menu_visitas_root" action="action_cliente_nuevo" sequence="3"/>
+              parent="menu_visitas_root" action="action_cliente_nuevo" sequence="7"/>
 
 </odoo>
