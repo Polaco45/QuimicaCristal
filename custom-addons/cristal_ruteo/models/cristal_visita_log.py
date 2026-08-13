@@ -37,6 +37,26 @@ class CristalVisitaLog(models.Model):
     outcome = fields.Selection(VISIT_OUTCOMES, string="Resultado", index=True)
     note = fields.Text(string="Detalle")
     lead_id = fields.Many2one('crm.lead', string="Oportunidad")
+    genero_pedido = fields.Boolean(
+        string="Generó pedido", compute='_compute_genero_pedido',
+        help="Si la familia del cliente hizo un pedido dentro de los 7 días "
+             "posteriores a la visita (mide la conversión).")
+
+    def _compute_genero_pedido(self):
+        SaleOrder = self.env['sale.order'].sudo()
+        for log in self:
+            if not log.visit_date:
+                log.genero_pedido = False
+                continue
+            commercial = log.partner_id.commercial_partner_id or log.partner_id
+            desde = fields.Datetime.to_datetime(log.visit_date)
+            hasta = desde + timedelta(days=8)
+            log.genero_pedido = bool(SaleOrder.search_count([
+                ('commercial_partner_id', '=', commercial.id),
+                ('state', 'in', ['sale', 'done']),
+                ('date_order', '>=', desde),
+                ('date_order', '<', hasta),
+            ]))
 
     # ─────────── Reporte diario (8am) ───────────
     @api.model

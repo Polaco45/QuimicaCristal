@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!--
+        Alta masiva al plan de visitas: seleccionás varios clientes en la lista
+        de Contactos y, desde el menú "Acción", los ponés en plan de una, con
+        la frecuencia sugerida por su nivel.
+    -->
+    <record id="server_action_bulk_plan" model="ir.actions.server">
+        <field name="name">Poner en plan de visita</field>
+        <field name="model_id" ref="base.model_res_partner"/>
+        <field name="binding_model_id" ref="base.model_res_partner"/>
+        <field name="binding_view_types">list</field>
+        <field name="state">code</field>
+        <field name="code">records.action_visit_bulk_plan()</field>
+    </record>
+
+</odoo>
