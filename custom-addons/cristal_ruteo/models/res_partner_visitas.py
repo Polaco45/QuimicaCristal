@@ -25,6 +25,16 @@ VISIT_WEEKDAYS = [
     ('3', 'Jueves'), ('4', 'Viernes'),
 ]
 
+# Resultado de la visita (registro de un toque).
+VISIT_OUTCOMES = [
+    ('compro', 'Compró / hizo pedido'),
+    ('cotizo', 'Pidió cotización'),
+    ('dejo_muestra', 'Dejó muestra'),
+    ('no_estaba', 'No estaba / cerrado'),
+    ('sin_interes', 'Sin interés'),
+    ('otro', 'Otro'),
+]
+
 
 class ResPartner(models.Model):
     _inherit = 'res.partner'
@@ -44,6 +54,18 @@ class ResPartner(models.Model):
     visit_is_today = fields.Boolean(
         string="Le toca hoy", compute='_compute_visit_is_today',
         search='_search_visit_is_today')
+    visit_day_order = fields.Integer(
+        string="Orden del día", default=10, copy=False,
+        help="Orden en que la vendedora recorre el día (arrastrar arriba/abajo).")
+    visit_objetivo = fields.Char(
+        string="Objetivo", compute='_compute_visit_objetivo',
+        help="Qué hacer en esta visita, deducido del CRM.")
+    visit_dias_sin_comprar = fields.Integer(
+        related='agent_days_since_last_purchase', string="Días sin comprar")
+
+    def _compute_visit_objetivo(self):
+        for partner in self:
+            partner.visit_objetivo = partner._ruteo_visit_reason()
 
     @api.depends('visit_frequency')
     def _compute_visit_frequency_days(self):
@@ -111,7 +133,7 @@ class ResPartner(models.Model):
                 _logger.exception("Visitas: no se pudo agendar próxima de %s", self.display_name)
 
     # ─────────── Acciones ───────────
-    def _visit_log(self, action_type, note=None):
+    def _visit_log(self, action_type, note=None, outcome=None):
         """Deja el asiento en el registro de control (siempre, vía sudo)."""
         self.ensure_one()
         self.env['cristal.visita.log'].sudo().create({
@@ -120,21 +142,36 @@ class ResPartner(models.Model):
             'user_id': self.user_id.id or self.env.uid,
             'action_type': action_type,
             'visit_type': self.ruteo_visit_type,
+            'outcome': outcome or False,
             'note': note or False,
             'lead_id': self._ruteo_best_open_lead().id or False,
         })
 
-    def _visit_register_done(self, note=None):
+    def _visit_register_done(self, note=None, outcome=None):
         today = fields.Date.context_today(self)
+        outcome_label = dict(VISIT_OUTCOMES).get(outcome or '', '')
         for partner in self:
+            if outcome == 'no_estaba':
+                # No se pudo visitar: reprograma pronto, no cuenta como visita hecha.
+                nxt = today + timedelta(days=3)
+                partner.visit_next = nxt
+                body = "🚪 <b>No estaba</b> — %s. Reprogramada al %s" % (
+                    fields.Date.to_string(today), fields.Date.to_string(nxt))
+                if note:
+                    body += "<br/>%s" % note
+                partner.message_post(body=body)
+                partner._visit_log('visita', note=note, outcome=outcome)
+                continue
             nxt = partner._visit_next_from(today)
             partner.write({'visit_last': today, 'visit_next': nxt, 'visit_plan_active': True})
-            body = "🚗 <b>Visita realizada</b> — %s" % fields.Date.to_string(today)
+            body = "🚗 <b>Visita realizada</b> — %s%s" % (
+                fields.Date.to_string(today),
+                (" · %s" % outcome_label) if outcome_label else "")
             if note:
                 body += "<br/>%s" % note
             partner.message_post(body=body)
             partner._visit_close_and_reschedule(nxt)
-            partner._visit_log('visita', note=note)
+            partner._visit_log('visita', note=note, outcome=outcome)
         return True
 
     def _visit_postpone(self, new_date, reason=None):

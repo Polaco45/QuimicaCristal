@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 {
     'name': 'Cristal — Plan de Visitas',
-    'version': '18.0.3.2.0',
+    'version': '18.0.3.3.0',
     'summary': 'Plan de visitas manual en la ficha del cliente: regla (frecuencia + día), '
                'el calendario se arma solo, y el vendedor organiza "Mi día", pospone y '
                'registra en las notas al cerrar. El plan sigue al cliente toda la vida '
@@ -33,6 +33,7 @@ reparto reusa el geocodificador cuando hace falta.)
         'data/cron_jobs.xml',
         'wizards/visita_wizard_views.xml',
         'views/res_partner_visitas_views.xml',
+        'wizards/cliente_nuevo_wizard_views.xml',
         'views/cristal_visita_log_views.xml',
     ],
     'application': False,

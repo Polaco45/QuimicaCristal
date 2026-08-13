@@ -12,6 +12,7 @@ from datetime import timedelta
 from odoo import api, fields, models
 
 from .res_partner import RUTEO_VISIT_TYPES
+from .res_partner_visitas import VISIT_OUTCOMES
 
 _logger = logging.getLogger(__name__)
 
@@ -33,6 +34,7 @@ class CristalVisitaLog(models.Model):
         ('posposicion', 'Pospuesta'),
     ], string="Acción", default='visita', required=True, index=True)
     visit_type = fields.Selection(RUTEO_VISIT_TYPES, string="Tipo de visita")
+    outcome = fields.Selection(VISIT_OUTCOMES, string="Resultado", index=True)
     note = fields.Text(string="Detalle")
     lead_id = fields.Many2one('crm.lead', string="Oportunidad")
 

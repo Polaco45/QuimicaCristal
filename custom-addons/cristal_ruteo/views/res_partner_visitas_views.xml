@@ -65,16 +65,23 @@
         <field name="name">res.partner.list.visitas</field>
         <field name="model">res.partner</field>
         <field name="arch" type="xml">
-            <list string="Visitas" default_order="visit_next" create="0">
+            <list string="Visitas" default_order="visit_day_order, visit_next" create="0">
+                <field name="visit_day_order" widget="handle"/>
                 <field name="visit_next"/>
                 <field name="name" string="Cliente"/>
-                <field name="city" optional="show"/>
-                <field name="ruteo_visit_type" string="Tipo" optional="show"/>
-                <field name="visit_frequency"/>
-                <field name="visit_weekday" optional="show"/>
+                <field name="ruteo_visit_type" string="Tipo" widget="badge"
+                       decoration-danger="ruteo_visit_type == 'cierre'"
+                       decoration-success="ruteo_visit_type == 'primera_visita'"
+                       decoration-info="ruteo_visit_type == 'reposicion'"
+                       decoration-warning="ruteo_visit_type == 'reactivacion'"/>
+                <field name="visit_objetivo" string="Objetivo"/>
+                <field name="visit_dias_sin_comprar" string="Días s/comprar" optional="show"/>
+                <field name="city" optional="hide"/>
+                <field name="visit_frequency" optional="hide"/>
+                <field name="visit_weekday" optional="hide"/>
                 <field name="user_id" optional="hide"/>
                 <button name="action_visit_done_wizard" type="object"
-                        string="Visité" icon="fa-check" title="Visité hoy"/>
+                        string="Visité" icon="fa-check" title="Registrar visita"/>
                 <button name="action_visit_postpone_wizard" type="object"
                         string="Posponer" icon="fa-clock-o" title="Posponer"/>
             </list>

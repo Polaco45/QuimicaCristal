@@ -5,6 +5,8 @@ from datetime import timedelta
 from odoo import fields, models
 from odoo.exceptions import UserError
 
+from ..models.res_partner_visitas import VISIT_OUTCOMES
+
 
 class CristalVisitaWizard(models.TransientModel):
     _name = 'cristal.visita.wizard'
@@ -15,8 +17,9 @@ class CristalVisitaWizard(models.TransientModel):
         ('done', 'Visité'),
         ('posponer', 'Posponer'),
     ], required=True, default='done')
+    outcome = fields.Selection(VISIT_OUTCOMES, string="¿Cómo salió?", default='compro')
     note = fields.Text(
-        string="¿Qué hiciste en la visita?",
+        string="Detalle (opcional)",
         placeholder="Ej: dejé muestra de lavandina, interesado, cotizar pack cocina…")
     new_date = fields.Date(
         string="Nueva fecha",
@@ -26,7 +29,7 @@ class CristalVisitaWizard(models.TransientModel):
     def action_confirm(self):
         self.ensure_one()
         if self.modo == 'done':
-            self.partner_id._visit_register_done(note=self.note)
+            self.partner_id._visit_register_done(note=self.note, outcome=self.outcome)
         else:
             if not self.new_date or self.new_date <= fields.Date.context_today(self):
                 raise UserError("Elegí una fecha futura para posponer.")
