@@ -12,7 +12,21 @@
         <field name="binding_model_id" ref="base.model_res_partner"/>
         <field name="binding_view_types">list</field>
         <field name="state">code</field>
-        <field name="code">records.action_visit_bulk_plan()</field>
+        <field name="code">action = records.action_visit_bulk_plan()</field>
+    </record>
+
+    <!--
+        Lo mismo pero desde el CRM: seleccionás oportunidades en la lista del
+        pipeline y las ponés en plan de visita (aplica sobre el contacto de cada
+        oportunidad). Más visual para Joaco, que trabaja el pipeline.
+    -->
+    <record id="server_action_bulk_plan_crm" model="ir.actions.server">
+        <field name="name">Poner en plan de visita</field>
+        <field name="model_id" ref="crm.model_crm_lead"/>
+        <field name="binding_model_id" ref="crm.model_crm_lead"/>
+        <field name="binding_view_types">list</field>
+        <field name="state">code</field>
+        <field name="code">action = records.mapped('partner_id').action_visit_bulk_plan()</field>
     </record>
 
 </odoo>
