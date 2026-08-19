@@ -146,43 +146,6 @@ class ResPartner(models.Model):
                     vt = 'reposicion'
             partner.visit_purpose = vt
 
-    # ─────────── Alta masiva al plan (onboarding rápido) ───────────
-    def action_visit_bulk_plan(self):
-        """Pone en plan de visita a los seleccionados, con frecuencia sugerida por
-        nivel (oro=semanal, plata=quincenal, bronce=mensual) y la 1ª programada.
-        No pisa a los que ya están en plan. Sirve para el alta masiva desde la lista
-        de Contactos y desde la lista de oportunidades del CRM (vía partner_id)."""
-        freq_by_level = {'oro': 'semanal', 'plata': 'quincenal', 'bronce': 'mensual'}
-        today = fields.Date.context_today(self)
-        agregados = self.browse()
-        for partner in self:
-            if partner.visit_plan_active:
-                continue
-            partner.write({
-                'visit_plan_active': True,
-                'visit_frequency': freq_by_level.get(partner.agent_level,
-                                                     partner.visit_frequency or 'quincenal'),
-            })
-            if not partner.visit_next:
-                partner.visit_next = partner._visit_first_date(today)
-            agregados |= partner
-        ya_estaban = len(self) - len(agregados)
-        partes = ["%s cliente(s) agregados al plan de visitas." % len(agregados)]
-        if ya_estaban:
-            partes.append("%s ya estaban en plan." % ya_estaban)
-        if not self:
-            partes = ["No había contactos para agregar (¿oportunidades sin contacto?)."]
-        return {
-            'type': 'ir.actions.client',
-            'tag': 'display_notification',
-            'params': {
-                'title': "Plan de visitas",
-                'message': " ".join(partes),
-                'type': 'success' if agregados else 'warning',
-                'sticky': False,
-            },
-        }
-
     # ─────────── Ficha "listo para pedir" (avisa, no bloquea) ───────────
     visit_ficha_cuit = fields.Boolean(string="CUIT / DNI", compute='_compute_visit_ficha')
     visit_ficha_iva = fields.Boolean(string="Condición IVA", compute='_compute_visit_ficha')

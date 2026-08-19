@@ -2,31 +2,42 @@
 <odoo>
 
     <!--
-        Alta masiva al plan de visitas: seleccionás varios clientes en la lista
-        de Contactos y, desde el menú "Acción", los ponés en plan de una, con
-        la frecuencia sugerida por su nivel.
+        Alta masiva al plan de visitas con POPUP de configuración: seleccionás
+        un grupo de clientes (o de oportunidades en el CRM) y se abre un asistente
+        donde elegís frecuencia + día para ESE grupo. Podés repetir con otro grupo
+        y otra config (5 los viernes quincenal, 4 los martes semanal, etc.).
     -->
     <record id="server_action_bulk_plan" model="ir.actions.server">
-        <field name="name">Poner en plan de visita</field>
+        <field name="name">Configurar plan de visita…</field>
         <field name="model_id" ref="base.model_res_partner"/>
         <field name="binding_model_id" ref="base.model_res_partner"/>
         <field name="binding_view_types">list</field>
         <field name="state">code</field>
-        <field name="code">action = records.action_visit_bulk_plan()</field>
+        <field name="code">action = {
+    'type': 'ir.actions.act_window',
+    'name': 'Configurar plan de visitas',
+    'res_model': 'cristal.plan.masivo.wizard',
+    'view_mode': 'form',
+    'target': 'new',
+    'context': {'default_partner_ids': [(6, 0, records.ids)]},
+}</field>
     </record>
 
-    <!--
-        Lo mismo pero desde el CRM: seleccionás oportunidades en la lista del
-        pipeline y las ponés en plan de visita (aplica sobre el contacto de cada
-        oportunidad). Más visual para Joaco, que trabaja el pipeline.
-    -->
+    <!-- Lo mismo desde el CRM: aplica sobre el contacto de cada oportunidad. -->
     <record id="server_action_bulk_plan_crm" model="ir.actions.server">
-        <field name="name">Poner en plan de visita</field>
+        <field name="name">Configurar plan de visita…</field>
         <field name="model_id" ref="crm.model_crm_lead"/>
         <field name="binding_model_id" ref="crm.model_crm_lead"/>
         <field name="binding_view_types">list</field>
         <field name="state">code</field>
-        <field name="code">action = records.mapped('partner_id').action_visit_bulk_plan()</field>
+        <field name="code">action = {
+    'type': 'ir.actions.act_window',
+    'name': 'Configurar plan de visitas',
+    'res_model': 'cristal.plan.masivo.wizard',
+    'view_mode': 'form',
+    'target': 'new',
+    'context': {'default_partner_ids': [(6, 0, records.mapped('partner_id').ids)]},
+}</field>
     </record>
 
 </odoo>
