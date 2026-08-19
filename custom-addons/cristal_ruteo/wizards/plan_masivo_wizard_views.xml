@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_plan_masivo_wizard_form" model="ir.ui.view">
+        <field name="name">cristal.plan.masivo.wizard.form</field>
+        <field name="model">cristal.plan.masivo.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Configurar plan de visitas">
+                <div class="alert alert-info" role="status">
+                    Estás por poner <b><field name="partner_count" class="oe_inline" readonly="1"/></b>
+                    cliente(s) en plan de visitas con esta configuración. Podés repetir después con
+                    otro grupo y otra frecuencia/día.
+                </div>
+                <group>
+                    <group string="Configuración">
+                        <field name="visit_frequency"/>
+                        <field name="visit_weekday"/>
+                        <field name="reprogramar"/>
+                    </group>
+                </group>
+                <group string="Clientes seleccionados">
+                    <field name="partner_ids" nolabel="1">
+                        <list create="0">
+                            <field name="name"/>
+                            <field name="city" optional="show"/>
+                            <field name="agent_level" optional="show"/>
+                            <field name="visit_plan_active" string="Ya en plan" optional="show"/>
+                        </list>
+                    </field>
+                </group>
+                <footer>
+                    <button name="action_apply" type="object" string="Aplicar a estos clientes"
+                            class="btn-primary"/>
+                    <button string="Cancelar" special="cancel" class="btn-secondary"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+</odoo>
