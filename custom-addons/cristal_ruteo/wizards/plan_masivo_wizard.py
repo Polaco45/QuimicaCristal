@@ -62,5 +62,6 @@ class PlanMasivoWizard(models.TransientModel):
                     len(self.partner_ids), freq_label, dia_label),
                 'type': 'success',
                 'sticky': False,
+                'next': {'type': 'ir.actions.act_window_close'},
             },
         }
