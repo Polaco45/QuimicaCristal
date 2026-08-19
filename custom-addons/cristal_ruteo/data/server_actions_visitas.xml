@@ -19,7 +19,7 @@
     'res_model': 'cristal.plan.masivo.wizard',
     'view_mode': 'form',
     'target': 'new',
-    'context': {'default_partner_ids': [(6, 0, records.ids)]},
+    'context': {'default_partner_ids': [(6, 0, records.mapped('commercial_partner_id').ids)]},
 }</field>
     </record>
 
@@ -36,7 +36,7 @@
     'res_model': 'cristal.plan.masivo.wizard',
     'view_mode': 'form',
     'target': 'new',
-    'context': {'default_partner_ids': [(6, 0, records.mapped('partner_id').ids)]},
+    'context': {'default_partner_ids': [(6, 0, records.mapped('partner_id.commercial_partner_id').ids)]},
 }</field>
     </record>
 

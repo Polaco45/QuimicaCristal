@@ -23,7 +23,6 @@
                         <list create="0">
                             <field name="name"/>
                             <field name="city" optional="show"/>
-                            <field name="agent_level" optional="show"/>
                             <field name="visit_plan_active" string="Ya en plan" optional="show"/>
                         </list>
                     </field>
