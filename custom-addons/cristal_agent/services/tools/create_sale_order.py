@@ -417,6 +417,21 @@ class CreateSaleOrder(AgentTool):
                 f"20% de primera compra, lo saqué. Está cotizado a precio de nivel normal. "
                 f"NO le digas que le aplicaste el 20% ni menciones 'primera compra'."
             ) if first_purchase_blocked else None,
+            # Resumen LITERAL del pedido real (para que el bot lo copie TEXTUAL y NO
+            # invente productos/total de memoria — caso Silvia: dijo 6 productos y
+            # $64.732 cuando el pedido real tenía 4 productos + bidones y $59.400).
+            "client_summary": (
+                "\n".join(
+                    f"• {d['qty']:g} {d['product']} — ${d['subtotal']:,.0f}"
+                    for d in line_details)
+                + f"\nTOTAL: ${order.amount_total:,.0f}"
+            ),
+            "client_summary_note": (
+                "⚠️ OBLIGATORIO: detallá al cliente EXACTAMENTE lo que dice `client_summary` "
+                "(esos productos, esas cantidades y ese TOTAL), TEXTUAL. PROHIBIDO agregar "
+                "productos, cambiar cantidades o recalcular el total de memoria. El total "
+                "es SIEMPRE el de esta tool; el detalle fiel es el PDF (adjuntalo siempre)."
+            ),
             "problems": problems if problems else None,
             "summary": (
                 f"Cotización {order.name} ({'actualizada' if reused else 'nueva'}, draft) "

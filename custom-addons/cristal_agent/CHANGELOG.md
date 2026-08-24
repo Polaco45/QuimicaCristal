@@ -7,6 +7,31 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.31.8] — 2026-08-24
+
+### Fixed — El bot inventaba el detalle y el total del pedido al cliente
+
+Caso real (Silvia, S05696): el bot le escribió al cliente *"cerramos en $64.732"*
+con 6 productos, cuando el pedido real (S05696) tenía **4 productos + bidones y
+$59.400**. Rearmaba el resumen de memoria (desvirtuada tras las idas y vueltas) en
+vez de usar los datos reales de la cotización.
+
+- **`create_sale_order`** ahora devuelve **`client_summary`**: el detalle LITERAL del
+  pedido real (productos, cantidades, subtotales y TOTAL exacto), + `client_summary_note`
+  obligando a copiarlo textual.
+- **Prompt v5:** prohibido inventar/agregar productos, cambiar cantidades o recalcular
+  el total de memoria — se copia `client_summary` tal cual; el total es SIEMPRE el de
+  la tool.
+
+### Changed — Mandar SIEMPRE la lista de precios al cliente
+
+A pedido de Joaco: a TODO cliente con interés comercial se le manda la Lista Mayorista
+(PDF) sí o sí, aunque no la pida (única excepción: no repetir dentro de 24 hs). Prompt v5.
+
+Migración 1.31.8: recarga el prompt v5.
+
+---
+
 ## [18.0.1.31.7] — 2026-08-24
 
 ### Fixed — El 20% de primera compra se aplicaba a clientes que YA compraron
