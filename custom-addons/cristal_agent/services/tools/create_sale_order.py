@@ -154,6 +154,24 @@ class CreateSaleOrder(AgentTool):
         if not partner.exists():
             return {"error": f"partner_id={partner_id} no existe"}
 
+        # ── GUARDRAIL: el 20% es SOLO de PRIMERA compra ──
+        # Bug real (caso Ariel, 3ra compra): el bot aplicó el 20% de primera compra
+        # a un cliente que YA había comprado. No se puede confiar en que el LLM
+        # infiera "primera compra": la tool valida el historial. Si el cliente ya
+        # tiene ventas confirmadas y se pasó un descuento tipo primera compra
+        # (>=15%), se BLOQUEA y se cotiza a precio de nivel normal.
+        prev_purchases = env['sale.order'].sudo().search_count([
+            ('partner_id', '=', partner.id),
+            ('state', 'in', ['sale', 'done']),
+        ])
+        first_purchase_blocked = False
+        if prev_purchases > 0 and discount_percent and float(discount_percent) >= 15:
+            first_purchase_blocked = True
+            _logger.info(
+                "🚫 20%% de primera compra BLOQUEADO: %s ya tiene %s compra(s) "
+                "confirmada(s).", partner.name, prev_purchases)
+            discount_percent = None
+
         Pricelist = env['product.pricelist'].sudo()
         pricelist = Pricelist.search([('name', '=', pricelist_name)], limit=1)
         if not pricelist and pricelist_name != 'Lista Mayorista':
@@ -392,6 +410,13 @@ class CreateSaleOrder(AgentTool):
             "sin_stock": sin_stock or None,
             "upsell": upsell,
             "samples_hint": samples_hint,
+            "previous_purchases": prev_purchases,
+            "first_purchase_blocked": first_purchase_blocked,
+            "first_purchase_note": (
+                f"⚠️ Este cliente YA compró {prev_purchases} vez/veces: NO corresponde el "
+                f"20% de primera compra, lo saqué. Está cotizado a precio de nivel normal. "
+                f"NO le digas que le aplicaste el 20% ni menciones 'primera compra'."
+            ) if first_purchase_blocked else None,
             "problems": problems if problems else None,
             "summary": (
                 f"Cotización {order.name} ({'actualizada' if reused else 'nueva'}, draft) "

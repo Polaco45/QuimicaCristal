@@ -7,6 +7,27 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.31.7] — 2026-08-24
+
+### Fixed — El 20% de primera compra se aplicaba a clientes que YA compraron
+
+Caso real (Ariel, 3ra compra): el bot le aplicó el 20% de primera compra. Causa:
+el prompt decía *"ante la duda, tratalo como primera compra (aplicá el 20%)"* y no
+había ninguna validación real del historial — se confiaba en que el LLM infiriera
+"primera compra".
+
+- **Guardrail en `create_sale_order`:** cuenta las ventas confirmadas del cliente;
+  si ya compró y se pasó un descuento tipo primera compra (≥15%), lo **bloquea** y
+  cotiza a precio de nivel normal. Devuelve `previous_purchases`, `first_purchase_blocked`
+  y `first_purchase_note` para que el bot NO le diga al cliente que le aplicó el 20%.
+- **Prompt v5:** se da vuelta la regla — el 20% es SOLO para clientes sin NINGUNA
+  compra; ante la duda NO se aplica; si figura "última compra"/"nivel" en el contexto,
+  ya compró. La tool valida igual.
+
+Migración 1.31.7: recarga el prompt v5.
+
+---
+
 ## [18.0.1.31.6] — 2026-08-03
 
 ### Added — Promos con precio cerrado (campañas / Meta Ads), NO acumulables con el 20%

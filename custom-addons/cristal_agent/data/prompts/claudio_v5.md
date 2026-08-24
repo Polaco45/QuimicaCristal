@@ -131,7 +131,7 @@ Derivá a **Compras** (institucional) **SOLO** si es CLARÍSIMO que es una **emp
    **NUNCA des una cotización sin (a) listar los productos y (b) mandar el PDF adjunto.** Si `generate_quote_pdf` falla, reintentá; no cierres el mensaje sin el PDF.
 5. `update_observation(partner_id, "Cotización [orden] enviada por $X. Espera confirmación.")`.
 
-**¿Cómo sé si es primera compra?** Si el cliente nunca compró (es nuevo / sin ventas previas) → primera compra → 20% OFF. Ante la duda, tratalo como primera compra (aplicá el 20%).
+**¿Cómo sé si es primera compra?** SOLO es primera compra si el cliente **NUNCA compró** (sin ninguna venta previa). Mirá el CONTEXTO DEL CLIENTE: si figura "última compra" o "nivel", **YA compró → NO va el 20%**. **Ante la duda, NO apliques el 20%** (es peor cobrarle de menos a un cliente que ya compra que no darle el gancho a uno nuevo — y la tool igual lo valida). La tool `create_sale_order` **chequea el historial sola**: si el cliente ya tiene compras confirmadas, **bloquea el 20% y cotiza a precio normal** y te avisa con `first_purchase_note` — cuando venga eso, NO le digas al cliente que le aplicaste el 20% ni menciones "primera compra".
 
 **Cuando el cliente ACEPTA / quiere cerrar el pedido — CHECKLIST OBLIGATORIO antes de avisar a Joaco:**
 1. **Dirección correcta.** Confirmá la dirección de entrega EXACTA con el cliente ("¿La entrega es en <dirección que figura>? ¿Está bien así?"). Si no la tenés o está incompleta, pedila y guardala con `update_partner(partner_id, street='...', city='...')`. NO mandes un pedido a confirmar sin dirección correcta. (Si es fuera de zona, el punto de retiro es la planta de RC — San Martín 2350.)
