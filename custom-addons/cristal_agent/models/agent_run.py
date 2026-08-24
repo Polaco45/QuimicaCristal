@@ -367,6 +367,26 @@ class CristalAgentRun(models.Model):
                 ref = order.date_order if order else False
                 if not ref:
                     continue
+
+                # ── REVISÁ ANTES DE CONSULTAR (principio de operario real) ──
+                # Si la ÚLTIMA cotización de la opp YA está CONFIRMADA (Joaco la cerró
+                # a mano o por el bot), el negocio está hecho: NO se persigue al
+                # cliente. Cortamos la cadencia y avanzamos la fase. Bug real (Silvia):
+                # compró, la confirmaste vos, y al otro día el bot le escribía
+                # "¿vas a querer los productos?" pensando que la venta no se gestionó.
+                if order.state in ('sale', 'done'):
+                    memory = Memory.get_or_create(lead.partner_id)
+                    memory.last_cadence_step_executed = 999
+                    try:
+                        lead.write({'agent_strategy_phase': 'phase_3_first_purchase_done'})
+                    except Exception:
+                        pass
+                    _logger.info(
+                        "✅ cron_cadence_quoted: la cotización de %s ya está CONFIRMADA "
+                        "— corto la cadencia y avanzo la fase (no persigo a quien ya "
+                        "compró).", lead.partner_id.name)
+                    continue
+
                 days_since = (now - ref).days
                 if days_since < 1:
                     continue

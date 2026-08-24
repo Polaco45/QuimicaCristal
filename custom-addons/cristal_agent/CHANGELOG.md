@@ -7,6 +7,29 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.31.9] — 2026-08-24
+
+### Fixed — El bot perseguía a clientes que YA compraron (seguimientos fantasma)
+
+Caso real (Silvia): hizo el pedido, Joaco lo confirmó A MANO y coordinó la entrega,
+y al otro día el bot le escribía *"¿vas a querer los productos?"* pensando que la
+venta nunca se gestionó. Causa: la cadencia miraba la fase (`phase_2_quoted`) y el
+borrador, pero al confirmar la venta manualmente la fase NO avanzaba → seguía
+siguiendo una cotización ya cerrada.
+
+- **`cron_cadence_quoted` (revisá antes de consultar):** antes de mandar un
+  seguimiento, chequea el estado REAL — si la última cotización de la oportunidad ya
+  está **confirmada** (`sale`/`done`), corta la cadencia y avanza la fase. No se
+  persigue a quien ya compró.
+- **Nuevo hook `sale.order`:** al **confirmar** una venta (a mano o por el bot), la
+  fase del lead avanza a "primera compra hecha" y se corta la cadencia. El estado del
+  cliente queda siempre correcto — esto también arregla que clientes con varias
+  compras siguieran figurando "en calificación" (raíz del 20% mal aplicado, caso Ariel).
+
+(Solo código; el bump de versión dispara la actualización del módulo.)
+
+---
+
 ## [18.0.1.31.8] — 2026-08-24
 
 ### Fixed — El bot inventaba el detalle y el total del pedido al cliente
