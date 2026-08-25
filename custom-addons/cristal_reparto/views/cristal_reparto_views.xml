@@ -53,8 +53,7 @@
                                    decoration-info="state == 'assigned'"
                                    decoration-muted="state == 'cancel'"/>
                             <button name="action_reparto_open_partner" type="object"
-                                    string="Ficha" icon="fa-address-card"
-                                    title="Abrir la ficha del cliente"/>
+                                    string="Ficha" icon="fa-address-card"/>
                             <button name="action_reparto_delivered" type="object"
                                     string="Entregado" icon="fa-check"
                                     invisible="state in ('done', 'cancel')"/>
