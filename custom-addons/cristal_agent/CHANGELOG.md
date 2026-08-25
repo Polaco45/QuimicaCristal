@@ -7,6 +7,21 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.31.11] — 2026-08-25
+
+### Changed — Política de entregas: solo por la mañana + pedido grande consultar
+
+A pedido de Joaco, el bot ya debe SABER (no inventar):
+- **Entregamos SOLO por la mañana** (RC y Las Higueras) — eso sí lo puede decir. Sigue
+  sin comprometerse con hora exacta/ventana ni "te llama el chofer"; el día lo confirma
+  el equipo.
+- **Pedido grande o especial → consultar a Joaco** antes de comprometer la entrega.
+- Nueva entrada de KB "Entregas: solo por la mañana" (política editable, prioridad alta).
+
+Migración 1.31.11: recarga el prompt v5.
+
+---
+
 ## [18.0.1.31.10] — 2026-08-25
 
 ### Fixed — El bot se metía a coordinar la entrega e interrumpía al humano
