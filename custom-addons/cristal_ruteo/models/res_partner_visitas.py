@@ -111,10 +111,14 @@ class ResPartner(models.Model):
              "comercial (no solo del contacto exacto).")
 
     def _visit_family_best_lead(self):
-        """La oportunidad abierta más avanzada de toda la familia comercial."""
+        """La oportunidad abierta más avanzada de toda la familia comercial.
+
+        Va con sudo: este compute corre al abrir la ficha de cualquier contacto,
+        y quien no tiene CRM (el repartidor, por ejemplo) no podría ni abrirla.
+        """
         self.ensure_one()
         commercial = self.commercial_partner_id or self
-        leads = self.env['crm.lead'].search([
+        leads = self.env['crm.lead'].sudo().search([
             ('partner_id', 'child_of', commercial.id),
             ('type', '=', 'opportunity'),
         ])
