@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 {
     'name': 'Cristal — Reparto',
-    'version': '18.0.1.1.0',
+    'version': '18.0.1.1.1',
     'summary': 'Organiza la vuelta de reparto del día: al validar la PACK la entrega '
                'entra sola a la lista (ordenada por cercanía desde el local), el '
                'repartidor la reordena, y al entregar cada pedido se le avisa por '
