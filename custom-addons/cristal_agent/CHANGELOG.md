@@ -7,6 +7,26 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.31.10] — 2026-08-25
+
+### Fixed — El bot se metía a coordinar la entrega e interrumpía al humano
+
+Caso real (Silvia): Joaco estaba coordinando la entrega a mano por la mañana
+("entregamos por la mañana, ¿hay quién reciba?"). El bot, 2 h después, saltó
+contradiciendo ("el reparto va entre 14 y 18 hs"), inventó que la llamaría el
+chofer y re-preguntó por los bidones ya resueltos.
+
+- **Takeover más largo:** cuando un humano responde a mano en el chat de un cliente,
+  el bot se calla ahora **12 h** (config `human_takeover_hours`), no 1 h. Antes se
+  vencía y el bot volvía a interrumpir mientras el humano seguía atendiendo.
+- **Prompt v5:** **la entrega la coordina el equipo, NO el bot.** Prohibido inventar
+  o comprometerse con día/hora/ventana de entrega o "te llama el chofer". Si un humano
+  ya está coordinando en el chat, el bot NO se mete ni contradice.
+
+Migración 1.31.10: setea `human_takeover_hours=12` y recarga el prompt v5.
+
+---
+
 ## [18.0.1.31.9] — 2026-08-24
 
 ### Fixed — El bot perseguía a clientes que YA compraron (seguimientos fantasma)

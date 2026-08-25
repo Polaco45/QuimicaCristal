@@ -150,11 +150,15 @@ class MailMessage(models.Model):
                 processed.append(vals)
                 continue
 
-            # Mensaje normal de un humano = takeover automático 1h
+            # Mensaje normal de un humano = takeover automático (config, default 12h).
+            # Antes era 1h: se vencía y el bot volvía a meterse mientras un humano
+            # seguía coordinando con el cliente (caso Silvia: contradijo la entrega
+            # que Joaco estaba arreglando a mano). Ahora el bot queda afuera el día.
             if not memory.human_takeover:
+                hrs = getattr(config, 'human_takeover_hours', 12) or 12
                 memory.activate_takeover(
                     reason=f"Intervención manual de {author.name}",
-                    duration_hours=1,
+                    duration_hours=hrs,
                 )
 
             processed.append(vals)

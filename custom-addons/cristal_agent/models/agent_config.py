@@ -126,6 +126,14 @@ class CristalAgentConfig(models.Model):
              "juntar los mensajes de una ráfaga en una sola respuesta. "
              "10 = buen balance inmediatez/costo. 0 = responde a cada mensaje (caro).",
     )
+    human_takeover_hours = fields.Integer(
+        string="Horas de takeover por intervención manual",
+        default=12,
+        help="Cuando un humano responde manualmente en el chat de un cliente, el "
+             "bot se calla por estas horas (no se mete mientras vos coordinás la "
+             "entrega o lo que sea). Antes era 1h y el bot volvía a interrumpir y "
+             "contradecir; 12 = queda afuera el resto del día.",
+    )
 
     # v1.11.0 — Escalado opcional del modelo SOLO para mensajes a clientes.
     # Apagado por default: todo el tráfico corre en anthropic_model (Haiku),
