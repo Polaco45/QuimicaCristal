@@ -1,10 +1,16 @@
 # -*- coding: utf-8 -*-
 """Enganches de reparto sobre las transferencias (stock.picking)."""
 import logging
+import re
 
-from odoo import fields, models
+from odoo import api, fields, models
 
 _logger = logging.getLogger(__name__)
+
+# Un número sirve para llamar si tiene al menos esta cantidad de dígitos
+# (un fijo local de Río Cuarto son 7). Con menos, lo tratamos como incompleto
+# y buscamos el de la ficha del cliente.
+PHONE_MIN_DIGITS = 7
 
 
 class StockPicking(models.Model):
@@ -16,6 +22,41 @@ class StockPicking(models.Model):
     reparto_notified = fields.Boolean(
         string="Avisado (próximo)", copy=False,
         help="Ya se le mandó el WhatsApp de 'sos el próximo' al cliente.")
+    reparto_phone = fields.Char(
+        string="Teléfono", compute='_compute_reparto_contact',
+        help="Teléfono de la dirección de entrega. Si no tiene uno completo, "
+             "el de la ficha del cliente.")
+    reparto_mobile = fields.Char(
+        string="Celular", compute='_compute_reparto_contact',
+        help="Celular de la dirección de entrega. Si no tiene uno completo, "
+             "el de la ficha del cliente.")
+
+    # ─────────── Contacto para el repartidor ───────────
+    @api.depends('partner_id', 'partner_id.phone', 'partner_id.mobile',
+                 'partner_id.commercial_partner_id.phone',
+                 'partner_id.commercial_partner_id.mobile')
+    def _compute_reparto_contact(self):
+        for picking in self:
+            picking.reparto_phone = picking._reparto_number('phone')
+            picking.reparto_mobile = picking._reparto_number('mobile')
+
+    def _reparto_number(self, field):
+        """El número de la dirección de entrega; si está vacío o incompleto,
+        el de la ficha del cliente."""
+        self.ensure_one()
+        delivery = self.partner_id
+        if not delivery:
+            return False
+        candidates = [delivery]
+        customer = delivery.commercial_partner_id
+        if customer and customer != delivery:
+            candidates.append(customer)
+        for partner in candidates:
+            number = partner[field]
+            if number and len(re.sub(r'\D', '', number)) >= PHONE_MIN_DIGITS:
+                return number
+        # Ninguno está completo: mostramos lo que haya, es mejor que nada.
+        return next((p[field] for p in candidates if p[field]), False)
 
     # ─────────── Disparadores ───────────
     def _action_done(self):
@@ -73,3 +114,16 @@ class StockPicking(models.Model):
         """Marca la entrega como hecha (valida la transferencia)."""
         self.ensure_one()
         return self.button_validate()
+
+    def action_reparto_open_partner(self):
+        """Abre la ficha del cliente, para tener el resto de los datos a mano."""
+        self.ensure_one()
+        partner = self.partner_id.commercial_partner_id or self.partner_id
+        return {
+            'type': 'ir.actions.act_window',
+            'name': partner.display_name,
+            'res_model': 'res.partner',
+            'res_id': partner.id,
+            'view_mode': 'form',
+            'target': 'new',
+        }

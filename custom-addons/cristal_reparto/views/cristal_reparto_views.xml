@@ -45,11 +45,16 @@
                             <field name="reparto_sequence" widget="handle"/>
                             <field name="name"/>
                             <field name="partner_id"/>
+                            <field name="reparto_mobile" widget="phone" optional="show"/>
+                            <field name="reparto_phone" widget="phone" optional="show"/>
                             <field name="reparto_notified" optional="show"/>
                             <field name="state" widget="badge"
                                    decoration-success="state == 'done'"
                                    decoration-info="state == 'assigned'"
                                    decoration-muted="state == 'cancel'"/>
+                            <button name="action_reparto_open_partner" type="object"
+                                    string="Ficha" icon="fa-address-card"
+                                    title="Abrir la ficha del cliente"/>
                             <button name="action_reparto_delivered" type="object"
                                     string="Entregado" icon="fa-check"
                                     invisible="state in ('done', 'cancel')"/>
