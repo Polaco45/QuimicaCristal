@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 {
     'name': 'Cristal — Plan de Visitas',
-    'version': '18.0.4.2.2',
+    'version': '18.0.4.2.3',
     'summary': 'Plan de visitas manual en la ficha del cliente: regla (frecuencia + día), '
                'el calendario se arma solo, y el vendedor organiza "Mi día", pospone y '
                'registra en las notas al cerrar. El plan sigue al cliente toda la vida '

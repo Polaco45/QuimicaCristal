@@ -9,7 +9,8 @@
         <field name="arch" type="xml">
             <!-- Plan de visita como 3ra pestaña (después de "Ventas y compra") -->
             <xpath expr="//notebook/page[2]" position="after">
-                <page string="Plan de visita" name="plan_visita">
+                <page string="Plan de visita" name="plan_visita"
+                      groups="sales_team.group_sale_salesman">
                     <div class="oe_button_box" name="visit_buttons">
                         <button name="action_visit_schedule" type="object"
                                 string="Programar visita" class="btn-secondary"
