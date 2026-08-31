@@ -188,6 +188,7 @@ class CreateSaleOrder(AgentTool):
         fixed_price_pids = set()  # productos con precio de promo cerrado (no 20%)
         problems = []
         sin_stock = []
+        bidon_adjustments = []  # granel redondeado a múltiplo de 20 L (bidones)
         for i, ln in enumerate(lines):
             qty = float(ln.get('qty', 0))
             if qty <= 0:
@@ -199,13 +200,17 @@ class CreateSaleOrder(AgentTool):
                     f"Línea {i+1}: no encontré el producto "
                     f"(id={ln.get('product_id')}, name={ln.get('product_name')})")
                 continue
-            # Mínimo a granel 20 L — SIN excepción
-            if self._es_granel(product) and qty < self.GRANEL_MIN_L:
-                problems.append(
-                    f"'{product.display_name}': el mínimo a granel es "
-                    f"{self.GRANEL_MIN_L} L por producto SIN excepción "
-                    f"(pediste {qty:g}). Subí a {self.GRANEL_MIN_L} L o más.")
-                continue
+            # Granel: se vende en BIDONES de 20 L → la cantidad DEBE ser múltiplo
+            # de 20 (no existe medio bidón: nada de 10, 30, 50). Si no lo es (o es
+            # < 20), la redondeamos HACIA ARRIBA al próximo múltiplo de 20 y avisamos.
+            if self._es_granel(product):
+                mult = self.GRANEL_MIN_L
+                adj = int(-(-qty // mult)) * mult  # ceil(qty/mult) * mult
+                if adj != qty:
+                    bidon_adjustments.append(
+                        f"{product.display_name}: {qty:g} L → {adj} L "
+                        f"(granel en bidones de {mult} L)")
+                    qty = float(adj)
             # Stock (solo distribución/secos)
             disp = self._disponibilidad(product)
             if disp is not None and disp <= 0:
@@ -432,6 +437,12 @@ class CreateSaleOrder(AgentTool):
                 "productos, cambiar cantidades o recalcular el total de memoria. El total "
                 "es SIEMPRE el de esta tool; el detalle fiel es el PDF (adjuntalo siempre)."
             ),
+            "bidon_adjustments": bidon_adjustments or None,
+            "bidon_note": (
+                "Ajusté cantidades de granel al múltiplo de 20 L (se vende en bidones "
+                "de 20 L, no hay fracciones): " + "; ".join(bidon_adjustments)
+                + ". Avisale al cliente el ajuste."
+            ) if bidon_adjustments else None,
             "problems": problems if problems else None,
             "summary": (
                 f"Cotización {order.name} ({'actualizada' if reused else 'nueva'}, draft) "

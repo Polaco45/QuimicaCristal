@@ -7,6 +7,22 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.31.12] — 2026-08-25
+
+### Changed — Granel se cotiza en bidones de 20 L (múltiplos de 20)
+
+El granel va en bidones de 20 L: no existe 10/30/50. Antes la tool solo rechazaba
+< 20 L, pero dejaba pasar 30, 50, etc.
+
+- **`create_sale_order`:** para productos a granel, redondea la cantidad HACIA ARRIBA
+  al próximo múltiplo de 20 (30 → 40) y lo informa en `bidon_note` para que el bot se
+  lo comunique al cliente. Ya no pasan fracciones de bidón.
+- **Prompt v5:** granel siempre en múltiplos de 20 (20/40/60/80/100), nunca 5/10/30/50.
+
+Migración 1.31.12: recarga el prompt v5.
+
+---
+
 ## [18.0.1.31.11] — 2026-08-25
 
 ### Changed — Política de entregas: solo por la mañana + pedido grande consultar
