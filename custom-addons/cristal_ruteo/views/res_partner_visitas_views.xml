@@ -159,7 +159,7 @@
         <field name="view_id" ref="view_partner_calendar_visitas"/>
         <field name="search_view_id" ref="view_partner_search_visitas"/>
         <field name="domain">[('visit_plan_active', '=', True)]</field>
-        <field name="context">{'search_default_v_mias': 1}</field>
+        <field name="context">{}</field>
     </record>
 
     <record id="action_visitas_plan" model="ir.actions.act_window">

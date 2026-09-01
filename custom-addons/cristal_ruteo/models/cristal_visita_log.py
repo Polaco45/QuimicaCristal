@@ -65,15 +65,21 @@ class CristalVisitaLog(models.Model):
         if not target_date:
             target_date = fields.Date.context_today(self) - timedelta(days=1)
         logs = self.search([('visit_date', '=', target_date)])
-        if not logs:
-            return
         group = self.env.ref('cristal_ruteo.group_visitas_control', raise_if_not_found=False)
         recipients = [e for e in (group.users.mapped('email') if group else []) if e]
         if not recipients:
             return
+        # Se manda igual aunque no haya visitas: así se distingue "no hubo visitas"
+        # de "el reporte dejó de funcionar".
+        if logs:
+            body = self._build_report_html(target_date, logs)
+        else:
+            body = ("<h2>Visitas — %s</h2><p>No se registró ninguna visita este día.</p>"
+                    % fields.Date.to_string(target_date))
         self.env['mail.mail'].sudo().create({
-            'subject': "Visitas — resumen del %s" % fields.Date.to_string(target_date),
-            'body_html': self._build_report_html(target_date, logs),
+            'subject': "Visitas — resumen del %s%s" % (
+                fields.Date.to_string(target_date), "" if logs else " (sin visitas)"),
+            'body_html': body,
             'email_to': ",".join(recipients),
             'auto_delete': True,
         }).send()
