@@ -259,35 +259,75 @@ class ResPartner(models.Model):
         return from_date
 
     def _visit_activity_type(self):
+        """Tipo de actividad de visita. NUNCA cae en 'cualquier tipo': si agarrara
+        uno ajeno (Llamar, Email) cerraría y crearía actividades que no son visitas."""
         AT = self.env['mail.activity.type']
         return (AT.search([('name', 'ilike', 'Visitar')], limit=1)
-                or AT.search([('category', '=', 'meeting')], limit=1)
-                or AT.search([], limit=1))
+                or AT.search([('category', '=', 'meeting')], limit=1))
+
+    def _visit_open_lead(self):
+        """La oportunidad ABIERTA más avanzada de la familia: ahí es donde el
+        vendedor ve sus actividades en el CRM."""
+        self.ensure_one()
+        commercial = self.commercial_partner_id or self
+        leads = self.env['crm.lead'].sudo().search([
+            ('partner_id', 'child_of', commercial.id),
+            ('type', '=', 'opportunity'),
+            ('active', '=', True),
+        ])
+        if not leads:
+            return self.env['crm.lead'].sudo()
+        return max(leads, key=lambda lead: lead.stage_id.sequence or 0)
 
     def _visit_close_and_reschedule(self, next_date):
-        """Marca hecha la actividad de visita pendiente y agenda la próxima."""
+        """Cierra la actividad de visita pendiente y agenda la próxima.
+
+        Las actividades del vendedor viven en la OPORTUNIDAD del CRM (ahí trabaja),
+        no en la ficha del cliente. Por eso se cierran las pendientes en AMBOS lados
+        —cliente y oportunidad— y la próxima se agenda en la oportunidad si hay una
+        abierta. Antes solo se tocaba el cliente y la del CRM quedaba colgada.
+        """
         self.ensure_one()
         vtype = self._visit_activity_type()
         if not vtype:
             return
-        pending = self.activity_ids.filtered(lambda a: a.activity_type_id == vtype)
-        for act in pending:
-            try:
-                act.action_feedback(feedback="Visita registrada")
-            except Exception:  # noqa: BLE001
-                _logger.exception("Visitas: no se pudo cerrar actividad de %s", self.display_name)
+        lead = self._visit_open_lead()
+        # 1) Cerrar las pendientes de visita en el cliente Y en la oportunidad
+        targets = [self] + ([lead] if lead else [])
+        for rec in targets:
+            for act in rec.activity_ids.filtered(lambda a: a.activity_type_id == vtype):
+                try:
+                    act.action_feedback(feedback="Visita registrada")
+                except Exception:  # noqa: BLE001
+                    _logger.exception(
+                        "Visitas: no se pudo cerrar actividad de %s", rec.display_name)
+        # 2) Agendar la próxima donde el vendedor la va a ver
         if next_date:
+            target, model = (lead, 'crm.lead') if lead else (self, 'res.partner')
             try:
-                self.env['mail.activity'].create({
-                    'res_model_id': self.env['ir.model']._get_id('res.partner'),
-                    'res_id': self.id,
+                self.env['mail.activity'].sudo().create({
+                    'res_model_id': self.env['ir.model']._get_id(model),
+                    'res_id': target.id,
                     'activity_type_id': vtype.id,
                     'date_deadline': next_date,
-                    'summary': 'Visitar',
+                    'summary': 'Visitar %s' % self.display_name,
                     'user_id': self.user_id.id or self.env.uid,
                 })
             except Exception:  # noqa: BLE001
                 _logger.exception("Visitas: no se pudo agendar próxima de %s", self.display_name)
+
+    def _visit_post_both(self, body):
+        """Deja el mensaje en la ficha del cliente Y en la oportunidad del CRM,
+        para que la visita quede registrada donde el vendedor trabaja."""
+        self.ensure_one()
+        self.message_post(body=body)
+        lead = self._visit_open_lead()
+        if lead:
+            try:
+                lead.message_post(body=body)
+            except Exception:  # noqa: BLE001
+                _logger.exception(
+                    "Visitas: no se pudo postear en la oportunidad de %s", self.display_name)
 
     # ─────────── Acciones ───────────
     def _visit_log(self, action_type, note=None, outcome=None):
@@ -316,7 +356,9 @@ class ResPartner(models.Model):
                     fields.Date.to_string(today), fields.Date.to_string(nxt))
                 if note:
                     body += "<br/>%s" % note
-                partner.message_post(body=body)
+                partner._visit_post_both(body)
+                # También mueve la actividad: si no, queda una vencida colgada en el CRM.
+                partner._visit_close_and_reschedule(nxt)
                 partner._visit_log('visita', note=note, outcome=outcome)
                 continue
             nxt = partner._visit_next_from(today)
@@ -326,7 +368,7 @@ class ResPartner(models.Model):
                 (" · %s" % outcome_label) if outcome_label else "")
             if note:
                 body += "<br/>%s" % note
-            partner.message_post(body=body)
+            partner._visit_post_both(body)
             partner._visit_close_and_reschedule(nxt)
             partner._visit_log('visita', note=note, outcome=outcome)
         return True
@@ -339,7 +381,7 @@ class ResPartner(models.Model):
                 fields.Date.to_string(old) if old else '?', fields.Date.to_string(new_date))
             if reason:
                 body += " (%s)" % reason
-            partner.message_post(body=body)
+            partner._visit_post_both(body)
             partner._visit_close_and_reschedule(new_date)
             partner._visit_log('posposicion', note=reason)
         return True
