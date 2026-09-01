@@ -21,6 +21,23 @@ class PlanMasivoWizard(models.TransientModel):
         help="Los clientes que van a quedar con esta configuración de visita.")
     partner_count = fields.Integer(
         string="Cantidad", compute='_compute_partner_count')
+    user_id = fields.Many2one(
+        'res.users', string="Vendedor", required=True,
+        help="Quién visita a estos clientes. Es obligatorio: sin vendedor, el cliente "
+             "no aparece en 'Mi día' (que filtra por 'Míos').")
+
+    @api.model
+    def default_get(self, fields_list):
+        """Propone el vendedor que ya tienen los seleccionados; si no tienen, el usuario actual."""
+        res = super().default_get(fields_list)
+        if 'user_id' in fields_list and not res.get('user_id'):
+            ids = []
+            for cmd in (self.env.context.get('default_partner_ids') or []):
+                if isinstance(cmd, (list, tuple)) and len(cmd) == 3 and cmd[0] == 6:
+                    ids = cmd[2]
+            users = [p.user_id.id for p in self.env['res.partner'].browse(ids) if p.user_id]
+            res['user_id'] = max(set(users), key=users.count) if users else self.env.uid
+        return res
     visit_frequency = fields.Selection(
         VISIT_FREQ, string="Frecuencia", required=True, default='quincenal')
     visit_weekday = fields.Selection(
@@ -45,6 +62,7 @@ class PlanMasivoWizard(models.TransientModel):
             vals = {
                 'visit_plan_active': True,
                 'visit_frequency': self.visit_frequency,
+                'user_id': self.user_id.id,
             }
             if self.visit_weekday:
                 vals['visit_weekday'] = self.visit_weekday

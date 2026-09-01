@@ -222,6 +222,31 @@ class ResPartner(models.Model):
             return ['!'] + domain
         return domain
 
+    # ─────────── El plan SIEMPRE tiene próxima visita ───────────
+    def _visit_ensure_next(self):
+        """Si un cliente quedó 'en plan' sin próxima visita, se la agenda.
+        Sin esto queda activo pero INVISIBLE en Mi día y en el Calendario
+        (pasó en producción: tildar el check en la ficha no agendaba nada)."""
+        if self.env.context.get('visit_skip_ensure'):
+            return
+        today = fields.Date.context_today(self)
+        for partner in self:
+            if partner.visit_plan_active and not partner.visit_next:
+                partner.with_context(visit_skip_ensure=True).visit_next = \
+                    partner._visit_first_date(today)
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        partners = super().create(vals_list)
+        partners._visit_ensure_next()
+        return partners
+
+    def write(self, vals):
+        res = super().write(vals)
+        if {'visit_plan_active', 'visit_frequency', 'visit_weekday'} & set(vals):
+            self._visit_ensure_next()
+        return res
+
     # ─────────── Helpers de fechas ───────────
     def _visit_next_from(self, base_date):
         self.ensure_one()
