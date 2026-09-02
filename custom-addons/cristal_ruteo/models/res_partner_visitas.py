@@ -17,10 +17,13 @@ from .res_partner import RUTEO_VISIT_TYPES
 _logger = logging.getLogger(__name__)
 
 VISIT_FREQ = [
-    ('semanal', 'Semanal'),
-    ('quincenal', 'Quincenal (cada 15 días)'),
-    ('mensual', 'Mensual'),
+    ('semanal', 'Semanal (todas las semanas)'),
+    ('quincenal', 'Quincenal (cada 2 semanas)'),
+    ('mensual', 'Mensual (cada 4 semanas)'),
 ]
+# Con día fijo se cuenta en SEMANAS, así la visita cae siempre en el mismo día
+# (martes → martes). VISIT_FREQ_DAYS solo se usa cuando NO hay día fijo.
+VISIT_FREQ_WEEKS = {'semanal': 1, 'quincenal': 2, 'mensual': 4}
 VISIT_FREQ_DAYS = {'semanal': 7, 'quincenal': 15, 'mensual': 30}
 VISIT_WEEKDAYS = [
     ('0', 'Lunes'), ('1', 'Martes'), ('2', 'Miércoles'),
@@ -245,12 +248,27 @@ class ResPartner(models.Model):
 
     # ─────────── Helpers de fechas ───────────
     def _visit_next_from(self, base_date):
+        """Próxima visita.
+
+        Con día fijo, la frecuencia se cuenta en SEMANAS y siempre cae en ese día:
+        "todos los martes cada 2 semanas" = martes → martes, 14 días exactos.
+        (Antes sumaba 15 días y después empujaba hacia adelante hasta el martes,
+        con lo cual quincenal terminaba dando 21 días y mensual 35.)
+
+        Si el cliente no tiene día fijo, se sigue contando en días corridos.
+        """
         self.ensure_one()
-        days = VISIT_FREQ_DAYS.get(self.visit_frequency, 15)
-        d = base_date + timedelta(days=days)
-        if self.visit_weekday:
-            d += timedelta(days=(int(self.visit_weekday) - d.weekday()) % 7)
-        return d
+        if not self.visit_weekday:
+            return base_date + timedelta(days=VISIT_FREQ_DAYS.get(self.visit_frequency, 15))
+        weeks = VISIT_FREQ_WEEKS.get(self.visit_frequency, 2)
+        target = int(self.visit_weekday)
+        d = base_date + timedelta(weeks=weeks)
+        # Alinear al día elegido, al más cercano (no siempre hacia adelante): si la
+        # visita se hizo corrida un día, la próxima no se va una semana entera.
+        delta = (target - d.weekday()) % 7
+        if delta > 3:
+            delta -= 7
+        return d + timedelta(days=delta)
 
     def _visit_first_date(self, from_date):
         self.ensure_one()
