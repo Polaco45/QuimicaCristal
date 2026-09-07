@@ -16,6 +16,10 @@ SYNONYMS = {
     'lavaplatos': ['detergente'], 'platos': ['detergente'],
     'aromatizante': ['perfume', 'aroma'], 'aroma': ['aromatizante', 'perfume'],
     'blanqueador': ['optico', 'blanq'], 'optico': ['blanqueador'],
+    # Pisos: "perfumina/desodorante/limpiador perfumado" → Limpiador Desodorante
+    # (NO "Perfume p/ropa", que es para la ropa).
+    'perfumina': ['limpiador desodorante', 'desodorante'],
+    'desodorante': ['limpiador desodorante'],
     'piso': ['pisos'], 'pisos': ['piso'],
     'manos': ['mano'], 'jabon': ['jabón'], 'jabón': ['jabon'],
 }

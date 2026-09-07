@@ -7,6 +7,26 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.31.13] — 2026-09-07
+
+### Fixed — "Perfumina/desodorante de pisos" = Limpiador Desodorante (no Perfume p/ropa)
+
+El bot mapeaba "perfumina de pisos" al producto **Perfume p/ropa** (que es para la
+ropa) y llegó a cotizar $36.000 por error (caso Julieta Castro). Perfumina /
+desodorante / limpiador perfumado **de pisos** es el **Limpiador Desodorante**.
+
+- **`search_products` (SYNONYMS):** `perfumina` y `desodorante` ahora expanden a
+  "limpiador desodorante", para que el fallback interpretativo encuentre el producto
+  correcto en vez de caer en Perfume p/ropa.
+- **Prompt v5 (INTERPRETÁ):** se distingue explícitamente perfumina/perfume **para
+  la ROPA** (= Perfume p/ropa) de perfumina/desodorante/limpiador perfumado **para
+  PISOS** (= Limpiador Desodorante). Para pisos ofrece los dos formatos: **Base 1+80**
+  (concentrado, 1 L rinde 80 L) o el **listo a granel** (Pino/Arpege/Citronella).
+  Nunca cotizar Perfume p/ropa para pisos.
+- **KB #100** (ya cargada en vivo, prioridad 95) refuerza lo mismo.
+
+---
+
 ## [18.0.1.31.12] — 2026-08-25
 
 ### Changed — Granel se cotiza en bidones de 20 L (múltiplos de 20)
