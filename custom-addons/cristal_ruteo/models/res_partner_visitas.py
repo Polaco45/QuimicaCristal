@@ -72,6 +72,36 @@ class ResPartner(models.Model):
     visit_objetivo = fields.Char(
         string="Objetivo", compute='_compute_visit_objetivo',
         help="Qué hacer en esta visita, deducido del CRM y las compras de la familia.")
+    visit_atraso_dias = fields.Integer(
+        string="Atraso (días)", compute='_compute_visit_estado',
+        help="Días que hace que venció la visita. 0 = al día.")
+    visit_estado = fields.Char(
+        string="Estado", compute='_compute_visit_estado',
+        help="Si la visita está atrasada y hace cuánto, para que no se mezcle "
+             "con las del día.")
+
+    def _compute_visit_estado(self):
+        """Distingue las vencidas de las de hoy: en Mi día se mezclaban y las
+        atrasadas se acumulaban sin que nadie las notara."""
+        today = fields.Date.context_today(self)
+        for partner in self:
+            nxt = partner.visit_next
+            if not nxt:
+                partner.visit_atraso_dias = 0
+                partner.visit_estado = ""
+            elif nxt < today:
+                dias = (today - nxt).days
+                partner.visit_atraso_dias = dias
+                partner.visit_estado = "Atrasada %s día%s" % (
+                    dias, "" if dias == 1 else "s")
+            elif nxt == today:
+                partner.visit_atraso_dias = 0
+                partner.visit_estado = "Hoy"
+            else:
+                partner.visit_atraso_dias = 0
+                faltan = (nxt - today).days
+                partner.visit_estado = "En %s día%s" % (
+                    faltan, "" if faltan == 1 else "s")
     visit_ultima_compra = fields.Date(
         string="Última compra (familia)", compute='_compute_visit_compras',
         help="Última compra del cliente O de cualquiera de sus contactos hijos.")

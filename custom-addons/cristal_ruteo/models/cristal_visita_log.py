@@ -28,7 +28,7 @@ class CristalVisitaLog(models.Model):
     partner_city = fields.Char(related='partner_id.city', string="Ciudad", store=True)
     visit_date = fields.Date(
         string="Fecha", required=True, index=True, default=fields.Date.context_today)
-    user_id = fields.Many2one('res.users', string="Vendedor", index=True)
+    user_id = fields.Many2one('res.users', string="Visitó", index=True)
     action_type = fields.Selection([
         ('visita', 'Visita realizada'),
         ('posposicion', 'Pospuesta'),

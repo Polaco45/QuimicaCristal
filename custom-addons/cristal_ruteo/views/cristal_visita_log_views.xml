@@ -48,7 +48,8 @@
                 <filter name="visitas" string="Visitas" domain="[('action_type', '=', 'visita')]"/>
                 <filter name="pospuestas" string="Pospuestas" domain="[('action_type', '=', 'posposicion')]"/>
                 <group expand="0" string="Agrupar por">
-                    <filter name="g_date" string="Fecha" context="{'group_by': 'visit_date'}"/>
+                    <filter name="g_date" string="Día" context="{'group_by': 'visit_date:day'}"/>
+                    <filter name="g_month" string="Mes" context="{'group_by': 'visit_date:month'}"/>
                     <filter name="g_user" string="Vendedor" context="{'group_by': 'user_id'}"/>
                     <filter name="g_type" string="Tipo de visita" context="{'group_by': 'visit_type'}"/>
                     <filter name="g_action" string="Acción" context="{'group_by': 'action_type'}"/>
