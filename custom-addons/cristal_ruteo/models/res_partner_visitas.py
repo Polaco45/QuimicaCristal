@@ -80,6 +80,34 @@ class ResPartner(models.Model):
         help="Si la visita está atrasada y hace cuánto, para que no se mezcle "
              "con las del día.")
 
+    visit_crm_pendiente = fields.Char(
+        string="Seguimiento CRM", compute='_compute_visit_crm_pendiente',
+        help="Si este cliente tiene una actividad del CRM pendiente (cotización, "
+             "muestra, llamado). Aparece acá para no necesitar mirar el relojito: "
+             "en un solo lugar se ve a quién visitar y qué además hay que hacer.")
+
+    def _compute_visit_crm_pendiente(self):
+        """La actividad de CRM más próxima del cliente o de su oportunidad.
+
+        Se excluyen las de tipo visita: esas ya son este mismo tablero.
+        """
+        Activity = self.env['mail.activity'].sudo()
+        for partner in self:
+            vtype = partner._visit_activity_type()
+            lead = partner._visit_open_lead()
+            dom = ['|',
+                   '&', ('res_model', '=', 'res.partner'), ('res_id', '=', partner.id),
+                   '&', ('res_model', '=', 'crm.lead'), ('res_id', '=', lead.id or 0)]
+            if vtype:
+                dom = ['&', ('activity_type_id', '!=', vtype.id)] + dom
+            act = Activity.search(dom, order='date_deadline asc', limit=1)
+            if act:
+                partner.visit_crm_pendiente = "%s · %s" % (
+                    act.activity_type_id.name or "Seguimiento",
+                    fields.Date.to_string(act.date_deadline))
+            else:
+                partner.visit_crm_pendiente = ""
+
     def _compute_visit_estado(self):
         """Distingue las vencidas de las de hoy: en Mi día se mezclaban y las
         atrasadas se acumulaban sin que nadie las notara."""
@@ -351,20 +379,24 @@ class ResPartner(models.Model):
             return self.env['crm.lead'].sudo()
         return max(leads, key=lambda lead: lead.stage_id.sequence or 0)
 
-    def _visit_close_and_reschedule(self, next_date):
-        """Cierra la actividad de visita pendiente y agenda la próxima.
+    def _visit_close_and_reschedule(self, next_date=None):
+        """Cierra las actividades de visita pendientes. NO crea ninguna nueva.
 
-        Las actividades del vendedor viven en la OPORTUNIDAD del CRM (ahí trabaja),
-        no en la ficha del cliente. Por eso se cierran las pendientes en AMBOS lados
-        —cliente y oportunidad— y la próxima se agenda en la oportunidad si hay una
-        abierta. Antes solo se tocaba el cliente y la del CRM quedaba colgada.
+        El plan de visitas ya NO programa actividades: la agenda del recorrido es
+        "Mi día" (tiene fecha, tipo, objetivo, orden y atraso, o sea más que el
+        relojito). El relojito queda para los seguimientos reales del CRM
+        (cotización, muestra, llamado), que son los que sí piden una acción puntual.
+
+        Antes se programaba una actividad por visita y chocaba con las del CRM:
+        Alejandra llegó a tener 100 pendientes, hasta 3 por cliente. Se siguen
+        cerrando las que quedaron abiertas —en el cliente Y en la oportunidad—
+        para que la cola se limpie sola a medida que registra cada visita.
         """
         self.ensure_one()
         vtype = self._visit_activity_type()
         if not vtype:
             return
         lead = self._visit_open_lead()
-        # 1) Cerrar las pendientes de visita en el cliente Y en la oportunidad
         targets = [self] + ([lead] if lead else [])
         for rec in targets:
             for act in rec.activity_ids.filtered(lambda a: a.activity_type_id == vtype):
@@ -373,20 +405,6 @@ class ResPartner(models.Model):
                 except Exception:  # noqa: BLE001
                     _logger.exception(
                         "Visitas: no se pudo cerrar actividad de %s", rec.display_name)
-        # 2) Agendar la próxima donde el vendedor la va a ver
-        if next_date:
-            target, model = (lead, 'crm.lead') if lead else (self, 'res.partner')
-            try:
-                self.env['mail.activity'].sudo().create({
-                    'res_model_id': self.env['ir.model']._get_id(model),
-                    'res_id': target.id,
-                    'activity_type_id': vtype.id,
-                    'date_deadline': next_date,
-                    'summary': 'Visitar %s' % self.display_name,
-                    'user_id': self.visit_user_id.id or self.user_id.id or self.env.uid,
-                })
-            except Exception:  # noqa: BLE001
-                _logger.exception("Visitas: no se pudo agendar próxima de %s", self.display_name)
 
     def _visit_post_both(self, body):
         """Deja el mensaje en la ficha del cliente Y en la oportunidad del CRM,
