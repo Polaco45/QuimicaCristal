@@ -23,6 +23,7 @@ class PlanMasivoWizard(models.TransientModel):
         string="Cantidad", compute='_compute_partner_count')
     visit_user_id = fields.Many2one(
         'res.users', string="Quién lo visita", required=True,
+        domain=[('share', '=', False)],
         help="Quién tiene a estos clientes en su recorrido. NO cambia el Vendedor "
              "del cliente (ese define a nombre de quién salen las cotizaciones): "
              "podés poner a Alejandra acá aunque el vendedor sigas siendo vos.")
