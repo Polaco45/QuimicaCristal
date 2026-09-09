@@ -19,12 +19,14 @@ class CristalVisitaWizard(models.TransientModel):
     ], required=True, default='done')
     outcome = fields.Selection(VISIT_OUTCOMES, string="¿Cómo salió?", default='compro')
     note = fields.Text(
-        string="Detalle (opcional)",
+        string="¿Cómo le fue?",
+        help="Qué pasó en la visita. Es lo que después se lee en el control y en "
+             "el historial del cliente, así que conviene ser concreto.",
         placeholder="Ej: dejé muestra de lavandina, interesado, cotizar pack cocina…")
     new_date = fields.Date(
         string="Nueva fecha",
         default=lambda self: fields.Date.context_today(self) + timedelta(days=1))
-    reason = fields.Char(string="Motivo (opcional)")
+    reason = fields.Char(string="Motivo")
 
     def action_confirm(self):
         self.ensure_one()
