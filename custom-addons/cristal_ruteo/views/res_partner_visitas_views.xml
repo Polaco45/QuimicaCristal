@@ -85,9 +85,13 @@
         <field name="name">res.partner.list.visitas</field>
         <field name="model">res.partner</field>
         <field name="arch" type="xml">
-            <list string="Visitas" default_order="visit_day_order, visit_next" create="0">
+            <list string="Visitas" default_order="visit_day_order, visit_next" create="0"
+                  decoration-danger="visit_atraso_dias &gt; 0">
                 <field name="visit_day_order" widget="handle"/>
+                <field name="visit_atraso_dias" column_invisible="1"/>
                 <field name="visit_next"/>
+                <field name="visit_estado" string="Estado" widget="badge"
+                       decoration-danger="visit_atraso_dias &gt; 0"/>
                 <field name="name" string="Cliente"/>
                 <field name="visit_purpose" string="Tipo" widget="badge"
                        decoration-danger="visit_purpose == 'cierre'"
