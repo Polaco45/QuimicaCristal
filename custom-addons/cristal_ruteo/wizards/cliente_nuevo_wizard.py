@@ -35,6 +35,8 @@ class ClienteNuevoWizard(models.TransientModel):
         vals = {'visit_plan_active': True}
         if not partner.user_id:
             vals['user_id'] = self.env.uid
+        if not partner.visit_user_id:
+            vals['visit_user_id'] = self.env.uid
         partner.write(vals)
         return self._open_partner(partner)
 
@@ -49,6 +51,7 @@ class ClienteNuevoWizard(models.TransientModel):
             'city': self.city or False,
             'is_company': self.is_company,
             'user_id': self.env.uid,
+            'visit_user_id': self.env.uid,
             'visit_plan_active': True,
         })
         self.env['crm.lead'].create({
