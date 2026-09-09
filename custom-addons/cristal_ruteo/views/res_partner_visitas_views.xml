@@ -32,6 +32,7 @@
                             <field name="visit_plan_active"/>
                             <field name="visit_frequency" invisible="not visit_plan_active"/>
                             <field name="visit_weekday" invisible="not visit_plan_active"/>
+                            <field name="visit_user_id" invisible="not visit_plan_active"/>
                         </group>
                         <group string="Agenda">
                             <field name="visit_last" invisible="not visit_plan_active"/>
@@ -71,9 +72,9 @@
         <field name="name">res.partner.calendar.visitas</field>
         <field name="model">res.partner</field>
         <field name="arch" type="xml">
-            <calendar date_start="visit_next" color="user_id" mode="month"
+            <calendar date_start="visit_next" color="visit_user_id" mode="month"
                       string="Calendario de visitas" quick_create="0" event_open_popup="1">
-                <field name="user_id"/>
+                <field name="visit_user_id"/>
                 <field name="visit_frequency"/>
                 <field name="visit_purpose"/>
             </calendar>
@@ -99,7 +100,8 @@
                 <field name="city" optional="hide"/>
                 <field name="visit_frequency" optional="hide"/>
                 <field name="visit_weekday" optional="hide"/>
-                <field name="user_id" optional="hide"/>
+                <field name="visit_user_id" string="Visita" optional="show"/>
+                <field name="user_id" string="Vendedor" optional="hide"/>
                 <button name="action_visit_done_wizard" type="object"
                         string="Visité" icon="fa-check" title="Registrar visita"/>
                 <button name="action_visit_crear_pedido" type="object"
@@ -117,8 +119,9 @@
         <field name="arch" type="xml">
             <search>
                 <field name="name" string="Cliente"/>
+                <field name="visit_user_id"/>
                 <field name="user_id"/>
-                <filter name="v_mias" string="Míos" domain="[('user_id', '=', uid)]"/>
+                <filter name="v_mias" string="Míos" domain="[('visit_user_id', '=', uid)]"/>
                 <separator/>
                 <filter name="v_hoy" string="Le toca (hoy o vencidas)"
                         domain="[('visit_is_today', '=', True)]"/>
@@ -131,7 +134,7 @@
                 <group expand="0" string="Agrupar por">
                     <filter name="g_weekday" string="Día de visita" context="{'group_by': 'visit_weekday'}"/>
                     <filter name="g_freq" string="Frecuencia" context="{'group_by': 'visit_frequency'}"/>
-                    <filter name="g_user" string="Vendedor" context="{'group_by': 'user_id'}"/>
+                    <filter name="g_user" string="Quién visita" context="{'group_by': 'visit_user_id'}"/>
                     <filter name="g_next" string="Próxima visita" context="{'group_by': 'visit_next'}"/>
                 </group>
             </search>

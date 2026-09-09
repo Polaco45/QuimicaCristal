@@ -50,6 +50,12 @@ class ResPartner(models.Model):
     visit_frequency = fields.Selection(
         VISIT_FREQ, string="Frecuencia de visita", default='quincenal')
     visit_weekday = fields.Selection(VISIT_WEEKDAYS, string="Día de visita")
+    visit_user_id = fields.Many2one(
+        'res.users', string="Quién lo visita", index=True, tracking=True,
+        help="Vendedor que hace la visita. Es DISTINTO del Vendedor del cliente: "
+             "el Vendedor define a nombre de quién salen las cotizaciones, y este "
+             "campo solo dice quién lo tiene en su recorrido. Así Alejandra puede "
+             "visitar un cliente tuyo sin que las cotizaciones salgan a su nombre.")
     visit_last = fields.Date(string="Última visita", copy=False, tracking=True)
     visit_next = fields.Date(
         string="Próxima visita", index=True, copy=False, tracking=True,
@@ -206,10 +212,15 @@ class ResPartner(models.Model):
             'context': {'default_partner_id': self.id},
         }
 
-    @api.depends('visit_frequency')
+    @api.depends('visit_frequency', 'visit_weekday')
     def _compute_visit_frequency_days(self):
         for partner in self:
-            partner.visit_frequency_days = VISIT_FREQ_DAYS.get(partner.visit_frequency, 15)
+            if partner.visit_weekday:
+                # Con día fijo el intervalo real es en semanas (14 días, no 15).
+                partner.visit_frequency_days = VISIT_FREQ_WEEKS.get(
+                    partner.visit_frequency, 2) * 7
+            else:
+                partner.visit_frequency_days = VISIT_FREQ_DAYS.get(partner.visit_frequency, 15)
 
     @api.depends('visit_next', 'visit_plan_active')
     def _compute_visit_is_today(self):
@@ -227,16 +238,24 @@ class ResPartner(models.Model):
 
     # ─────────── El plan SIEMPRE tiene próxima visita ───────────
     def _visit_ensure_next(self):
-        """Si un cliente quedó 'en plan' sin próxima visita, se la agenda.
-        Sin esto queda activo pero INVISIBLE en Mi día y en el Calendario
-        (pasó en producción: tildar el check en la ficha no agendaba nada)."""
+        """Si un cliente quedó 'en plan', garantiza que tenga próxima visita y
+        visitador. Sin esto queda activo pero INVISIBLE en Mi día y en el
+        Calendario (pasó en producción: tildar el check no agendaba nada)."""
         if self.env.context.get('visit_skip_ensure'):
             return
         today = fields.Date.context_today(self)
         for partner in self:
-            if partner.visit_plan_active and not partner.visit_next:
-                partner.with_context(visit_skip_ensure=True).visit_next = \
-                    partner._visit_first_date(today)
+            if not partner.visit_plan_active:
+                continue
+            vals = {}
+            if not partner.visit_next:
+                vals['visit_next'] = partner._visit_first_date(today)
+            if not partner.visit_user_id:
+                # Por defecto lo visita su vendedor; se puede cambiar sin tocar
+                # el vendedor (que es quien factura).
+                vals['visit_user_id'] = partner.user_id.id or self.env.uid
+            if vals:
+                partner.with_context(visit_skip_ensure=True).write(vals)
 
     @api.model_create_multi
     def create(self, vals_list):
@@ -333,7 +352,7 @@ class ResPartner(models.Model):
                     'activity_type_id': vtype.id,
                     'date_deadline': next_date,
                     'summary': 'Visitar %s' % self.display_name,
-                    'user_id': self.user_id.id or self.env.uid,
+                    'user_id': self.visit_user_id.id or self.user_id.id or self.env.uid,
                 })
             except Exception:  # noqa: BLE001
                 _logger.exception("Visitas: no se pudo agendar próxima de %s", self.display_name)
@@ -358,7 +377,7 @@ class ResPartner(models.Model):
         self.env['cristal.visita.log'].sudo().create({
             'partner_id': self.id,
             'visit_date': fields.Date.context_today(self),
-            'user_id': self.user_id.id or self.env.uid,
+            'user_id': self.visit_user_id.id or self.user_id.id or self.env.uid,
             'action_type': action_type,
             'visit_type': self.visit_purpose,
             'outcome': outcome or False,
