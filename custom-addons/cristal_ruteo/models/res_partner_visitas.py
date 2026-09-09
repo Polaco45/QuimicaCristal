@@ -52,6 +52,7 @@ class ResPartner(models.Model):
     visit_weekday = fields.Selection(VISIT_WEEKDAYS, string="Día de visita")
     visit_user_id = fields.Many2one(
         'res.users', string="Quién lo visita", index=True, tracking=True,
+        domain=[('share', '=', False)],
         help="Vendedor que hace la visita. Es DISTINTO del Vendedor del cliente: "
              "el Vendedor define a nombre de quién salen las cotizaciones, y este "
              "campo solo dice quién lo tiene en su recorrido. Así Alejandra puede "
