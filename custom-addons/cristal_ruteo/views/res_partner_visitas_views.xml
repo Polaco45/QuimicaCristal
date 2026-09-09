@@ -99,6 +99,7 @@
                        decoration-info="visit_purpose == 'reposicion'"
                        decoration-warning="visit_purpose == 'reactivacion'"/>
                 <field name="visit_objetivo" string="Objetivo"/>
+                <field name="visit_crm_pendiente" string="Seguimiento CRM" optional="show"/>
                 <field name="visit_dias_sin_comprar" string="Días s/comprar" optional="show"/>
                 <field name="city" optional="hide"/>
                 <field name="visit_frequency" optional="hide"/>
