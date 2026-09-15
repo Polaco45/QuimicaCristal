@@ -21,10 +21,9 @@ VISIT_FREQ = [
     ('quincenal', 'Quincenal (cada 2 semanas)'),
     ('mensual', 'Mensual (cada 4 semanas)'),
 ]
-# Con día fijo se cuenta en SEMANAS, así la visita cae siempre en el mismo día
-# (martes → martes). VISIT_FREQ_DAYS solo se usa cuando NO hay día fijo.
+# La frecuencia se cuenta siempre en SEMANAS, así la visita cae el mismo día de
+# la semana (lunes → lunes), tenga o no el cliente un día fijo cargado.
 VISIT_FREQ_WEEKS = {'semanal': 1, 'quincenal': 2, 'mensual': 4}
-VISIT_FREQ_DAYS = {'semanal': 7, 'quincenal': 15, 'mensual': 30}
 VISIT_WEEKDAYS = [
     ('0', 'Lunes'), ('1', 'Martes'), ('2', 'Miércoles'),
     ('3', 'Jueves'), ('4', 'Viernes'),
@@ -274,12 +273,8 @@ class ResPartner(models.Model):
     @api.depends('visit_frequency', 'visit_weekday')
     def _compute_visit_frequency_days(self):
         for partner in self:
-            if partner.visit_weekday:
-                # Con día fijo el intervalo real es en semanas (14 días, no 15).
-                partner.visit_frequency_days = VISIT_FREQ_WEEKS.get(
-                    partner.visit_frequency, 2) * 7
-            else:
-                partner.visit_frequency_days = VISIT_FREQ_DAYS.get(partner.visit_frequency, 15)
+            # Siempre en semanas, con o sin día fijo (quincenal = 14 días, no 15).
+            partner.visit_frequency_days = VISIT_FREQ_WEEKS.get(partner.visit_frequency, 2) * 7
 
     @api.depends('visit_next', 'visit_plan_active')
     def _compute_visit_is_today(self):
@@ -337,12 +332,14 @@ class ResPartner(models.Model):
         (Antes sumaba 15 días y después empujaba hacia adelante hasta el martes,
         con lo cual quincenal terminaba dando 21 días y mensual 35.)
 
-        Si el cliente no tiene día fijo, se sigue contando en días corridos.
+        Sin día fijo también se cuenta en semanas desde el día de la visita, así
+        la próxima cae el mismo día de la semana (lunes → lunes). Antes sumaba 15
+        días corridos y un cliente visitado el lunes volvía el martes.
         """
         self.ensure_one()
-        if not self.visit_weekday:
-            return base_date + timedelta(days=VISIT_FREQ_DAYS.get(self.visit_frequency, 15))
         weeks = VISIT_FREQ_WEEKS.get(self.visit_frequency, 2)
+        if not self.visit_weekday:
+            return base_date + timedelta(weeks=weeks)
         target = int(self.visit_weekday)
         d = base_date + timedelta(weeks=weeks)
         # Alinear al día elegido, al más cercano (no siempre hacia adelante): si la
@@ -451,6 +448,10 @@ class ResPartner(models.Model):
                 partner._visit_close_and_reschedule(nxt)
                 partner._visit_log('visita', note=note, outcome=outcome)
                 continue
+            if not partner.visit_weekday and today.weekday() <= 4:
+                # Cliente sin día fijo (típico de "Registrar visita"): el día en que
+                # se lo visitó pasa a ser su día. Visitado un lunes → cliente de lunes.
+                partner.write({'visit_weekday': str(today.weekday())})
             nxt = partner._visit_next_from(today)
             partner.write({'visit_last': today, 'visit_next': nxt, 'visit_plan_active': True})
             body = "🚗 <b>Visita realizada</b> — %s%s" % (
