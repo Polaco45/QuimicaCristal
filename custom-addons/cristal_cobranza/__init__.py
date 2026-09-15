@@ -103,7 +103,7 @@ def post_init_cobranza(env):
                 # Self-heal: si sigue en borrador, corregimos las variables a tipo
                 # Campo. No tocamos una plantilla ya aprobada por Meta.
                 if existing.status == 'draft':
-                    existing.write({'variable_ids': _var_cmds()})
+                    existing.write({'variable_ids': _var_cmds(), 'report_id': False})
                 tmpl = existing
             else:
                 tmpl = Template.create({
@@ -115,7 +115,9 @@ def post_init_cobranza(env):
                     'lang_code': 'es',
                     'status': 'draft',
                     'header_type': 'document',
-                    'report_id': report.id if report else False,
+                    # Sin report_id: el documento (estado de cuenta + facturas
+                    # fiscales con CAE) se adjunta al enviar vía composer.attachment_id.
+                    'report_id': False,
                     'body': spec['body'],
                     'footer_text': 'Química Cristal',
                     'wa_account_id': wa_account.id if wa_account else False,

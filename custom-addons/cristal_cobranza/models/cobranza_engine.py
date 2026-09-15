@@ -18,6 +18,7 @@ import logging
 import re
 
 from odoo import models, fields, api
+from odoo.tools.pdf import merge_pdf
 
 from .res_partner import COBRANZA_STAGES
 
@@ -25,6 +26,9 @@ _logger = logging.getLogger(__name__)
 
 REPORT_FULL = 'cristal_cobranza.action_report_estado_cuenta_full'
 REPORT_LIGHT = 'cristal_cobranza.action_report_estado_cuenta'
+# Reporte de factura fiscal de Odoo (l10n_ar): trae CAE + QR y respeta el idioma
+# del cliente. Se usa para anexar los comprobantes reales al estado de cuenta.
+REPORT_INVOICE = 'account.account_invoices'
 
 
 class CristalAgentRun(models.Model):
@@ -65,9 +69,16 @@ class CristalAgentRun(models.Model):
                 resumen['error'] += 1
                 _logger.exception("Error en cobranza de %s: %s", partner.display_name, e)
 
+        # Barrido de limpieza: los clientes que venían en cadencia y ya pagaron
+        # TODO dejan de ser candidatos (no tienen vencido), así que el loop de
+        # arriba nunca los toca. Acá los reseteamos y les cancelamos las
+        # actividades de cobranza pendientes.
+        resumen['limpiados'] = self._cobranza_cleanup_al_dia(config)
+
         summary = (
             "Cobranza ejecutada. WhatsApp: {whatsapp} · Actividades: {activity} · "
-            "Salteados: {skipped} · Reseteados: {reset} · Errores: {error}"
+            "Salteados: {skipped} · Reseteados: {reset} · Limpiados: {limpiados} · "
+            "Errores: {error}"
         ).format(**resumen)
         run.sudo().write({'state': 'done', 'final_response': summary})
         _logger.info("✅ %s", summary)
@@ -96,7 +107,8 @@ class CristalAgentRun(models.Model):
         snap = partner.cobranza_snapshot(
             ventana_dias=config.cobranza_ventana_dias or 5)
 
-        # Sin vencido: si venía en cadencia, reseteamos para el próximo ciclo.
+        # Sin vencido: si venía en cadencia, reseteamos y CANCELAMOS las
+        # actividades de cobranza pendientes (llamada/visita).
         if snap['total_vencido'] <= 0:
             if partner.cobranza_last_stage or partner.cobranza_anchor_due:
                 partner.sudo().write({
@@ -104,8 +116,16 @@ class CristalAgentRun(models.Model):
                     'cobranza_last_action_date': False,
                     'cobranza_anchor_due': False,
                 })
+                self._cobranza_cancel_activities(partner)
                 return 'reset'
             return 'skipped'
+
+        # Re-ancla: la factura que guiaba la cadencia ya no es la más vencida
+        # (la pagaron, o se movió su vencimiento) pero queda otra deuda. Cancelamos
+        # las actividades viejas; la cadencia se reinicia sola desde el día 0.
+        if (partner.cobranza_last_stage and partner.cobranza_anchor_due
+                and partner.cobranza_anchor_due != snap['oldest_due']):
+            self._cobranza_cancel_activities(partner)
 
         stage = self._cobranza_decide_stage(partner, snap, config)
         if stage is None:
@@ -204,9 +224,10 @@ class CristalAgentRun(models.Model):
             _logger.warning("⚠️ Template día %s no aprobado (%s).", stage, template.status)
             return False
 
-        # El PDF (copia auditable / chatter) llega ya generado desde el llamador
-        # para no renderizarlo dos veces. El que viaja por WA lo arma el composer
-        # desde template.report_id.
+        # El PDF (estado de cuenta + facturas fiscales reales con CAE) llega ya
+        # generado desde el llamador. Ese MISMO PDF viaja por WhatsApp como
+        # documento del template (vía composer.attachment_id), así WhatsApp y email
+        # mandan exactamente lo mismo y con el comprobante fiscal correcto.
         if attachment is None:
             report_ref = REPORT_FULL if stage == 0 else REPORT_LIGHT
             attachment = self._cobranza_generate_pdf(partner, report_ref, stage)
@@ -214,10 +235,9 @@ class CristalAgentRun(models.Model):
         importe = partner.cobranza_format_amount(snap['total_vencido'])
         # El mensaje va al contacto de facturación; el estado de cuenta se
         # consolida sobre la entidad comercial (partner). Las variables {{1}}/{{2}}
-        # son de tipo Campo → el composer las autocompleta desde el registro; no
-        # las pasamos a mano.
+        # son de tipo Campo → el composer las autocompleta desde el registro.
         recipient = partner._cobranza_billing_contact()
-        result = self._cobranza_composer_send(partner, recipient, template)
+        result = self._cobranza_composer_send(partner, recipient, template, attachment)
 
         if result.get('error'):
             self._cobranza_log(partner, stage, 'whatsapp', snap, run,
@@ -295,16 +315,18 @@ class CristalAgentRun(models.Model):
             return False
         return self.env.ref(xmlid, raise_if_not_found=False)
 
-    def _cobranza_composer_send(self, doc_partner, recipient, template):
+    def _cobranza_composer_send(self, doc_partner, recipient, template, attachment=None):
         """Envía un template aprobado vía whatsapp.composer (mismo mecanismo que
         usa Claudio para mandar fuera de la ventana de 24hs).
 
         Las variables del template son de tipo Campo, así que el composer las
-        autocompleta solo desde el registro de doc_partner.
+        autocompleta solo desde el registro de doc_partner. El documento que viaja
+        (header del template) es `attachment` — el PDF que ya armamos con las
+        facturas fiscales reales — vía composer.attachment_id.
 
-        doc_partner: entidad comercial (sobre la que se renderiza el estado de
-                     cuenta que viaja como documento del template).
+        doc_partner: entidad comercial (sobre la que se consolida el estado de cuenta).
         recipient:   contacto al que se le manda (su celular).
+        attachment:  ir.attachment con el PDF a adjuntar (opcional).
         """
         env = self.env
         mobile = self._cobranza_normalize_mobile(
@@ -320,17 +342,22 @@ class CristalAgentRun(models.Model):
 
         try:
             Composer = env['whatsapp.composer'].sudo()
+            composer_vals = {
+                'res_model': 'res.partner',
+                'res_ids': str(doc_partner.id),
+                'wa_template_id': template.id,
+                'phone': mobile,
+            }
+            # El header del template es 'document': le pasamos el PDF ya armado
+            # (con las facturas fiscales) en vez de que el composer lo regenere.
+            if attachment:
+                composer_vals['attachment_id'] = attachment.id
             composer = Composer.with_context(
                 active_model='res.partner',
                 active_ids=[doc_partner.id],
                 default_res_model='res.partner',
                 default_res_ids=str(doc_partner.id),
-            ).create({
-                'res_model': 'res.partner',
-                'res_ids': str(doc_partner.id),
-                'wa_template_id': template.id,
-                'phone': mobile,
-            })
+            ).create(composer_vals)
             send_method = None
             for name in ('action_send_whatsapp_template', '_send_whatsapp_template'):
                 if hasattr(composer, name):
@@ -390,11 +417,84 @@ class CristalAgentRun(models.Model):
                            state='sent', activity=activity, note=summary)
         return activity
 
+    # ────────────────────── Limpieza de actividades ──────────────────────
+    def _cobranza_cancel_activities(self, partner):
+        """Cancela (borra) las actividades de cobranza pendientes del cliente
+        (las de llamada del día 15 y visita del día 20). Se llama cuando el
+        cliente queda al día o se re-ancla la deuda."""
+        acts = self.env['mail.activity'].sudo().search([
+            ('res_model', '=', 'res.partner'),
+            ('res_id', '=', partner.id),
+            ('summary', 'ilike', 'cobranza'),
+        ])
+        n = len(acts)
+        if acts:
+            try:
+                acts.unlink()
+                partner.message_post(
+                    body="🧹 Cobranza: cancelé %s actividad(es) pendiente(s) "
+                         "porque el cliente quedó al día o se movió la deuda." % n)
+            except Exception:  # noqa: BLE001
+                _logger.exception("No se pudieron cancelar actividades de cobranza de %s",
+                                  partner.display_name)
+                return 0
+        return n
+
+    def _cobranza_cleanup_al_dia(self, config):
+        """Barre los clientes que venían en cadencia (cobranza_last_stage seteado)
+        y ya no tienen vencido: resetea su estado y cancela sus actividades. Es
+        necesario porque un cliente que pagó TODO deja de tener facturas vencidas
+        y por lo tanto ya no aparece como candidato del cron."""
+        en_cadencia = self.env['res.partner'].sudo().search([
+            ('cobranza_last_stage', '!=', False),
+        ])
+        limpiados = 0
+        for partner in en_cadencia:
+            try:
+                snap = partner.cobranza_snapshot(
+                    ventana_dias=config.cobranza_ventana_dias or 5)
+            except Exception:  # noqa: BLE001
+                continue
+            if snap['total_vencido'] <= 0:
+                partner.sudo().write({
+                    'cobranza_last_stage': False,
+                    'cobranza_last_action_date': False,
+                    'cobranza_anchor_due': False,
+                })
+                self._cobranza_cancel_activities(partner)
+                limpiados += 1
+        return limpiados
+
     # ────────────────────── Helpers ──────────────────────
     def _cobranza_generate_pdf(self, partner, report_ref, stage):
+        """Arma el PDF que viaja por WhatsApp/email.
+
+        - Siempre: la página de estado de cuenta.
+        - Día 0 (REPORT_FULL): además anexa las FACTURAS FISCALES REALES vencidas,
+          renderizadas con el reporte de factura de Odoo (account.account_invoices),
+          que trae CAE + QR y respeta el idioma del cliente. Antes se embebían con
+          un t-call genérico que salía SIN CAE y en inglés.
+
+        Todo en el idioma del cliente (es_AR por defecto) y unido en un solo PDF.
+        """
+        lang = partner.lang or 'es_AR'
         try:
-            report = self.env.ref(report_ref)
-            pdf_content, _ctype = report.sudo()._render_qweb_pdf(report_ref, [partner.id])
+            # 1) Estado de cuenta (siempre el liviano; los comprobantes se anexan aparte)
+            statement = self.env.ref(REPORT_LIGHT).sudo().with_context(lang=lang)
+            pdf_content, _ctype = statement._render_qweb_pdf(REPORT_LIGHT, [partner.id])
+            pdfs = [pdf_content]
+
+            # 2) Día 0: anexar las facturas vencidas reales (fiscales, con CAE)
+            if report_ref == REPORT_FULL:
+                snap = partner.cobranza_snapshot()
+                invoices = snap['vencidas'].filtered(
+                    lambda m: m.move_type in ('out_invoice', 'out_refund'))
+                if invoices:
+                    inv_report = self.env.ref(REPORT_INVOICE).sudo().with_context(lang=lang)
+                    inv_pdf, _c = inv_report._render_qweb_pdf(REPORT_INVOICE, invoices.ids)
+                    pdfs.append(inv_pdf)
+
+            pdf_content = merge_pdf(pdfs) if len(pdfs) > 1 else pdfs[0]
         except Exception as e:  # noqa: BLE001
             _logger.exception("No se pudo generar el PDF de estado de cuenta: %s", e)
             return self.env['ir.attachment']
