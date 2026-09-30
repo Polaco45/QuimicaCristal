@@ -33,6 +33,10 @@ class SaleOrder(models.Model):
         'cristal.agent.route.departure', string="Salida de ruta (camión)",
         index=True, copy=False, ondelete='set null',
         help="Salida de la ruta del camión a la que se asignó esta orden.")
+    # Bidones (v1.33): el cliente ya respondió si trae los vacíos para el recambio.
+    cristal_bidones_answered = fields.Boolean(
+        string="Bidones consultados", copy=False,
+        help="El cliente ya dijo cuántos bidones vacíos trae para el recambio.")
 
     def write(self, vals):
         res = super().write(vals)

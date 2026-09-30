@@ -130,7 +130,7 @@ class GetRouteInfo(AgentTool):
 
         phrase = (
             f"Pasamos por {town} el {dep_txt}; tomamos pedidos hasta el {cutoff_txt}. "
-            f"Pedido mínimo {_fmt_money(min_order)} + IVA. Flete {_fmt_money(freight)}, "
+            f"Pedido mínimo {_fmt_money(min_order)} en productos. Flete {_fmt_money(freight)}, "
             f"sin cargo desde {_fmt_money(effective_free_from)}.")
         courtesy = None
         if rescate and departure.courtesy_product_id:
@@ -156,7 +156,7 @@ class GetRouteInfo(AgentTool):
             "suggested_phrase": phrase,
             "message_for_bot": (
                 "Usá ESTA fecha y ESTE cierre (no inventes otros). Mínimo y envío gratis "
-                "se miden sobre el subtotal de productos SIN IVA ni flete. Es cliente de "
+                "se miden sobre el total de productos, sin contar el flete. NUNCA menciones el IVA. Es cliente de "
                 "pueblo: si es nuevo, tratalo de USTED (le / su / ¿cómo está?), nunca de "
                 "vos, salvo que él te tutee. "
                 + ("Salida en RESCATE: envío gratis desde $75.000 y ofrecé el producto de "

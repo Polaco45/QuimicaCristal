@@ -206,14 +206,16 @@ class CristalAgentConfig(models.Model):
         default="America/Argentina/Cordoba",
     )
     work_hours_start = fields.Float(
-        string="Hora inicio jornada",
-        default=8.5,
-        help="8.5 = 8:30 AM",
+        string="Claudio puede iniciar mensajes desde",
+        default=7.5,
+        help="Hora Argentina (7.5 = 7:30). Seguimientos y recordatorios automáticos solo "
+             "dentro de esta ventana, todos los días. A quien escribe primero se le "
+             "contesta siempre.",
     )
     work_hours_end = fields.Float(
-        string="Hora fin jornada",
-        default=21.0,
-        help="21.0 = 9:00 PM",
+        string="Claudio puede iniciar mensajes hasta",
+        default=21.5,
+        help="Hora Argentina (21.5 = 21:30).",
     )
 
     # ─────────── Identidades técnicas (referencias) ───────────
@@ -437,6 +439,16 @@ class CristalAgentConfig(models.Model):
     route_preventa_cutoff_hour = fields.Float(
         string="Cierre preventa — hora", default=18.0,
         help="Hora (formato float, 18.0 = 18:00) del cierre de preventa, hora Córdoba.")
+    # ─────────── Bidones de 20 L (v1.33) ───────────
+    bidon_product_id = fields.Many2one(
+        'product.product', string="Producto bidón nuevo (20 L)",
+        help="Producto que se cobra cuando el cliente no trae bidones vacíos para el "
+             "recambio ([DA0355] Bidón Plástico 20 lts).")
+    bidon_price = fields.Float(
+        string="Precio del bidón nuevo", default=3500.0,
+        help="Precio de cada bidón de 20 L nuevo. Si el cliente trae sus bidones "
+             "vacíos para el recambio, no se cobra.")
+
     rc_no_delivery_weekday = fields.Integer(
         string="Río Cuarto sin reparto — día", default=3,
         help="Día en que NO hay reparto en Río Cuarto (por la ruta del camión). Jueves=3.")

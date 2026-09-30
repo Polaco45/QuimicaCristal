@@ -235,6 +235,19 @@ class CristalAgentRun(models.Model):
     # Odoo no permite imports ni asignaciones de atributos en código de cron.
 
     @api.model
+    def _outside_contact_hours(self, cron_name):
+        """v1.33 — True (y lo loguea) si está FUERA del horario en que Claudio puede
+        iniciar mensajes (config.work_hours_start..end, hora Argentina, todos los
+        días). Los crons frecuentes simplemente esperan a la próxima corrida.
+        Bug real: seguimientos enviados a las 00:57, 05:24 y 23:25."""
+        from ..services.helpers import within_contact_hours
+        if within_contact_hours(self.env):
+            return False
+        _logger.info("%s: SKIP (fuera del horario de contacto; se retoma en horario)",
+                     cron_name)
+        return True
+
+    @api.model
     def cron_cadence_phase2(self):
         """
         Cadencia Fase 2 — post-muestra.
@@ -245,6 +258,8 @@ class CristalAgentRun(models.Model):
         from ..services.feature_flags import is_cron_enabled
         if not is_cron_enabled(self.env, 'enable_phase2_cadences'):
             _logger.info("cron_cadence_phase2: SKIP (flag enable_phase2_cadences=False)")
+            return
+        if self._outside_contact_hours('cron_cadence_phase2'):
             return
         from datetime import datetime
         from ..services.claude_client import dispatch_agent_for_cron
@@ -286,6 +301,8 @@ class CristalAgentRun(models.Model):
         from ..services.feature_flags import is_cron_enabled
         if not is_cron_enabled(self.env, 'enable_phase3_cadences'):
             _logger.info("cron_cadence_phase3: SKIP (flag enable_phase3_cadences=False)")
+            return
+        if self._outside_contact_hours('cron_cadence_phase3'):
             return
         from ..services.claude_client import dispatch_agent_for_cron
 
@@ -334,6 +351,8 @@ class CristalAgentRun(models.Model):
         from ..services.feature_flags import is_cron_enabled
         if not is_cron_enabled(self.env, 'enable_quoted_cadences'):
             _logger.info("cron_cadence_quoted: SKIP (flag enable_quoted_cadences=False)")
+            return
+        if self._outside_contact_hours('cron_cadence_quoted'):
             return
         from ..services.claude_client import dispatch_agent_for_cron
 
@@ -549,6 +568,8 @@ class CristalAgentRun(models.Model):
             _logger.info(
                 "cron_pending_activities: SKIP (enable_proactive_activities=False)"
             )
+            return
+        if self._outside_contact_hours('cron_pending_activities'):
             return
 
         config = self.env['cristal.agent.config'].sudo().get_active()

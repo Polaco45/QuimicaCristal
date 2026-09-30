@@ -54,6 +54,10 @@ class CreateSaleOrder(AgentTool):
         "PROMOS CON PRECIO CERRADO (ej: campaña 'Ariel y Skip a $600 el litro'): pasá "
         "price_unit en la línea (el precio por unidad final de la promo) y NO pases "
         "discount_percent — esos precios NO se acumulan con el 20% de primera compra. "
+        "BIDONES: el granel va en bidones de 20 L; si el cliente no trae vacíos para el "
+        "recambio, pasá bidones_nuevos=<cuántos le faltan> y la tool cobra el bidón "
+        "correcto (NUNCA agregues bidones como línea de producto). Leé SIEMPRE "
+        "'bidones_note' y decíselo al cliente. "
         "Fijate el campo 'upsell' y 'sin_stock' de la respuesta: si vienen, "
         "comunicáselos al cliente (upsell para llegar a $50.000, alternativa si "
         "algo está sin stock)."
@@ -89,6 +93,14 @@ class CreateSaleOrder(AgentTool):
                 "description": "Descuento % que se aplica a las líneas SIN price_unit fijo. "
                                "20 = primera compra. NO lo pases junto con promos de precio "
                                "cerrado (price_unit) — no son acumulables.",
+            },
+            "bidones_nuevos": {
+                "type": "integer",
+                "description": "Cuántos bidones de 20 L NUEVOS hay que cobrarle porque no "
+                               "trae vacíos para el recambio (0 = trae todos). Pasalo "
+                               "cuando el cliente te lo dijo; la tool agrega el cargo sola "
+                               "al precio correcto. Si todavía no lo sabés, no lo pases "
+                               "(y preguntale: ver bidones_note).",
             },
         },
         "required": ["partner_id", "lines"],
@@ -173,6 +185,78 @@ class CreateSaleOrder(AgentTool):
         return env['product.product'].sudo().search(
             [('default_code', '=', 'FLETE-ZONA')], limit=1)
 
+    def _bidon_product(self, env, config):
+        """Producto que se cobra por cada bidón de 20 L nuevo ([DA0355])."""
+        if config and config.bidon_product_id:
+            return config.bidon_product_id
+        return env['product.product'].sudo().search(
+            [('default_code', '=', 'DA0355')], limit=1)
+
+    # ───────────────────────── Bidones (v1.33) ─────────────────────────
+    # Reclamo real: clientes que fueron a retirar sin saber que el granel va en
+    # bidones de 20 L y que, si no traen vacíos, cada bidón nuevo se cobra
+    # ("no me dijiste que el bidón sale $3500"). Y cuando Claudio lo cargaba solo,
+    # usaba un producto equivocado (bidón c/canilla 25 L a $10.864).
+    def _apply_bidones(self, env, config, order, bidones_nuevos):
+        """Deja la línea de bidones nuevos = bidones_nuevos, a precio fijo de config.
+        bidones_nuevos None = no se sabe todavía (no toca nada)."""
+        if bidones_nuevos is None:
+            return
+        product = self._bidon_product(env, config)
+        if not product:
+            return
+        order.cristal_bidones_answered = True
+        qty = max(0, int(bidones_nuevos))
+        lines = order.order_line.filtered(lambda l: l.product_id == product)
+        if not qty:
+            lines.unlink()
+            return
+        price = config.bidon_price if config else 3500.0
+        if lines:
+            lines[1:].unlink()
+            lines[:1].write({'product_uom_qty': qty, 'price_unit': price, 'discount': 0.0})
+        else:
+            order.write({'order_line': [(0, 0, {
+                'product_id': product.id, 'product_uom_qty': qty,
+                'price_unit': price, 'discount': 0.0})]})
+        # Última palabra sobre el precio (la lista o el 20% no lo tocan).
+        order.order_line.filtered(lambda l: l.product_id == product).write(
+            {'price_unit': price, 'discount': 0.0})
+
+    def _bidones_info(self, env, config, order):
+        """Cuántos bidones de 20 L lleva el pedido y el texto OBLIGATORIO para el
+        cliente. Se incluye en client_summary, así sale en todas las cotizaciones."""
+        product = self._bidon_product(env, config)
+        granel_l = sum(l.product_uom_qty for l in order.order_line
+                       if l.product_id != product and self._es_granel(l.product_id))
+        needed = int(round(granel_l / self.GRANEL_MIN_L)) if granel_l else 0
+        if not needed:
+            return None
+        price = config.bidon_price if config else 3500.0
+        nuevos = int(sum(order.order_line.filtered(
+            lambda l: l.product_id == product).mapped('product_uom_qty')))
+        answered = bool(order.cristal_bidones_answered)
+        recambio = max(0, needed - nuevos)
+        bid = f"{needed} bidón de 20 L" if needed == 1 else f"{needed} bidones de 20 L"
+        if not answered:
+            summary = (f"Envases: va en {bid}. Si trae los vacíos para el recambio no se "
+                       f"cobran; si no, cada bidón nuevo sale {_fmt_money(price)}.")
+        elif nuevos:
+            summary = (f"Envases: {bid}: {nuevos} nuevo(s) a {_fmt_money(price)} c/u (ya "
+                       f"incluido en el total)"
+                       + (f" y {recambio} de recambio (trae los vacíos)" if recambio else "")
+                       + ".")
+        else:
+            summary = (f"Envases: {bid}, de recambio: trae los vacíos (sin cargo).")
+        note = "⚠️ BIDONES — OBLIGATORIO decirlo SIEMPRE, antes del total: " + summary
+        if not answered:
+            note += (f" Todavía no sabés si trae los vacíos: PREGUNTALE (\"¿Tiene los "
+                     f"{needed} bidones vacíos para el recambio?\") y volvé a llamar "
+                     f"create_sale_order con bidones_nuevos=<cuántos le faltan> (0 si "
+                     f"trae todos).")
+        return {'needed': needed, 'nuevos': nuevos, 'answered': answered,
+                'price': price, 'summary': summary, 'note': note}
+
     def _route_tag(self, env, circuit):
         """Etiqueta de orden (crm.tag) del circuito, ej: 'Ruta Sur-Oeste'."""
         Tag = env['crm.tag'].sudo()
@@ -192,8 +276,10 @@ class CreateSaleOrder(AgentTool):
         # flete anterior y se recalcula.
         if freight_product:
             order.order_line.filtered(lambda l: l.product_id == freight_product).unlink()
-        product_lines = order.order_line.filtered(
-            lambda l: not freight_product or l.product_id != freight_product)
+        # El flete y los bidones nuevos no son "productos": no suman para el mínimo
+        # ni para el envío gratis.
+        non_products = freight_product | self._bidon_product(env, config)
+        product_lines = order.order_line.filtered(lambda l: l.product_id not in non_products)
         product_subtotal = sum(product_lines.mapped('price_subtotal'))
 
         rescate = bool(departure and departure.state == 'rescate')
@@ -252,8 +338,8 @@ class CreateSaleOrder(AgentTool):
             "problems": problems or None,
             "message_for_bot": (
                 f"NO creé la cotización: los productos suman "
-                f"{_fmt_money(block['product_subtotal'])} + IVA y el pedido mínimo de la "
-                f"ruta ({block['circuit']}) es {_fmt_money(block['min_order'])} + IVA (sin "
+                f"{_fmt_money(block['product_subtotal'])} y el pedido mínimo de la "
+                f"ruta ({block['circuit']}) es {_fmt_money(block['min_order'])} (sin "
                 f"contar flete). Faltan {_fmt_money(block['missing'])}. NO pierdas la venta: "
                 f"sugerí productos complementarios para completar el mínimo y volvé a "
                 f"llamar create_sale_order con la lista completa."),
@@ -272,13 +358,13 @@ class CreateSaleOrder(AgentTool):
             "rescate": block['rescate'],
             "courtesy_product": block.get('courtesy_product'),
         }
-        freight_txt = (f"flete {_fmt_money(block['freight'])} + IVA (faltan "
+        freight_txt = (f"flete {_fmt_money(block['freight'])} (faltan "
                        f"{_fmt_money(block['missing_for_free_shipping'])} de productos para "
                        f"que el envío sea sin cargo)" if block['freight']
                        else "envío sin cargo")
         out["route_note"] = (
             f"Pedido de ruta ({block['circuit']}): productos "
-            f"{_fmt_money(block['product_subtotal'])} + IVA, {freight_txt}. "
+            f"{_fmt_money(block['product_subtotal'])}, {freight_txt}. "
             + ("Salida en RESCATE: ofrecé el producto de cortesía. "
                if block['rescate'] and block.get('courtesy_product') else "")
             + "La fecha de paso y el cierre de preventa salen de get_route_info: no "
@@ -291,7 +377,7 @@ class CreateSaleOrder(AgentTool):
         freight_txt = _fmt_money(block['freight']) if block['freight'] else 'sin cargo'
         msg = (
             f"🚚 Pedido de ruta {order.name} — {partner.name} ({block['town']}, circuito "
-            f"{block['circuit']}). Productos {_fmt_money(block['product_subtotal'])} + IVA, "
+            f"{block['circuit']}). Productos {_fmt_money(block['product_subtotal'])}, "
             f"flete {freight_txt}, entrega jueves {dep_txt}. Queda en borrador para revisar.")
         self._escalate(env, run, partner, msg)
 
@@ -325,7 +411,7 @@ class CreateSaleOrder(AgentTool):
     # ─────────────────────────────── Main ───────────────────────────────
     def _execute(self, env, run=None, partner_id=None, lines=None,
                  pricelist_name='Lista Mayorista', note=None,
-                 discount_percent=None, **kwargs):
+                 discount_percent=None, bidones_nuevos=None, **kwargs):
         if not (partner_id and lines):
             return {"error": "partner_id y lines son obligatorios"}
 
@@ -381,6 +467,10 @@ class CreateSaleOrder(AgentTool):
         # 1) Resolver líneas + validar mínimo a granel + stock
         resolved = []  # (product, qty, fixed_price)
         fixed_price_pids = set()  # productos con precio de promo cerrado (no 20%)
+        # El bidón nuevo tiene precio fijo: ni la lista ni el 20% lo tocan.
+        bidon_product = self._bidon_product(env, config)
+        if bidon_product:
+            fixed_price_pids.add(bidon_product.id)
         problems = []
         sin_stock = []
         bidon_adjustments = []  # granel redondeado a múltiplo de 20 L (bidones)
@@ -527,6 +617,9 @@ class CreateSaleOrder(AgentTool):
                         if fp_lines:
                             fp_lines.write({'price_unit': fixed_price, 'discount': 0.0})
 
+                # Bidones nuevos (si el cliente ya dijo cuántos le faltan).
+                self._apply_bidones(env, config, order, bidones_nuevos)
+
                 if note:
                     order.note = note
                 order.opportunity_id = opp.id
@@ -584,9 +677,9 @@ class CreateSaleOrder(AgentTool):
                 "problems": problems or None,
                 "lines": line_details,
                 "message_for_bot": (
-                    f"El total va ${total:,.0f}, por debajo del PISO de "
-                    f"${self.COMPRA_PISO:,.0f}. NO se puede cotizar ni enviar por "
-                    f"menos. Comunicá que la compra mínima es ${self.COMPRA_MIN:,.0f} "
+                    f"El total va {_fmt_money(total)}, por debajo del PISO de "
+                    f"{_fmt_money(self.COMPRA_PISO)}. NO se puede cotizar ni enviar por "
+                    f"menos. Comunicá que la compra mínima es {_fmt_money(self.COMPRA_MIN)} "
                     f"y hacé UPSELL (sumá productos) para llegar. Cuando supere el "
                     f"piso, volvé a llamar create_sale_order con la lista completa."),
             }
@@ -595,23 +688,25 @@ class CreateSaleOrder(AgentTool):
         if not is_route and total < self.COMPRA_MIN:
             falta = self.COMPRA_MIN - total
             upsell = (
-                f"El total va ${total:,.0f}. La compra mínima es ${self.COMPRA_MIN:,.0f} "
-                f"(faltan ${falta:,.0f}). COMUNICÁ el mínimo y hacé UPSELL para llegar "
-                f"a ${self.COMPRA_MIN:,.0f}. Si el cliente no quiere sumar, se puede "
-                f"enviar igual (supera el piso de ${self.COMPRA_PISO:,.0f}).")
+                f"El total va {_fmt_money(total)}. La compra mínima es {_fmt_money(self.COMPRA_MIN)} "
+                f"(faltan {_fmt_money(falta)}). COMUNICÁ el mínimo y hacé UPSELL para llegar "
+                f"a {_fmt_money(self.COMPRA_MIN)}. Si el cliente no quiere sumar, se puede "
+                f"enviar igual (supera el piso de {_fmt_money(self.COMPRA_PISO)}).")
 
         # Promo muestras gratis (+$60.000)
         SAMPLES_THRESHOLD = 60000.0
         if total >= SAMPLES_THRESHOLD:
             samples_hint = (
-                f"El total (${total:,.0f}) supera ${SAMPLES_THRESHOLD:,.0f} → van 3 "
+                f"El total ({_fmt_money(total)}) supera {_fmt_money(SAMPLES_THRESHOLD)} → van 3 "
                 f"MUESTRAS GRATIS. Llamá add_free_samples(partner_id={partner.id}) "
                 f"para agregarlas y comunicáselas al cliente.")
         else:
             falta_s = SAMPLES_THRESHOLD - total
             samples_hint = (
-                f"Faltan ${falta_s:,.0f} para llegar a ${SAMPLES_THRESHOLD:,.0f} y "
+                f"Faltan {_fmt_money(falta_s)} para llegar a {_fmt_money(SAMPLES_THRESHOLD)} y "
                 f"ganar 3 MUESTRAS GRATIS de productos que no lleva. Usalo de upsell.")
+
+        bid_info = self._bidones_info(env, config, order)
 
         result = {
             "ok": True,
@@ -639,10 +734,14 @@ class CreateSaleOrder(AgentTool):
             # $64.732 cuando el pedido real tenía 4 productos + bidones y $59.400).
             "client_summary": (
                 "\n".join(
-                    f"• {d['qty']:g} {d['product']} — ${d['subtotal']:,.0f}"
+                    f"• {d['qty']:g} {d['product']} — {_fmt_money(d['subtotal'])}"
                     for d in line_details)
-                + f"\nTOTAL: ${order.amount_total:,.0f}"
+                + (f"\n{bid_info['summary']}" if bid_info else "")
+                + f"\nTOTAL: {_fmt_money(order.amount_total)}"
             ),
+            "bidones": {k: bid_info[k] for k in ('needed', 'nuevos', 'answered', 'price')}
+            if bid_info else None,
+            "bidones_note": bid_info['note'] if bid_info else None,
             "client_summary_note": (
                 "⚠️ OBLIGATORIO: detallá al cliente EXACTAMENTE lo que dice `client_summary` "
                 "(esos productos, esas cantidades y ese TOTAL), TEXTUAL. PROHIBIDO agregar "

@@ -113,3 +113,63 @@ def hours_since_last_inbound(env, partner, wa_account_id=None):
         return None
     delta = datetime.now() - last_inbound_date
     return delta.total_seconds() / 3600
+
+
+# ─────────────────────── Fecha y hora de ARGENTINA (v1.33) ───────────────────────
+# El servidor de Odoo.sh corre en UTC (3 h adelante). Todo lo que Claudio le dice
+# al cliente ("hoy", "mañana", "martes") tiene que salir de la hora de Argentina,
+# nunca de datetime.now() pelado. Bugs reales: "mañana martes" dicho un martes, y
+# "tu pedido sale esta mañana" dicho a las 21:26.
+DEFAULT_TZ = 'America/Argentina/Cordoba'
+WEEKDAYS_ES = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo']
+
+
+def tz_ar(env):
+    """Zona horaria del negocio (pytz), de la config."""
+    import pytz
+    config = env['cristal.agent.config'].sudo().get_active()
+    return pytz.timezone(config.timezone if config and config.timezone else DEFAULT_TZ)
+
+
+def now_ar(env):
+    """Fecha y hora actual en la zona horaria del negocio (datetime con tz)."""
+    return datetime.now(tz_ar(env))
+
+
+def fmt_day(d):
+    """date → 'miércoles 30/09'."""
+    return f"{WEEKDAYS_ES[d.weekday()]} {d.strftime('%d/%m')}"
+
+
+def date_context_ar(env, now=None):
+    """Calendario listo para el prompt: hoy, mañana y pasado mañana con su día de
+    la semana ya calculado (Haiku se equivoca si tiene que calcularlo solo)."""
+    now = now or now_ar(env)
+    d = now.date()
+    return {
+        'now': now,
+        'hora': now.strftime('%H:%M'),
+        'hoy': fmt_day(d) + d.strftime('/%Y'),
+        'manana': fmt_day(d + timedelta(days=1)),
+        'pasado': fmt_day(d + timedelta(days=2)),
+    }
+
+
+def within_contact_hours(env, now=None):
+    """True si es horario para que Claudio INICIE mensajes (seguimientos,
+    recordatorios, reintentos). A quien escribe primero se le contesta siempre.
+    Ventana: config.work_hours_start..work_hours_end (hora Argentina), todos los días."""
+    config = env['cristal.agent.config'].sudo().get_active()
+    start = config.work_hours_start if config else 7.5
+    end = config.work_hours_end if config else 21.5
+    now = now or now_ar(env)
+    hour = now.hour + now.minute / 60.0
+    return start <= hour < end
+
+
+def to_ar(env, dt):
+    """Datetime naive en UTC (como lo guarda Odoo) → datetime con hora Argentina."""
+    import pytz
+    if not dt:
+        return dt
+    return pytz.utc.localize(dt).astimezone(tz_ar(env))

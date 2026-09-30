@@ -19,6 +19,7 @@ import re
 from io import BytesIO
 from .base import AgentTool
 from ..tool_registry import ToolRegistry
+from ..helpers import now_ar
 
 _logger = logging.getLogger(__name__)
 
@@ -282,7 +283,7 @@ class GeneratePricelistPdf(AgentTool):
             Paragraph('LISTA MAYORISTA', title_style),
             Paragraph(
                 f"Química Cristal &nbsp;·&nbsp; {pricelist.name} &nbsp;·&nbsp; "
-                f"Actualizada al {datetime.now().strftime('%d/%m/%Y')}",
+                f"Actualizada al {now_ar(env).strftime('%d/%m/%Y')}",
                 subtitle_style
             ),
         ]
