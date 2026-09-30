@@ -36,13 +36,23 @@ class UpdatePartner(AgentTool):
             "mobile": {"type": "string"},
             "email": {"type": "string"},
             "street": {"type": "string"},
-            "city": {"type": "string", "description": "Ciudad/localidad del cliente. Guardala SIEMPRE que la sepas."},
+            "city": {
+                "type": "string",
+                "description": "Ciudad/localidad del cliente, tal como la dice. Guardala "
+                               "SIEMPRE que la sepas: la tool la normaliza sola (grafía "
+                               "canónica), resuelve la zona y el circuito de la ruta del "
+                               "camión, y completa la calificación. NO hace falta que "
+                               "pases agent_zone si pasás city.",
+            },
             "agent_zone": {
                 "type": "string",
-                "enum": ['rio_cuarto', 'las_higueras', 'fuera_zona', 'other', 'unknown'],
-                "description": "Zona de reparto. 'rio_cuarto'/'las_higueras' = entregamos; "
-                               "'fuera_zona' = lead para expansión futura (auto-etiqueta "
-                               "'Fuera de zona'). Clasificá SIEMPRE durante la calificación.",
+                "enum": ['rio_cuarto', 'las_higueras', 'ruta_camion', 'fuera_zona',
+                         'other', 'unknown'],
+                "description": "Zona de reparto. Si pasás city, se calcula sola (gana la "
+                               "ciudad). 'rio_cuarto'/'las_higueras' = reparto normal; "
+                               "'ruta_camion' = localidad de un circuito del camión (jueves); "
+                               "'fuera_zona' = fuera de los circuitos (auto-etiqueta "
+                               "'Fuera de zona').",
             },
             "vat": {"type": "string"},
             "category_to_add": {
@@ -81,10 +91,23 @@ class UpdatePartner(AgentTool):
         if not partner.exists():
             return {"error": f"partner_id={partner_id} no existe"}
 
+        # ── Ruta del camión (v1.32): la ciudad define zona + circuito ──
+        # Normaliza la ciudad a su grafía canónica y calcula agent_zone (gana la
+        # ciudad sobre lo que haya adivinado el bot). Mutamos kwargs para que el
+        # loop de ALLOWED_FIELDS escriba los valores ya normalizados.
+        route_info = None
+        if kwargs.get('city'):
+            route_info = self._resolve_city(env, partner, kwargs)
+
         vals = {}
         for f in ALLOWED_FIELDS:
             if f in kwargs and kwargs[f] is not None:
                 vals[f] = kwargs[f]
+        if route_info and route_info.get('truck_circuit_id'):
+            vals['truck_circuit_id'] = route_info['truck_circuit_id']
+        if route_info and route_info.get('remove_fuera_zona_tag'):
+            vals['category_id'] = vals.get('category_id', []) + [
+                (3, route_info['remove_fuera_zona_tag'])]
 
         # Etiqueta a agregar
         if kwargs.get('category_to_add'):
@@ -140,9 +163,84 @@ class UpdatePartner(AgentTool):
         except Exception as e:
             return {"error": f"No se pudo actualizar el partner: {e}"}
 
-        return {
+        # Calificación "mínimo real": la localidad es el dato obligatorio. Queda en
+        # la memoria (qual_zone) y el cliente queda calificado cuando además
+        # sabemos que es comercio que revende (etiqueta Mayorista).
+        if route_info:
+            try:
+                mem = env['cristal.agent.memory'].sudo().get_or_create(partner)
+                if mem:
+                    mem_vals = {'qual_zone': route_info['canonical']}
+                    if partner.is_mayorista():
+                        mem_vals['qual_qualified'] = True
+                    mem.write(mem_vals)
+            except Exception as e:
+                _logger.warning("No pude completar qual_zone para %s: %s", partner.id, e)
+
+        result = {
             "ok": True,
             "partner_id": partner.id,
             "updated_fields": list(vals.keys()),
             "summary": f"Partner {partner.name} actualizado: {list(vals.keys())}",
         }
+        if route_info:
+            result.update({
+                "city_canonical": route_info['canonical'],
+                "zone": route_info['zone'],
+                "truck_circuit": route_info.get('circuit_name'),
+                "route_note": route_info['note'],
+            })
+        return result
+
+    # ───────────────────────── Ruta del camión ─────────────────────────
+    def _resolve_city(self, env, partner, kwargs):
+        """Clasifica kwargs['city'] y deja en kwargs la ciudad canónica y la
+        zona. Devuelve info para el resto del flujo. NUNCA pisa una etiqueta de
+        circuito que el partner ya tenga (la fuente de verdad son las etiquetas)."""
+        Circuit = env['cristal.agent.circuit'].sudo()
+        info = Circuit.classify_city(kwargs['city'])
+        if info['kind'] == 'empty':
+            return None
+        kwargs['city'] = info['canonical']
+
+        circuits = Circuit.search([])
+        circuit_cats = circuits.mapped('partner_category_id')
+        existing_cat = partner.category_id & circuit_cats
+        fz_tag = env['res.partner.category'].sudo().search(
+            [('name', '=', 'Fuera de zona')], limit=1)
+
+        out = {'canonical': info['canonical'], 'truck_circuit_id': False,
+               'circuit_name': None, 'remove_fuera_zona_tag': False}
+
+        if existing_cat:
+            # Ya tiene etiqueta de circuito: gana la etiqueta, no la pisamos.
+            circuit = circuits.filtered(
+                lambda c: c.partner_category_id == existing_cat[0])[:1]
+            kwargs['agent_zone'] = 'ruta_camion'
+            out.update(zone='ruta_camion', circuit_name=circuit.name,
+                       truck_circuit_id=circuit.id if not partner.truck_circuit_id else False,
+                       note=f"Ya estaba en el circuito {circuit.name} (por etiqueta); "
+                            f"se respeta.")
+        elif info['kind'] == 'circuit':
+            kwargs['agent_zone'] = 'ruta_camion'
+            out.update(zone='ruta_camion', circuit_name=info['circuit'].name,
+                       truck_circuit_id=info['circuit'].id,
+                       note=f"{info['canonical']} está en el circuito "
+                            f"{info['circuit'].name} (ruta del camión, jueves). Usá "
+                            f"get_route_info para la fecha de paso.")
+        elif info['kind'] == 'rio_cuarto':
+            kwargs['agent_zone'] = ('las_higueras' if info['canonical'] == 'Las Higueras'
+                                    else 'rio_cuarto')
+            out.update(zone=kwargs['agent_zone'],
+                       note="Río Cuarto: reparto normal por la mañana, NO los jueves.")
+        else:  # fuera_zona
+            kwargs['agent_zone'] = 'fuera_zona'
+            out.update(zone='fuera_zona',
+                       note=f"{info['canonical']} está FUERA de los 4 circuitos. NO "
+                            f"ofrezcas condiciones de envío: escalá a Joaco.")
+
+        # Si ahora es Río Cuarto o un circuito, la etiqueta "Fuera de zona" es errónea
+        # (y excluye al cliente de los broadcasts): se la sacamos.
+        if out['zone'] != 'fuera_zona' and fz_tag and fz_tag in partner.category_id:
+            out['remove_fuera_zona_tag'] = fz_tag.id
+        return out

@@ -102,36 +102,50 @@ class CristalAgentCircuit(models.Model):
         return self.classify_city(text).get('circuit') or False
 
     # ───────────────────────── Próxima salida ─────────────────────────
+    # Estados de una salida que todavía toma pedidos. 'rescate' es el Plan B de la
+    # MISMA salida (envío gratis desde $75.000 + cortesía): sigue abierta.
+    OPEN_STATES = ('preventa', 'rescate')
+
     def get_next_departure(self, reference_dt=None):
-        """Devuelve el registro de salida (`cristal.agent.route.departure`) en
-        estado 'preventa' cuyo cierre de preventa todavía NO pasó, el más próximo.
-        Si no hay ninguna en preventa vigente, devuelve la próxima salida futura
-        que no esté realizada (fallback)."""
+        """Devuelve la próxima salida (`cristal.agent.route.departure`) que toma
+        pedidos (preventa o rescate) cuyo cierre de preventa todavía NO pasó.
+        reference_dt: datetime naive UTC (default: ahora). Si no hay ninguna,
+        devuelve un recordset vacío (el bot NO inventa fecha: escala)."""
         self.ensure_one()
         now = reference_dt or fields.Datetime.now()
         deps = self.departure_ids.filtered(
-            lambda d: d.state == 'preventa').sorted('date')
+            lambda d: d.state in self.OPEN_STATES).sorted('date')
         for dep in deps:
-            if now <= dep.get_preventa_cutoff():
-                return dep
-        # Fallback: próxima salida no realizada por fecha.
-        future = self.departure_ids.filtered(
-            lambda d: d.state != 'realizada').sorted('date')
-        today = fields.Date.context_today(self)
-        for dep in future:
-            if dep.date >= today:
+            if now < dep.get_preventa_cutoff():
                 return dep
         return self.env['cristal.agent.route.departure']
 
+    # ───────────────────────── Botones ─────────────────────────
+    def _notify(self, title, message):
+        return {'type': 'ir.actions.client', 'tag': 'display_notification',
+                'params': {'title': title, 'message': message, 'type': 'success'}}
+
+    def action_generate_departures(self):
+        created = self.env['cristal.agent.route.departure'].sudo().generate_upcoming(weeks=12)
+        return self._notify("Salidas", f"Se generaron {created} salidas nuevas (12 semanas).")
+
+    def action_backfill_button(self):
+        c = self.action_backfill_truck_circuits()
+        return self._notify(
+            "Circuitos de contactos",
+            f"Por etiqueta: {c['by_tag']} · por ciudad: {c['by_city']} · "
+            f"ya estaban: {c['skipped_has_circuit']} · fuera de circuito: {c['fuera']}")
+
     # ───────────────────────── Backfill de partners ─────────────────────────
     @api.model
-    def action_backfill_truck_circuits(self):
-        """Recalcula truck_circuit_id en todos los partners.
+    def action_backfill_truck_circuits(self, partner_ids=None):
+        """Recalcula truck_circuit_id en los partners (todos, o `partner_ids`).
         Fuente de verdad: las ETIQUETAS de circuito ya cargadas (35/32/50/51).
         Si el partner tiene una etiqueta de circuito, se respeta y NUNCA se pisa.
         La ciudad se usa SOLO si el partner no tiene ninguna etiqueta de circuito.
         Devuelve un dict con el conteo por origen (para el log de migración)."""
         Partner = self.env['res.partner'].sudo()
+        scope = [('id', 'in', list(partner_ids))] if partner_ids else []
         circuits = self.search([])
         by_category = {c.partner_category_id.id: c
                        for c in circuits if c.partner_category_id}
@@ -139,7 +153,7 @@ class CristalAgentCircuit(models.Model):
 
         # 1) Por etiqueta (fuente de verdad, no se pisa)
         for cat_id, circuit in by_category.items():
-            partners = Partner.search([('category_id', 'in', [cat_id])])
+            partners = Partner.search(scope + [('category_id', 'in', [cat_id])])
             for p in partners:
                 if p.truck_circuit_id and p.truck_circuit_id.id == circuit.id:
                     counts['skipped_has_circuit'] += 1
@@ -149,7 +163,7 @@ class CristalAgentCircuit(models.Model):
 
         # 2) Por ciudad, SOLO los que no tienen etiqueta de circuito ni truck_circuit_id
         cat_ids = list(by_category.keys())
-        no_tag = Partner.search([
+        no_tag = Partner.search(scope + [
             ('category_id', 'not in', cat_ids),
             ('truck_circuit_id', '=', False),
             ('city', '!=', False),

@@ -52,6 +52,7 @@ class ResPartner(models.Model):
     agent_zone = fields.Selection([
         ('rio_cuarto', 'Río Cuarto'),
         ('las_higueras', 'Las Higueras'),
+        ('ruta_camion', 'Ruta del camión (jueves)'),
         ('fuera_zona', 'Fuera de zona (expansión futura)'),
         ('other', 'Otra (sin clasificar)'),
         ('unknown', 'No relevada'),

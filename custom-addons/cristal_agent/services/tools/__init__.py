@@ -48,6 +48,9 @@ from . import create_sale_order
 from . import remove_quote_product
 from . import add_free_samples
 
+# Ruta del camión mayorista (v1.32)
+from . import get_route_info
+
 # Conocimiento y ofertas
 from . import search_knowledge
 from . import add_knowledge

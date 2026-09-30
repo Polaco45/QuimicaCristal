@@ -71,6 +71,7 @@ class ToolRegistry:
             'generate_quote_pdf',         # Cotización la hace Joaco
             'check_stock',                # No relevante para calificación
             'search_invoices',
+            'get_route_info',             # Ruta del camión = venta mayorista
             # NOTA: create_lead y schedule_activity quedan disponibles para el bot
             # institucional como respaldo, pero su uso normal es vía la tool atómica
             # complete_institutional_qualification.
