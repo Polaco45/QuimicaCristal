@@ -54,7 +54,8 @@ class CreateSaleOrder(AgentTool):
         "PROMOS CON PRECIO CERRADO (ej: campaña 'Ariel y Skip a $600 el litro'): pasá "
         "price_unit en la línea (el precio por unidad final de la promo) y NO pases "
         "discount_percent — esos precios NO se acumulan con el 20% de primera compra. "
-        "BIDONES: el granel va en bidones de 20 L; si el cliente no trae vacíos para el "
+        "BIDONES: el granel va en bidones de 20 L con recambio (se canjean por vacíos con "
+        "tapa: al recibir el envío o al retirar); si el cliente no tiene vacíos para el "
         "recambio, pasá bidones_nuevos=<cuántos le faltan> y la tool cobra el bidón "
         "correcto (NUNCA agregues bidones como línea de producto). Leé SIEMPRE "
         "'bidones_note' y decíselo al cliente. "
@@ -97,7 +98,7 @@ class CreateSaleOrder(AgentTool):
             "bidones_nuevos": {
                 "type": "integer",
                 "description": "Cuántos bidones de 20 L NUEVOS hay que cobrarle porque no "
-                               "trae vacíos para el recambio (0 = trae todos). Pasalo "
+                               "tiene vacíos con tapa para canjear (0 = tiene todos). Pasalo "
                                "cuando el cliente te lo dijo; la tool agrega el cargo sola "
                                "al precio correcto. Si todavía no lo sabés, no lo pases "
                                "(y preguntale: ver bidones_note).",
@@ -194,7 +195,7 @@ class CreateSaleOrder(AgentTool):
 
     # ───────────────────────── Bidones (v1.33) ─────────────────────────
     # Reclamo real: clientes que fueron a retirar sin saber que el granel va en
-    # bidones de 20 L y que, si no traen vacíos, cada bidón nuevo se cobra
+    # bidones de 20 L con recambio y que, si no hay vacíos para canjear, se cobra
     # ("no me dijiste que el bidón sale $3500"). Y cuando Claudio lo cargaba solo,
     # usaba un producto equivocado (bidón c/canilla 25 L a $10.864).
     def _apply_bidones(self, env, config, order, bidones_nuevos):
@@ -238,22 +239,28 @@ class CreateSaleOrder(AgentTool):
         answered = bool(order.cristal_bidones_answered)
         recambio = max(0, needed - nuevos)
         bid = f"{needed} bidón de 20 L" if needed == 1 else f"{needed} bidones de 20 L"
+        vacios = "1 bidón vacío con tapa" if needed == 1 else f"{needed} bidones vacíos con tapa"
+        # Recambio = CANJE: con envío, los vacíos se entregan al recibir el pedido;
+        # si retira, los lleva a la planta. No es "traerlos" siempre.
         if not answered:
-            summary = (f"Envases: va en {bid}. Si trae los vacíos para el recambio no se "
-                       f"cobran; si no, cada bidón nuevo sale {_fmt_money(price)}.")
+            summary = (f"Envases: va en {bid}, con recambio: se canjean por {vacios} "
+                       f"(si se lo enviamos, los entrega al recibir el pedido; si retira, "
+                       f"los lleva a la planta). Si no tiene vacíos para canjear, cada "
+                       f"bidón nuevo sale {_fmt_money(price)}.")
         elif nuevos:
             summary = (f"Envases: {bid}: {nuevos} nuevo(s) a {_fmt_money(price)} c/u (ya "
                        f"incluido en el total)"
-                       + (f" y {recambio} de recambio (trae los vacíos)" if recambio else "")
+                       + (f" y {recambio} de recambio (se canjea(n) por vacíos con tapa)"
+                          if recambio else "")
                        + ".")
         else:
-            summary = (f"Envases: {bid}, de recambio: trae los vacíos (sin cargo).")
+            summary = (f"Envases: {bid} de recambio: se canjean por {vacios} (sin cargo).")
         note = "⚠️ BIDONES — OBLIGATORIO decirlo SIEMPRE, antes del total: " + summary
         if not answered:
-            note += (f" Todavía no sabés si trae los vacíos: preguntale si tiene los "
-                     f"{needed} bidones vacíos para el recambio (con el mismo trato que "
-                     f"venís usando: vos o usted) y volvé a llamar create_sale_order con "
-                     f"bidones_nuevos=<cuántos le faltan> (0 si trae todos).")
+            note += (f" Todavía no sabés si tiene vacíos para canjear: preguntale si tiene "
+                     f"los {vacios} para el recambio (con el mismo trato que venís usando: "
+                     f"vos o usted) y volvé a llamar create_sale_order con "
+                     f"bidones_nuevos=<cuántos le faltan> (0 si tiene todos).")
         return {'needed': needed, 'nuevos': nuevos, 'answered': answered,
                 'price': price, 'summary': summary, 'note': note}
 

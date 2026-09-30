@@ -341,7 +341,7 @@ class CristalAgentRouteSelftest(models.TransientModel):
                 'sale_ok': True, 'taxes_id': [(6, 0, [])]})
             p = mk_partner('Bidones', 'Rio Cuarto')
             line = {'product_id': granel.id, 'qty': 40, 'price_unit': 2000}
-            # a) No se sabe si trae vacíos → avisa y pide preguntar
+            # a) No se sabe si tiene vacíos para canjear → avisa y pide preguntar
             r = cso.execute(env=env, run=None, partner_id=p.id, lines=[line])
             assert r.get('ok'), r
             b = r.get('bidones') or {}
@@ -357,7 +357,7 @@ class CristalAgentRouteSelftest(models.TransientModel):
             assert len(bl) == 1 and bl.product_uom_qty == 2 and bl.price_unit == 3500 \
                 and bl.discount == 0, f"bidón: {[(l.product_uom_qty, l.price_unit, l.discount) for l in bl]}"
             assert '2 nuevo' in r.get('client_summary', ''), r.get('client_summary')
-            # c) Trae los vacíos → se saca el cargo
+            # c) Tiene todos los vacíos para el canje → se saca el cargo
             r = cso.execute(env=env, run=None, partner_id=p.id, lines=[line], bidones_nuevos=0)
             order = SaleOrder.browse(r['order_id'])
             assert not order.order_line.filtered(lambda l: l.product_id == bidon), "quedó el cargo"

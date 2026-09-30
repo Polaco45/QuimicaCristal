@@ -224,5 +224,7 @@ def ensure_bidones_notice(env, channel_id, body_html):
     price = config.bidon_price if config else 3500.0
     price_txt = '${:,.0f}'.format(price).replace(',', '.')
     return body_html + (
-        f"<p>Importante: el granel va en bidones de 20 L. Si trae sus bidones vacíos "
-        f"para el recambio no se cobran; si no, cada bidón nuevo sale {price_txt}.</p>")
+        f"<p>Importante: el granel va en bidones de 20 L con recambio: por cada bidón "
+        f"lleno se entrega uno vacío de 20 L con tapa (si se lo enviamos, al recibir el "
+        f"pedido; si retira, en la planta). Si no tiene vacíos para canjear, cada bidón "
+        f"nuevo sale {price_txt}.</p>")

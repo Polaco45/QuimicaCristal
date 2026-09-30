@@ -164,10 +164,11 @@ class SearchProducts(AgentTool):
             price = config.bidon_price if config else 3500.0
             price_txt = '${:,.0f}'.format(price).replace(',', '.')
             reminder = (
-                "BIDONES: el granel va en bidones de 20 L. Si el cliente trae sus bidones "
-                "vacíos para el recambio no se cobran; si no, cada bidón nuevo sale "
-                f"{price_txt}. Decíselo SIEMPRE cuando hables de granel, aunque todavía "
-                "no cotices.")
+                "BIDONES: el granel va en bidones de 20 L con recambio: por cada bidón "
+                "lleno el cliente entrega uno vacío de 20 L con tapa (si se lo enviamos, "
+                "al recibir el pedido; si retira, en la planta). Si no tiene vacíos para "
+                f"canjear, cada bidón nuevo sale {price_txt}. Decíselo SIEMPRE cuando "
+                "hables de granel, aunque todavía no cotices.")
             msg = (msg + " " + reminder) if msg else reminder
 
         return {
