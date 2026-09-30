@@ -8,6 +8,7 @@ from . import agent_combo_line
 from . import agent_cadence
 from . import agent_circuit
 from . import agent_route_departure
+from . import agent_route_selftest
 from . import res_partner
 from . import crm_lead
 from . import sale_order

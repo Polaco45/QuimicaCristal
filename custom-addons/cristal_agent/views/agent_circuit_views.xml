@@ -1,0 +1,209 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ═══════════════════ CIRCUITOS ═══════════════════ -->
+    <record id="view_cristal_agent_circuit_form" model="ir.ui.view">
+        <field name="name">cristal.agent.circuit.form</field>
+        <field name="model">cristal.agent.circuit</field>
+        <field name="arch" type="xml">
+            <form string="Circuito de ruta">
+                <header>
+                    <button name="action_generate_departures" type="object"
+                            string="Generar salidas (12 semanas)"/>
+                    <button name="action_backfill_button" type="object"
+                            string="Recalcular circuito de contactos"
+                            confirm="Recalcula el circuito de TODOS los contactos: la etiqueta de circuito manda, la ciudad solo si no tienen etiqueta. ¿Seguimos?"/>
+                </header>
+                <sheet>
+                    <widget name="web_ribbon" title="Archivado" bg_color="bg-danger" invisible="active"/>
+                    <div class="oe_title">
+                        <h1><field name="name" placeholder="Nombre del circuito"/></h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="sequence"/>
+                            <field name="weekday"/>
+                            <field name="first_departure_date"/>
+                        </group>
+                        <group>
+                            <field name="partner_category_id"/>
+                            <field name="active"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Localidades">
+                            <field name="town_ids">
+                                <list editable="bottom">
+                                    <field name="name"/>
+                                    <field name="aliases"/>
+                                    <field name="optional"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Salidas">
+                            <field name="departure_ids" readonly="1">
+                                <list>
+                                    <field name="date"/>
+                                    <field name="state"/>
+                                    <field name="preventa_amount"/>
+                                </list>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_cristal_agent_circuit_list" model="ir.ui.view">
+        <field name="name">cristal.agent.circuit.list</field>
+        <field name="model">cristal.agent.circuit</field>
+        <field name="arch" type="xml">
+            <list string="Circuitos">
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+                <field name="first_departure_date"/>
+                <field name="partner_category_id"/>
+                <field name="active" widget="boolean_toggle"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="action_cristal_agent_circuit" model="ir.actions.act_window">
+        <field name="name">Circuitos de ruta</field>
+        <field name="res_model">cristal.agent.circuit</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <!-- ═══════════════════ SALIDAS ═══════════════════ -->
+    <record id="view_cristal_agent_route_departure_form" model="ir.ui.view">
+        <field name="name">cristal.agent.route.departure.form</field>
+        <field name="model">cristal.agent.route.departure</field>
+        <field name="arch" type="xml">
+            <form string="Salida de ruta">
+                <header>
+                    <button name="action_send_aviso_batch" type="object" class="btn-primary"
+                            string="Aviso de paso (tanda de 25)"
+                            invisible="state not in ('preventa', 'rescate')"
+                            confirm="Se van a mandar hasta 25 mensajes de WhatsApp (plantilla ruta_aviso_paso). ¿Enviamos?"/>
+                    <button name="action_send_rescate_batch" type="object"
+                            string="Rescate (tanda de 25)"
+                            invisible="state != 'rescate'"
+                            confirm="Se van a mandar hasta 25 mensajes de WhatsApp (plantilla ruta_rescate). ¿Enviamos?"/>
+                    <button name="action_send_rescheduled" type="object"
+                            string="Avisar reprogramación"
+                            invisible="not original_date"
+                            confirm="Se avisa por WhatsApp a todos los clientes con pedido en esta salida. ¿Enviamos?"/>
+                    <field name="state" widget="statusbar" options="{'clickable': '1'}"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1><field name="name"/></h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="circuit_id"/>
+                            <field name="date"/>
+                            <field name="original_date" invisible="not original_date"/>
+                            <field name="preventa_amount"/>
+                        </group>
+                        <group string="Rescate (Plan B)">
+                            <field name="rescue_free_shipping_from"/>
+                            <field name="courtesy_product_id"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Pedidos">
+                            <field name="order_ids" readonly="1">
+                                <list>
+                                    <field name="name"/>
+                                    <field name="partner_id"/>
+                                    <field name="amount_untaxed"/>
+                                    <field name="state"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Avisados">
+                            <group>
+                                <field name="aviso_partner_ids" widget="many2many_tags" readonly="1"/>
+                                <field name="rescate_partner_ids" widget="many2many_tags" readonly="1"/>
+                            </group>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_cristal_agent_route_departure_list" model="ir.ui.view">
+        <field name="name">cristal.agent.route.departure.list</field>
+        <field name="model">cristal.agent.route.departure</field>
+        <field name="arch" type="xml">
+            <list string="Salidas"
+                  decoration-info="state == 'preventa'"
+                  decoration-warning="state == 'rescate'"
+                  decoration-success="state == 'confirmada'"
+                  decoration-muted="state in ('postergada', 'realizada')">
+                <field name="date"/>
+                <field name="circuit_id"/>
+                <field name="state"/>
+                <field name="preventa_amount" sum="Total"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_cristal_agent_route_departure_search" model="ir.ui.view">
+        <field name="name">cristal.agent.route.departure.search</field>
+        <field name="model">cristal.agent.route.departure</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="circuit_id"/>
+                <filter name="upcoming" string="Próximas"
+                        domain="[('date', '&gt;=', context_today().strftime('%Y-%m-%d'))]"/>
+                <filter name="open" string="Tomando pedidos"
+                        domain="[('state', 'in', ('preventa', 'rescate'))]"/>
+                <group expand="0" string="Agrupar por">
+                    <filter name="group_circuit" string="Circuito"
+                            context="{'group_by': 'circuit_id'}"/>
+                    <filter name="group_state" string="Estado"
+                            context="{'group_by': 'state'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_cristal_agent_route_departure" model="ir.actions.act_window">
+        <field name="name">Salidas del camión</field>
+        <field name="res_model">cristal.agent.route.departure</field>
+        <field name="view_mode">list,form</field>
+        <field name="context">{'search_default_upcoming': 1}</field>
+    </record>
+
+    <!-- ═══════════════════ AUTOTEST ═══════════════════ -->
+    <record id="view_cristal_agent_route_selftest_form" model="ir.ui.view">
+        <field name="name">cristal.agent.route.selftest.form</field>
+        <field name="model">cristal.agent.route.selftest</field>
+        <field name="arch" type="xml">
+            <form string="Autotest ruta del camión">
+                <group>
+                    <field name="passed"/>
+                    <field name="failed"/>
+                </group>
+                <field name="result_html"/>
+                <footer>
+                    <button string="Cerrar" special="cancel" class="btn-primary"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_cristal_agent_route_selftest" model="ir.actions.server">
+        <field name="name">Autotest ruta del camión</field>
+        <field name="model_id" ref="model_cristal_agent_route_selftest"/>
+        <field name="state">code</field>
+        <field name="code">action = env['cristal.agent.route.selftest'].action_run()</field>
+    </record>
+
+    <!-- Los menús de la ruta están en menu.xml (carga último). -->
+
+</odoo>

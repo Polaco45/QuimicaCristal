@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Crons de la ruta del camión (v1.32). noupdate="1": si Joaco los activa/desactiva
+  desde Tareas programadas, una actualización del módulo no se lo pisa.
+
+  - Generar salidas: ACTIVO (no manda mensajes; mantiene 12 semanas generadas).
+  - Aviso listo (T-7), Confirmación (T-1) y Próxima pasada (T+1): INACTIVOS hasta
+    que Meta apruebe las plantillas ruta_* (hoy en borrador). Activarlos desde
+    Ajustes → Técnico → Tareas programadas.
+  Horario: 10:00 hora Córdoba = 13:00 UTC (Odoo.sh usa UTC).
+-->
+<odoo>
+    <data noupdate="1">
+
+        <record id="cron_route_generate_upcoming" model="ir.cron">
+            <field name="name">Cristal Agent: Ruta — generar salidas (12 semanas)</field>
+            <field name="model_id" ref="model_cristal_agent_route_departure"/>
+            <field name="state">code</field>
+            <field name="code">model._cron_generate_upcoming()</field>
+            <field name="interval_number">1</field>
+            <field name="interval_type">weeks</field>
+            <field name="nextcall">2026-10-05 13:00:00</field>
+            <field name="active" eval="True"/>
+        </record>
+
+        <record id="cron_route_aviso_ready" model="ir.cron">
+            <field name="name">Cristal Agent: Ruta — aviso de paso listo (T-7, canal interno)</field>
+            <field name="model_id" ref="model_cristal_agent_route_departure"/>
+            <field name="state">code</field>
+            <field name="code">model._cron_aviso_ready()</field>
+            <field name="interval_number">1</field>
+            <field name="interval_type">days</field>
+            <field name="nextcall">2026-10-05 13:00:00</field>
+            <field name="active" eval="False"/>
+        </record>
+
+        <record id="cron_route_confirmations" model="ir.cron">
+            <field name="name">Cristal Agent: Ruta — confirmación de entrega (T-1, WhatsApp)</field>
+            <field name="model_id" ref="model_cristal_agent_route_departure"/>
+            <field name="state">code</field>
+            <field name="code">model._cron_confirmations()</field>
+            <field name="interval_number">1</field>
+            <field name="interval_type">days</field>
+            <field name="nextcall">2026-10-05 13:00:00</field>
+            <field name="active" eval="False"/>
+        </record>
+
+        <record id="cron_route_next_pass" model="ir.cron">
+            <field name="name">Cristal Agent: Ruta — próxima pasada (T+1, WhatsApp)</field>
+            <field name="model_id" ref="model_cristal_agent_route_departure"/>
+            <field name="state">code</field>
+            <field name="code">model._cron_next_pass()</field>
+            <field name="interval_number">1</field>
+            <field name="interval_type">days</field>
+            <field name="nextcall">2026-10-05 13:00:00</field>
+            <field name="active" eval="False"/>
+        </record>
+
+    </data>
+</odoo>

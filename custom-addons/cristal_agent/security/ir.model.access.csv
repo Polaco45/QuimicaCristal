@@ -19,3 +19,4 @@ access_cristal_agent_circuit_town_user,cristal.agent.circuit.town user,model_cri
 access_cristal_agent_circuit_town_manager,cristal.agent.circuit.town manager,model_cristal_agent_circuit_town,base.group_system,1,1,1,1
 access_cristal_agent_route_departure_user,cristal.agent.route.departure user,model_cristal_agent_route_departure,base.group_user,1,1,1,0
 access_cristal_agent_route_departure_manager,cristal.agent.route.departure manager,model_cristal_agent_route_departure,base.group_system,1,1,1,1
+access_cristal_agent_route_selftest_manager,cristal.agent.route.selftest manager,model_cristal_agent_route_selftest,base.group_system,1,1,1,1
