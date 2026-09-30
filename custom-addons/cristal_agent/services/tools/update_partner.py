@@ -233,7 +233,8 @@ class UpdatePartner(AgentTool):
             kwargs['agent_zone'] = ('las_higueras' if info['canonical'] == 'Las Higueras'
                                     else 'rio_cuarto')
             out.update(zone=kwargs['agent_zone'],
-                       note="Río Cuarto: reparto normal por la mañana, NO los jueves.")
+                       note="Río Cuarto: reparto por la mañana, NO los jueves (el retiro "
+                            "en planta el jueves sí se puede, en el horario oficial).")
         else:  # fuera_zona
             kwargs['agent_zone'] = 'fuera_zona'
             out.update(zone='fuera_zona',

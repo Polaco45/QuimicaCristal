@@ -82,7 +82,8 @@ class GetRouteInfo(AgentTool):
                 "message_for_bot": (
                     f"{info['canonical']} es reparto normal de Río Cuarto: entregamos SOLO "
                     f"por la mañana y NO hay reparto los {no_day.upper()} (ese día sale el "
-                    f"camión de la ruta). No ofrezcas entrega ese día."),
+                    f"camión de la ruta). No ofrezcas ENTREGA ese día. El RETIRO en planta "
+                    f"ese día SÍ se puede, en el horario oficial de la planta."),
             }
 
         if not circuit:

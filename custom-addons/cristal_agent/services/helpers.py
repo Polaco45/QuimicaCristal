@@ -39,6 +39,12 @@ _RE_OPENER_START = re.compile(
 _RE_OPENER_SENTENCE = re.compile(
     r'([.!?]\s+)¡?\s*' + _TONE_OPENERS + r'\s*!*[,.!]\s*(\w)?',
     re.IGNORECASE)
+# Muletilla después de un guión largo: "Veo que tiene una despensa — perfecto, te
+# atendemos" → "Veo que tiene una despensa — te atendemos". Misma exigencia de
+# puntuación que arriba; la letra siguiente queda como estaba.
+_RE_OPENER_DASH = re.compile(
+    r'(\s[—–]\s*)¡?\s*' + _TONE_OPENERS + r'\s*!*[,.!]\s*',
+    re.IGNORECASE)
 
 
 def _cap_after_start(m):
@@ -58,6 +64,7 @@ def sanitize_tone(body_html):
     txt = _RE_AFTER_GREETING.sub(r'\1.', txt)
     txt = _RE_OPENER_START.sub(_cap_after_start, txt)
     txt = _RE_OPENER_SENTENCE.sub(_cap_after_start, txt)
+    txt = _RE_OPENER_DASH.sub(r'\1', txt)
     return txt
 
 
