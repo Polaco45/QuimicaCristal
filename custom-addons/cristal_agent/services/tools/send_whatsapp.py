@@ -171,8 +171,11 @@ class SendWhatsApp(AgentTool):
         # mete pese al prompt. Costo $0, garantizado. El canal interno con Joaco
         # no se toca (ahí el tono da igual).
         if not is_internal_channel:
-            from ..helpers import sanitize_tone
+            from ..helpers import sanitize_tone, ensure_bidones_notice
             body_html = sanitize_tone(body_html)
+            # v1.33: si habla de granel sin aclarar los bidones, se agrega (Joaco:
+            # "tiene que decirlo SIEMPRE").
+            body_html = ensure_bidones_notice(env, channel_id, body_html)
 
         # Resolver subtype
         try:

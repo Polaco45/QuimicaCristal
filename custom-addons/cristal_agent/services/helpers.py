@@ -180,3 +180,49 @@ def to_ar(env, dt):
     if not dt:
         return dt
     return pytz.utc.localize(dt).astimezone(tz_ar(env))
+
+
+# ─────────────────────── Bidones: aviso garantizado (v1.33) ───────────────────────
+# Joaco: "tiene que aclarar el tema de los bidones SIEMPRE" — hubo clientes que
+# fueron a retirar sin saberlo. El prompt y las tools lo piden, pero el modelo a
+# veces responde sin pasar por una tool. Este filtro determinístico (como el de
+# tono) agrega la aclaración cuando el mensaje habla de granel y no la trae, salvo
+# que Claudio ya la haya explicado en ese chat en las últimas 24 h.
+_RE_GRANEL_QTY = re.compile(
+    r'\b(?:20|40|60|80|100|120|140|160|180|200)\s*(?:l|lts?|litros?)\b', re.IGNORECASE)
+
+
+def _strip_accents(txt):
+    import unicodedata
+    txt = unicodedata.normalize('NFKD', txt or '')
+    return ''.join(c for c in txt if not unicodedata.combining(c))
+
+
+def ensure_bidones_notice(env, channel_id, body_html):
+    """Si el mensaje habla de granel y no menciona los bidones (y no se explicó en
+    las últimas 24 h en ese chat), agrega un párrafo con la regla del recambio."""
+    if not body_html:
+        return body_html
+    plain = _strip_accents(re.sub(r'<[^>]+>', ' ', body_html)).lower()
+    talks_granel = 'granel' in plain or bool(_RE_GRANEL_QTY.search(plain))
+    if not talks_granel or 'bidon' in plain:
+        return body_html
+    config = env['cristal.agent.config'].sudo().get_active()
+    try:
+        bot = config.bot_partner_id if config else False
+        domain = [
+            ('model', '=', 'discuss.channel'), ('res_id', '=', int(channel_id)),
+            ('create_date', '>=', datetime.now() - timedelta(hours=24)),
+            '|', ('body', 'ilike', 'bidón'), ('body', 'ilike', 'bidon'),
+        ]
+        if bot:
+            domain.append(('author_id', '=', bot.id))
+        if env['mail.message'].sudo().search_count(domain):
+            return body_html
+    except Exception:
+        pass
+    price = config.bidon_price if config else 3500.0
+    price_txt = '${:,.0f}'.format(price).replace(',', '.')
+    return body_html + (
+        f"<p>Importante: el granel va en bidones de 20 L. Si trae sus bidones vacíos "
+        f"para el recambio no se cobran; si no, cada bidón nuevo sale {price_txt}.</p>")
