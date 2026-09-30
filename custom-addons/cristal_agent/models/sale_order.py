@@ -14,7 +14,7 @@ Bugs reales que esto corrige:
 - Ariel: 3ra compra y el bot lo trataba como primera (fase nunca avanzaba).
 """
 import logging
-from odoo import models, api
+from odoo import models, fields, api
 
 _logger = logging.getLogger(__name__)
 
@@ -27,6 +27,12 @@ _ADVANCEABLE_PHASES = (
 
 class SaleOrder(models.Model):
     _inherit = 'sale.order'
+
+    # Ruta del camión (v1.32): salida (jueves) a la que va esta orden.
+    route_departure_id = fields.Many2one(
+        'cristal.agent.route.departure', string="Salida de ruta (camión)",
+        index=True, copy=False, ondelete='set null',
+        help="Salida de la ruta del camión a la que se asignó esta orden.")
 
     def write(self, vals):
         res = super().write(vals)

@@ -13,3 +13,9 @@ access_cristal_agent_cadence_user,cristal.agent.cadence user,model_cristal_agent
 access_cristal_agent_cadence_manager,cristal.agent.cadence manager,model_cristal_agent_cadence,base.group_system,1,1,1,1
 access_cristal_agent_combo_line_user,cristal.agent.combo.line user,model_cristal_agent_combo_line,base.group_user,1,1,1,1
 access_cristal_agent_combo_line_manager,cristal.agent.combo.line manager,model_cristal_agent_combo_line,base.group_system,1,1,1,1
+access_cristal_agent_circuit_user,cristal.agent.circuit user,model_cristal_agent_circuit,base.group_user,1,0,0,0
+access_cristal_agent_circuit_manager,cristal.agent.circuit manager,model_cristal_agent_circuit,base.group_system,1,1,1,1
+access_cristal_agent_circuit_town_user,cristal.agent.circuit.town user,model_cristal_agent_circuit_town,base.group_user,1,0,0,0
+access_cristal_agent_circuit_town_manager,cristal.agent.circuit.town manager,model_cristal_agent_circuit_town,base.group_system,1,1,1,1
+access_cristal_agent_route_departure_user,cristal.agent.route.departure user,model_cristal_agent_route_departure,base.group_user,1,1,1,0
+access_cristal_agent_route_departure_manager,cristal.agent.route.departure manager,model_cristal_agent_route_departure,base.group_system,1,1,1,1

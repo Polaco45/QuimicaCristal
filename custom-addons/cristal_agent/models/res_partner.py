@@ -59,6 +59,16 @@ class ResPartner(models.Model):
         help="Zona del cliente para segmentar reparto. 'Fuera de zona' = lead "
              "para cuando expandamos. Se completa durante la calificación.")
 
+    # ─────────── Ruta del camión mayorista (v1.32) ───────────
+    # Circuito de la ruta del camión (jueves). Se resuelve de la etiqueta de
+    # circuito ya cargada (35/32/50/51) o, si no tiene, de la ciudad normalizada.
+    # Se puede fijar a mano. Al setearlo se AGREGA la etiqueta del circuito (nunca
+    # se quitan otras etiquetas).
+    truck_circuit_id = fields.Many2one(
+        'cristal.agent.circuit', string="Circuito de ruta (camión)",
+        index=True, tracking=True,
+        help="Circuito de la ruta del camión mayorista. Vacío = Río Cuarto o fuera de circuito.")
+
     # ─────────── Sistema de niveles (Fase 4 de la estrategia mayorista) ───────────
     agent_level = fields.Selection([
         ('none', 'Sin nivel asignado'),
@@ -168,6 +178,28 @@ class ResPartner(models.Model):
             partner.agent_referrals_count = self.search_count([
                 ('agent_referred_by_id', '=', partner.id)
             ])
+
+    # ─────────── Sync etiqueta de circuito (v1.32) ───────────
+    @api.model_create_multi
+    def create(self, vals_list):
+        partners = super().create(vals_list)
+        partners.filtered('truck_circuit_id')._sync_circuit_tag()
+        return partners
+
+    def write(self, vals):
+        res = super().write(vals)
+        if 'truck_circuit_id' in vals and not self.env.context.get('skip_circuit_tag_sync'):
+            self.filtered('truck_circuit_id')._sync_circuit_tag()
+        return res
+
+    def _sync_circuit_tag(self):
+        """AGREGA la etiqueta del circuito al partner. Nunca quita etiquetas
+        (tampoco otras de circuito): la fuente de verdad son las ya cargadas."""
+        for partner in self:
+            cat = partner.truck_circuit_id.partner_category_id
+            if cat and cat not in partner.category_id:
+                partner.with_context(skip_circuit_tag_sync=True).write(
+                    {'category_id': [(4, cat.id)]})
 
     # ─────────── Helpers ───────────
     def is_mayorista(self):
