@@ -7,6 +7,36 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.33.0] — 2026-09-30
+
+### Fixed — Claridad con el cliente: reglas de oro
+
+Los clientes iban al local con cosas que Claudio les había dicho y eran erróneas.
+
+- **Días y horas equivocados:** el servidor corre en UTC (3 h adelante) y el prompt
+  armaba "hoy" y "hora de recepción" con `datetime.now()`. Casos reales: "mañana
+  martes" dicho un martes; "tu pedido sale esta mañana" a las 21:26. Ahora todo sale
+  en hora Argentina, con HOY / MAÑANA / PASADO MAÑANA ya calculados (día + fecha);
+  el historial de mensajes también se muestra en hora Argentina.
+- **Mensajes a horarios inapropiados:** los seguimientos automáticos salían a las
+  00:57, 05:24 o 23:25. Ahora los crons que inician mensajes solo corren de 7:30 a
+  21:30 (hora Argentina, todos los días). A quien escribe se le contesta siempre.
+- **Bidones:** `create_sale_order` informa siempre cuántos bidones de 20 L lleva el
+  pedido (canje de vacíos o $3.500 el bidón nuevo), lo incluye en `client_summary`
+  y cobra el bidón correcto ([DA0355]) con `bidones_nuevos` (antes Claudio cargaba
+  a veces el bidón c/canilla de $10.864).
+- **Montos:** formato argentino ($105.256, no $105,256).
+- **IVA:** no se menciona (el precio es el que figura).
+- **Horarios:** una sola entrada oficial de dirección y horarios de la planta (L-V
+  8:30-12:30 y 15:30-19:30; sáb 9-13); se archivan las duplicadas (13, 21, 25, 33,
+  62, 68). La #101 ("HOY cerrado" del 28/09) se archivó a mano.
+- **Prompt v7:** sección "REGLAS DE ORO" (bidones, nada confirmado hasta Joaquín,
+  día + fecha, horarios oficiales, retiro en planta, precios de las herramientas,
+  feriados con fecha, fechas de la ruta textuales y cierre con orden fijo).
+- **Autotest:** +3 casos (fecha Argentina, horario de contacto, bidones).
+
+---
+
 ## [18.0.1.32.0] — 2026-09-30
 
 ### Added — Ruta del camión mayorista (Fase 1)

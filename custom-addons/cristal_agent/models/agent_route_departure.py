@@ -92,13 +92,14 @@ class CristalAgentRouteDeparture(models.Model):
                  'order_ids.order_line.product_id')
     def _compute_preventa_amount(self):
         config = self.env['cristal.agent.config'].sudo().get_active()
-        freight_id = config.route_freight_product_id.id if (
-            config and config.route_freight_product_id) else False
+        # Flete y bidones nuevos no son "productos" para el monto de preventa.
+        skip_ids = {p.id for p in (config.route_freight_product_id,
+                                   config.bidon_product_id) if p} if config else set()
         for dep in self:
             total = 0.0
             for order in dep.order_ids.filtered(lambda o: o.state != 'cancel'):
                 for line in order.order_line:
-                    if freight_id and line.product_id.id == freight_id:
+                    if line.product_id.id in skip_ids:
                         continue
                     total += line.price_subtotal
             dep.preventa_amount = total

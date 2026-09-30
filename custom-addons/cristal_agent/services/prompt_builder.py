@@ -18,6 +18,8 @@ import json
 import logging
 from datetime import datetime
 
+from .helpers import date_context_ar
+
 _logger = logging.getLogger(__name__)
 
 
@@ -77,11 +79,16 @@ def build_system_prompt(env, partner=None, base_prompt=None, client_type=None):
     # ─── 2. Contexto temporal (estable durante el día) ───
     # La hora exacta del mensaje va en el user_message (sin cachear). Acá solo
     # fecha + día → el prefijo cacheado solo cambia una vez por día.
-    now = datetime.now()
-    weekdays = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo']
-    stable_parts.append(f"\n\n## CONTEXTO TEMPORAL\n"
-                        f"- Fecha de hoy: {now.strftime('%Y-%m-%d')} ({weekdays[now.weekday()]})\n"
-                        f"- Horario de atención: lunes a viernes 8:30 - 21:00\n"
+    # v1.33: SIEMPRE hora de Argentina (el servidor está en UTC, 3 h adelante).
+    cal = date_context_ar(env)
+    stable_parts.append(f"\n\n## CONTEXTO TEMPORAL (hora Argentina)\n"
+                        f"- HOY es {cal['hoy']}.\n"
+                        f"- MAÑANA es {cal['manana']}. PASADO MAÑANA es {cal['pasado']}.\n"
+                        f"- Usá SIEMPRE estos días tal cual: NUNCA calcules el día de la "
+                        f"semana de memoria. Al nombrar un día, poné día + fecha "
+                        f"(ej: \"{cal['manana']}\"), nunca \"mañana\" solo.\n"
+                        f"- Horarios de la planta y de entrega: SOLO los de la KB "
+                        f"\"Dirección y horarios de la planta (OFICIAL)\". No uses otros.\n"
                         f"- (La hora exacta del mensaje viene en el bloque del mensaje entrante.)")
 
     # ─── 3. Capacidades habilitadas (feature flags) — global ───
@@ -428,8 +435,8 @@ def build_user_message_for_whatsapp(env, wa_message, partner, plain_text):
     parts.append("MENSAJE WHATSAPP ENTRANTE")
     parts.append("")
     # v1.10.5 — la hora exacta va acá (no en el system prompt cacheado).
-    _now = datetime.now()
-    parts.append(f"Hora de recepción: {_now.strftime('%Y-%m-%d %H:%M')}")
+    _cal = date_context_ar(env)
+    parts.append(f"Recibido: HOY {_cal['hoy']} a las {_cal['hora']} (hora Argentina)")
     parts.append(f"Datos técnicos del mensaje:")
     parts.append(f"- partner_id del cliente: {partner.id}")
     parts.append(f"- name: {partner.name}")
@@ -496,7 +503,8 @@ def build_user_message_for_cron(env, partner, cron_type, extra_context=None):
     """
     parts = [f"DISPARO POR CRON: {cron_type.upper()}"]
     parts.append("")
-    parts.append(f"Hora actual: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    _cal = date_context_ar(env)
+    parts.append(f"Ahora: HOY {_cal['hoy']} a las {_cal['hora']} (hora Argentina)")
     parts.append(f"Cliente target: {partner.name} (id={partner.id})")
     if partner.mobile:
         parts.append(f"Mobile: {partner.mobile}")

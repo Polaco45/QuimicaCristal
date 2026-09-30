@@ -9,10 +9,20 @@ import logging
 import re
 from .base import AgentTool
 from ..tool_registry import ToolRegistry
+from ..helpers import to_ar, fmt_day
 
 _logger = logging.getLogger(__name__)
 
 HTML_TAGS = re.compile(r"<[^>]+>")
+
+
+def _fmt_ar(env, dt):
+    """Fecha del mensaje en hora Argentina con el día de la semana
+    ('martes 29/09 21:26'). En UTC, un mensaje de las 22 h parecía del día siguiente."""
+    if not dt:
+        return ''
+    local = to_ar(env, dt)
+    return f"{fmt_day(local.date())} {local.strftime('%H:%M')}"
 
 
 def _clean(text):
@@ -83,7 +93,7 @@ class ReadMessageHistory(AgentTool):
 
             result.append({
                 'id': m.id,
-                'date': str(m.date) if m.date else '',
+                'date': _fmt_ar(env, m.date),
                 'author_name': author.name if author else '(sin autor)',
                 'author_id': author.id if author else 0,
                 'direction': direction,

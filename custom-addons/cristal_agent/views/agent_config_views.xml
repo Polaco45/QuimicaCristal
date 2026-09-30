@@ -190,6 +190,11 @@
                                 <field name="rc_no_delivery_weekday" invisible="not enable_truck_route"/>
                             </group>
 
+                            <group string="🪣 Bidones de 20 L (recambio)">
+                                <field name="bidon_product_id" options="{'no_create': True}"/>
+                                <field name="bidon_price"/>
+                            </group>
+
                             <group string="📣 Broadcast semanal de oferta (lunes 14hs)">
                                 <field name="enable_weekly_offer_broadcast" widget="boolean_toggle"/>
                                 <field name="weekly_offer_template_id"

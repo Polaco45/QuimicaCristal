@@ -295,3 +295,72 @@ class CristalAgentRouteSelftest(models.TransientModel):
             assert b.truck_circuit_id == este, f"por ciudad: {b.truck_circuit_id.name}"
             return "etiqueta 35 + Laboulaye → Sur-Oeste; sin etiqueta + Ucacha → Este"
         self._case(results, "9. Backfill de circuitos", c_backfill)
+
+        # ───────────────────── Reglas de oro (v1.33) ─────────────────────
+        from ..services.helpers import date_context_ar, within_contact_hours
+        tz = pytz.timezone('America/Argentina/Cordoba')
+
+        # 10) Fecha de Argentina (no UTC)
+        def c_fecha_ar():
+            # Bug real: a las 21:26 del lunes 28/09 (00:26 UTC del 29) Claudio decía
+            # "tu pedido sale esta mañana". En hora Argentina sigue siendo el 28.
+            utc = pytz.utc.localize(datetime(2026, 9, 29, 0, 26))
+            cal = date_context_ar(env, now=utc.astimezone(tz))
+            assert cal['hoy'] == 'lunes 28/09/2026', cal['hoy']
+            assert cal['manana'] == 'martes 29/09', cal['manana']
+            assert cal['pasado'] == 'miércoles 30/09', cal['pasado']
+            assert cal['hora'] == '21:26', cal['hora']
+            real = date_context_ar(env)
+            assert real['now'].date() == datetime.now(tz).date(), "hoy no es hora Argentina"
+            return f"00:26 UTC del 29/09 → HOY {cal['hoy']} 21:26; mañana {cal['manana']}"
+        self._case(results, "10. Fecha y día de Argentina", c_fecha_ar)
+
+        # 11) Ventana para iniciar mensajes (7:30 a 21:30, todos los días)
+        def c_horario():
+            cfg = env['cristal.agent.config'].sudo().get_active()
+            cfg.write({'work_hours_start': 7.5, 'work_hours_end': 21.5})
+            day = date(2026, 10, 4)  # domingo: también vale
+            checks = [((7, 29), False), ((7, 30), True), ((21, 29), True),
+                      ((21, 30), False), ((0, 57), False), ((5, 24), False)]
+            for (h, m), expected in checks:
+                now = tz.localize(datetime.combine(day, time(h, m)))
+                got = within_contact_hours(env, now=now)
+                assert got == expected, f"{h:02d}:{m:02d} → {got} (esperado {expected})"
+            return "7:29 no · 7:30 sí · 21:29 sí · 21:30 no · 00:57 no · 05:24 no"
+        self._case(results, "11. Horario para iniciar mensajes", c_horario)
+
+        # 12) Bidones: aviso siempre, cobro correcto y precio fijo
+        def c_bidones():
+            cfg = env['cristal.agent.config'].sudo().get_active()
+            bidon = cfg.bidon_product_id or env['product.product'].sudo().search(
+                [('default_code', '=', 'DA0355')], limit=1)
+            assert bidon, "no hay producto de bidón (DA0355)"
+            cfg.write({'bidon_product_id': bidon.id, 'bidon_price': 3500.0})
+            granel = env['product.product'].sudo().create({
+                'name': 'ZZ Autotest Lavandina a granel', 'type': 'consu',
+                'sale_ok': True, 'taxes_id': [(6, 0, [])]})
+            p = mk_partner('Bidones', 'Rio Cuarto')
+            line = {'product_id': granel.id, 'qty': 40, 'price_unit': 2000}
+            # a) No se sabe si trae vacíos → avisa y pide preguntar
+            r = cso.execute(env=env, run=None, partner_id=p.id, lines=[line])
+            assert r.get('ok'), r
+            b = r.get('bidones') or {}
+            assert b.get('needed') == 2 and not b.get('answered'), b
+            summ = r.get('client_summary', '')
+            assert 'bidones de 20 L' in summ and '$3.500' in summ, summ
+            assert 'PREGUNTALE' in (r.get('bidones_note') or ''), r.get('bidones_note')
+            # b) Le faltan 2 (y aunque venga con 20% OFF, el bidón no se descuenta)
+            r = cso.execute(env=env, run=None, partner_id=p.id, lines=[line],
+                            bidones_nuevos=2, discount_percent=20)
+            order = SaleOrder.browse(r['order_id'])
+            bl = order.order_line.filtered(lambda l: l.product_id == bidon)
+            assert len(bl) == 1 and bl.product_uom_qty == 2 and bl.price_unit == 3500 \
+                and bl.discount == 0, f"bidón: {[(l.product_uom_qty, l.price_unit, l.discount) for l in bl]}"
+            assert '2 nuevo' in r.get('client_summary', ''), r.get('client_summary')
+            # c) Trae los vacíos → se saca el cargo
+            r = cso.execute(env=env, run=None, partner_id=p.id, lines=[line], bidones_nuevos=0)
+            order = SaleOrder.browse(r['order_id'])
+            assert not order.order_line.filtered(lambda l: l.product_id == bidon), "quedó el cargo"
+            assert 'de recambio' in r.get('client_summary', ''), r.get('client_summary')
+            return "avisa y pregunta · 2 nuevos a $3.500 sin 20% · con vacíos no se cobra"
+        self._case(results, "12. Bidones de 20 L", c_bidones)
