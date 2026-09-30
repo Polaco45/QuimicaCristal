@@ -157,6 +157,19 @@ class SearchProducts(AgentTool):
                 f"NO escales ni digas 'no tenemos' por una diferencia de palabras."
             )
 
+        # v1.33 — Bidones: apenas aparece granel, recordarlo (reclamo real: clientes
+        # que fueron a retirar sin saber lo del recambio de bidones).
+        if any('granel' in (r['name'] or '').lower() for r in results):
+            config = env['cristal.agent.config'].sudo().get_active()
+            price = config.bidon_price if config else 3500.0
+            price_txt = '${:,.0f}'.format(price).replace(',', '.')
+            reminder = (
+                "BIDONES: el granel va en bidones de 20 L. Si el cliente trae sus bidones "
+                "vacíos para el recambio no se cobran; si no, cada bidón nuevo sale "
+                f"{price_txt}. Decíselo SIEMPRE cuando hables de granel, aunque todavía "
+                "no cotices.")
+            msg = (msg + " " + reminder) if msg else reminder
+
         return {
             "ok": True,
             "count": len(results),

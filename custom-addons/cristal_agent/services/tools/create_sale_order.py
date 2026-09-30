@@ -250,10 +250,10 @@ class CreateSaleOrder(AgentTool):
             summary = (f"Envases: {bid}, de recambio: trae los vacíos (sin cargo).")
         note = "⚠️ BIDONES — OBLIGATORIO decirlo SIEMPRE, antes del total: " + summary
         if not answered:
-            note += (f" Todavía no sabés si trae los vacíos: PREGUNTALE (\"¿Tiene los "
-                     f"{needed} bidones vacíos para el recambio?\") y volvé a llamar "
-                     f"create_sale_order con bidones_nuevos=<cuántos le faltan> (0 si "
-                     f"trae todos).")
+            note += (f" Todavía no sabés si trae los vacíos: preguntale si tiene los "
+                     f"{needed} bidones vacíos para el recambio (con el mismo trato que "
+                     f"venís usando: vos o usted) y volvé a llamar create_sale_order con "
+                     f"bidones_nuevos=<cuántos le faltan> (0 si trae todos).")
         return {'needed': needed, 'nuevos': nuevos, 'answered': answered,
                 'price': price, 'summary': summary, 'note': note}
 
