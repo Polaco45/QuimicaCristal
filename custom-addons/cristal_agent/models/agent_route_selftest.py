@@ -387,3 +387,16 @@ class CristalAgentRouteSelftest(models.TransientModel):
                 assert got == expected, f"'{src}' → '{got}'"
             return "saca 'Perfecto' tras punto y tras guión; respeta 'es excelente'"
         self._case(results, "13. Sanitizador de tono", c_tono)
+
+        # 14) Aviso de bidones garantizado al enviar
+        def c_aviso_bidones():
+            from ..services.helpers import ensure_bidones_notice
+            falta = ensure_bidones_notice(
+                env, 0, "<p>Sobre los 20 L de detergente: ¿cuál preferís?</p>")
+            assert 'bidones de 20 L' in falta and '$3.500' in falta, falta
+            nada = "<p>Te paso la lista de precios.</p>"
+            assert ensure_bidones_notice(env, 0, nada) == nada, "agregó sin hablar de granel"
+            ya = "<p>Son 40 L de lavandina: van en 2 bidones de recambio.</p>"
+            assert ensure_bidones_notice(env, 0, ya) == ya, "duplicó el aviso"
+            return "agrega el aviso si habla de granel sin bidones; no duplica ni ensucia"
+        self._case(results, "14. Aviso de bidones al enviar", c_aviso_bidones)

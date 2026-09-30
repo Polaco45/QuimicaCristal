@@ -39,7 +39,10 @@ Los clientes iban al local con cosas que Claudio les había dicho y eran erróne
 - **Bidones también bajo el mínimo:** la nota de bidones sale aunque el pedido quede
   bloqueado por mínimo (general o de ruta).
 - **Sanitizador:** también saca la muletilla después de un guión ("— perfecto,").
-- **Autotest:** +4 casos (fecha Argentina, horario de contacto, bidones, tono).
+- **Aviso de bidones garantizado:** al enviar, si el mensaje habla de granel y no
+  menciona los bidones (y Claudio no lo explicó en ese chat en 24 h), se agrega la
+  aclaración del recambio ($3.500 el bidón nuevo). Mismo criterio que el sanitizador.
+- **Autotest:** +5 casos (fecha Argentina, horario de contacto, bidones, tono, aviso).
 
 ---
 
