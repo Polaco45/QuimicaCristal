@@ -381,6 +381,8 @@ class CristalAgentRouteSelftest(models.TransientModel):
                  "Veo que tiene una despensa — te atendemos."),
                 ("El jabón es excelente, se lo recomiendo.",
                  "El jabón es excelente, se lo recomiendo."),
+                ("Soy Claudio de Química Cristal. \U0001F44B Perfecto, tengo todo.",
+                 "Soy Claudio de Química Cristal. \U0001F44B Tengo todo."),
             ]
             for src, expected in cases:
                 got = sanitize_tone(src)

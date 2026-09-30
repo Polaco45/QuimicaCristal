@@ -37,7 +37,8 @@ _RE_OPENER_START = re.compile(
 # Exige puntuación después de la palabra (forma de muletilla), para no tocar un
 # adjetivo real que arranca oración ("Excelente calidad la de este jabón").
 _RE_OPENER_SENTENCE = re.compile(
-    r'([.!?]\s+)¡?\s*' + _TONE_OPENERS + r'\s*!*[,.!]\s*(\w)?',
+    # (?:[^\w\s¡]+\s*)? = un emoji opcional en el medio ("Cristal. 👋 Perfecto, ...")
+    r'([.!?]\s+(?:[^\w\s¡]+\s*)?)¡?\s*' + _TONE_OPENERS + r'\s*!*[,.!]\s*(\w)?',
     re.IGNORECASE)
 # Muletilla después de un guión largo: "Veo que tiene una despensa — perfecto, te
 # atendemos" → "Veo que tiene una despensa — te atendemos". Misma exigencia de
