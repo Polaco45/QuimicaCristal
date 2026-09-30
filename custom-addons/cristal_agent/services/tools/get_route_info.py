@@ -89,11 +89,15 @@ class GetRouteInfo(AgentTool):
             return {
                 "ok": True, "zone": "fuera_zona", "city": info.get('canonical') or city_text,
                 "escalate": True,
+                "suggested_phrase": (
+                    "Para su localidad el envío lo coordina directamente Joaquín; ya le "
+                    "paso su consulta y le confirmamos cómo se lo hacemos llegar."),
                 "message_for_bot": (
                     f"{info.get('canonical') or city_text} está FUERA de los 4 circuitos de "
                     f"la ruta. NO ofrezcas condiciones de envío (ni mínimo de ruta, ni "
-                    f"flete, ni fecha). Marcalo fuera de zona y escalá a Joaco con "
-                    f"escalate_to_joaco."),
+                    f"flete, ni fecha). Si pregunta por el envío, contestale con "
+                    f"`suggested_phrase` (no lo dejes sin respuesta). Pasale la lista, "
+                    f"tratalo de USTED y escalá a Joaco con escalate_to_joaco."),
             }
 
         # ── Es de un circuito: próxima salida real (registro en preventa) ──
@@ -152,7 +156,9 @@ class GetRouteInfo(AgentTool):
             "suggested_phrase": phrase,
             "message_for_bot": (
                 "Usá ESTA fecha y ESTE cierre (no inventes otros). Mínimo y envío gratis "
-                "se miden sobre el subtotal de productos SIN IVA ni flete. "
+                "se miden sobre el subtotal de productos SIN IVA ni flete. Es cliente de "
+                "pueblo: si es nuevo, tratalo de USTED (le / su / ¿cómo está?), nunca de "
+                "vos, salvo que él te tutee. "
                 + ("Salida en RESCATE: envío gratis desde $75.000 y ofrecé el producto de "
                    "cortesía. " if rescate else "")),
         }

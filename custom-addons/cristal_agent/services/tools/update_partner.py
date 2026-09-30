@@ -227,7 +227,8 @@ class UpdatePartner(AgentTool):
                        truck_circuit_id=info['circuit'].id,
                        note=f"{info['canonical']} está en el circuito "
                             f"{info['circuit'].name} (ruta del camión, jueves). Usá "
-                            f"get_route_info para la fecha de paso.")
+                            f"get_route_info para la fecha de paso. Cliente de pueblo: "
+                            f"si es nuevo, tratalo de USTED.")
         elif info['kind'] == 'rio_cuarto':
             kwargs['agent_zone'] = ('las_higueras' if info['canonical'] == 'Las Higueras'
                                     else 'rio_cuarto')
@@ -237,7 +238,9 @@ class UpdatePartner(AgentTool):
             kwargs['agent_zone'] = 'fuera_zona'
             out.update(zone='fuera_zona',
                        note=f"{info['canonical']} está FUERA de los 4 circuitos. NO "
-                            f"ofrezcas condiciones de envío: escalá a Joaco.")
+                            f"ofrezcas condiciones de envío: si pregunta, decile que el "
+                            f"envío a su localidad lo coordina Joaquín directamente y "
+                            f"escalá a Joaco. Tratalo de USTED.")
 
         # Si ahora es Río Cuarto o un circuito, la etiqueta "Fuera de zona" es errónea
         # (y excluye al cliente de los broadcasts): se la sacamos.
