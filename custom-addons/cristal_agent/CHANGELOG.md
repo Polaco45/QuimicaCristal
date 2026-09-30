@@ -33,7 +33,13 @@ Los clientes iban al local con cosas que Claudio les había dicho y eran erróne
 - **Prompt v7:** sección "REGLAS DE ORO" (bidones, nada confirmado hasta Joaquín,
   día + fecha, horarios oficiales, retiro en planta, precios de las herramientas,
   feriados con fecha, fechas de la ruta textuales y cierre con orden fijo).
-- **Autotest:** +3 casos (fecha Argentina, horario de contacto, bidones).
+- **Reparto ≠ retiro:** en una prueba Claudio dijo "los jueves no hay retiro en
+  planta" (mezclaba "no hay reparto en Río Cuarto los jueves"). Todos los textos
+  aclaran ahora que el jueves la planta SÍ abre para retiros.
+- **Bidones también bajo el mínimo:** la nota de bidones sale aunque el pedido quede
+  bloqueado por mínimo (general o de ruta).
+- **Sanitizador:** también saca la muletilla después de un guión ("— perfecto,").
+- **Autotest:** +4 casos (fecha Argentina, horario de contacto, bidones, tono).
 
 ---
 

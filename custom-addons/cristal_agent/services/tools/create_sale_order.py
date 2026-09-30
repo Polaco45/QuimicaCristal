@@ -300,6 +300,9 @@ class CreateSaleOrder(AgentTool):
         if product_subtotal < config.route_min_order:
             block['below_min'] = True
             block['missing'] = config.route_min_order - product_subtotal
+            # Los bidones se informan igual (se calcula antes del rollback).
+            bid_info = self._bidones_info(env, config, order)
+            block['bidones_note'] = bid_info['note'] if bid_info else None
             return block
 
         freight = 0.0
@@ -336,6 +339,7 @@ class CreateSaleOrder(AgentTool):
             "lines": block['lines'],
             "sin_stock": sin_stock or None,
             "problems": problems or None,
+            "bidones_note": block.get('bidones_note'),
             "message_for_bot": (
                 f"NO creé la cotización: los productos suman "
                 f"{_fmt_money(block['product_subtotal'])} y el pedido mínimo de la "
@@ -665,6 +669,8 @@ class CreateSaleOrder(AgentTool):
             'price_unit': l.price_unit,
             'subtotal': l.price_subtotal,
         } for l in order.order_line]
+        # Bidones: se informan SIEMPRE, también cuando el pedido queda bajo el mínimo.
+        bid_info = self._bidones_info(env, config, order)
 
         if not is_route and total < self.COMPRA_PISO:
             return {
@@ -676,6 +682,7 @@ class CreateSaleOrder(AgentTool):
                 "sin_stock": sin_stock or None,
                 "problems": problems or None,
                 "lines": line_details,
+                "bidones_note": bid_info['note'] if bid_info else None,
                 "message_for_bot": (
                     f"El total va {_fmt_money(total)}, por debajo del PISO de "
                     f"{_fmt_money(self.COMPRA_PISO)}. NO se puede cotizar ni enviar por "
@@ -705,8 +712,6 @@ class CreateSaleOrder(AgentTool):
             samples_hint = (
                 f"Faltan {_fmt_money(falta_s)} para llegar a {_fmt_money(SAMPLES_THRESHOLD)} y "
                 f"ganar 3 MUESTRAS GRATIS de productos que no lleva. Usalo de upsell.")
-
-        bid_info = self._bidones_info(env, config, order)
 
         result = {
             "ok": True,
@@ -770,7 +775,8 @@ class CreateSaleOrder(AgentTool):
         elif route_ctx and route_ctx['kind'] == 'rio_cuarto':
             result['route_note'] = (
                 "Cliente de Río Cuarto: reparto normal SOLO por la mañana y NO los jueves "
-                "(ese día sale el camión de la ruta). No ofrezcas entrega en jueves.")
+                "(ese día sale el camión de la ruta). No ofrezcas ENTREGA en jueves; el "
+                "RETIRO en planta el jueves SÍ se puede, en el horario oficial.")
         elif route_ctx and route_ctx['kind'] == 'fuera_zona':
             self._mark_fuera_zona(env, partner)
             self._escalate_fuera_zona(env, run, partner, order, route_ctx)

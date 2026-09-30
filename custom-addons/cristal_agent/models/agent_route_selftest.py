@@ -362,5 +362,28 @@ class CristalAgentRouteSelftest(models.TransientModel):
             order = SaleOrder.browse(r['order_id'])
             assert not order.order_line.filtered(lambda l: l.product_id == bidon), "quedó el cargo"
             assert 'de recambio' in r.get('client_summary', ''), r.get('client_summary')
-            return "avisa y pregunta · 2 nuevos a $3.500 sin 20% · con vacíos no se cobra"
+            # d) Bajo el mínimo también avisa los bidones (caso real de staging)
+            p2 = mk_partner('BidonesChico', 'Rio Cuarto')
+            r = cso.execute(env=env, run=None, partner_id=p2.id, lines=[
+                {'product_id': granel.id, 'qty': 20, 'price_unit': 1000}])
+            assert r.get('blocked_min_compra') and 'BIDONES' in (r.get('bidones_note') or ''), r
+            return ("avisa y pregunta · 2 nuevos a $3.500 sin 20% · con vacíos no se cobra "
+                    "· también bajo el mínimo")
         self._case(results, "12. Bidones de 20 L", c_bidones)
+
+        # 13) Sanitizador de tono (muletillas en medio del mensaje)
+        def c_tono():
+            from ..services.helpers import sanitize_tone
+            cases = [
+                ("Hola, soy Claudio de Química Cristal. Perfecto, te doy los precios:",
+                 "Hola, soy Claudio de Química Cristal. Te doy los precios:"),
+                ("Veo que tiene una despensa — perfecto, te atendemos.",
+                 "Veo que tiene una despensa — te atendemos."),
+                ("El jabón es excelente, se lo recomiendo.",
+                 "El jabón es excelente, se lo recomiendo."),
+            ]
+            for src, expected in cases:
+                got = sanitize_tone(src)
+                assert got == expected, f"'{src}' → '{got}'"
+            return "saca 'Perfecto' tras punto y tras guión; respeta 'es excelente'"
+        self._case(results, "13. Sanitizador de tono", c_tono)

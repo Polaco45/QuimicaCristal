@@ -22,7 +22,8 @@ KB_PLANT_CONTENT = """DIRECCIÓN Y HORARIOS DE LA PLANTA — FUENTE OFICIAL ÚNI
 - DIRECCIÓN: San Martín 2350, Río Cuarto (Córdoba). NO es Lamadrid y Mansilla ni ninguna otra dirección.
 - HORARIO DE LA PLANTA (atención y retiros): lunes a viernes de 8:30 a 12:30 y de 15:30 a 19:30; sábados de 9:00 a 13:00. Domingos y feriados: cerrado.
 - RETIRO EN PLANTA: solo con el pedido CONFIRMADO por Joaquín. Siempre decir día + fecha + este horario. El cliente trae sus bidones vacíos para el recambio (si no trae, cada bidón nuevo de 20 L sale $3.500) y el efectivo o el comprobante de la transferencia.
-- REPARTO EN RÍO CUARTO Y LAS HIGUERAS: de lunes a viernes, SOLO por la mañana y NUNCA los jueves (ese día sale el camión de la ruta). El día lo confirma el equipo: no des hora exacta ni digas "el chofer te llama"."""
+- REPARTO EN RÍO CUARTO Y LAS HIGUERAS: de lunes a viernes, SOLO por la mañana y NUNCA los jueves (ese día sale el camión de la ruta). El día lo confirma el equipo: no des hora exacta ni digas "el chofer te llama".
+- REPARTO ≠ RETIRO: aunque los jueves no hay reparto en Río Cuarto, la planta SÍ abre el jueves para retiros, en el horario de arriba."""
 
 KB_TO_ARCHIVE = {
     68: "Horario 8:30 a 19:30 corrido: contradice el oficial (cortado).",
@@ -47,7 +48,7 @@ KB_ROUTE_CONTENT = """RUTA DEL CAMIÓN MAYORISTA (desde el jueves 15/10/2026)
 - MÍNIMO EN RUTA: $75.000 en productos (el flete y los bidones NO cuentan). FLETE: $9.000 si los productos no llegan a $99.000; desde $99.000 el envío es sin cargo. RESCATE (Plan B): envío sin cargo desde $75.000 + un producto de cortesía.
 - BIDONES: el granel va en bidones de 20 L; si el cliente no tiene vacíos para el recambio, cada bidón nuevo sale $3.500. Decirlo SIEMPRE.
 - COBRO: transferencia anticipada o efectivo contra entrega. Sin cuenta corriente.
-- RÍO CUARTO (y Las Higueras, Banda Norte, Alberdi): reparto normal, de lunes a viernes SOLO por la mañana y NUNCA los jueves. Pedidos grandes o especiales: consultar a Joaco antes de comprometer la entrega.
+- RÍO CUARTO (y Las Higueras, Banda Norte, Alberdi): reparto normal, de lunes a viernes SOLO por la mañana y NUNCA los jueves (el RETIRO en planta el jueves SÍ se puede, en el horario oficial). Pedidos grandes o especiales: consultar a Joaco antes de comprometer la entrega.
 - FUERA DE LOS 4 CIRCUITOS: se le pasa la lista y los precios, pero NO se ofrecen condiciones de envío; se marca fuera de zona y se escala a Joaco."""
 
 
