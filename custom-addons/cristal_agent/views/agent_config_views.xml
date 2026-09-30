@@ -177,6 +177,19 @@
                                 <field name="enable_apply_offers" widget="boolean_toggle"/>
                             </group>
 
+                            <group string="🚚 Ruta del camión mayorista">
+                                <field name="enable_truck_route" widget="boolean_toggle"/>
+                                <field name="route_min_order" invisible="not enable_truck_route"/>
+                                <field name="route_freight_amount" invisible="not enable_truck_route"/>
+                                <field name="route_free_shipping_from" invisible="not enable_truck_route"/>
+                                <field name="route_freight_product_id" invisible="not enable_truck_route"
+                                       options="{'no_create': True}"/>
+                                <field name="route_preventa_cutoff_weekday" invisible="not enable_truck_route"/>
+                                <field name="route_preventa_cutoff_hour" widget="float_time"
+                                       invisible="not enable_truck_route"/>
+                                <field name="rc_no_delivery_weekday" invisible="not enable_truck_route"/>
+                            </group>
+
                             <group string="📣 Broadcast semanal de oferta (lunes 14hs)">
                                 <field name="enable_weekly_offer_broadcast" widget="boolean_toggle"/>
                                 <field name="weekly_offer_template_id"

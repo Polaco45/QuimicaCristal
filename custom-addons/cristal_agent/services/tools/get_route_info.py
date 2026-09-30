@@ -74,12 +74,15 @@ class GetRouteInfo(AgentTool):
             }
 
         if not circuit and info.get('kind') == 'rio_cuarto':
+            no_day = WEEKDAYS_ES[int(config.rc_no_delivery_weekday) % 7] if config \
+                else 'jueves'
             return {
                 "ok": True, "zone": "rio_cuarto", "city": info['canonical'],
+                "no_delivery_weekday": no_day,
                 "message_for_bot": (
                     f"{info['canonical']} es reparto normal de Río Cuarto: entregamos SOLO "
-                    f"por la mañana y NO hay reparto los JUEVES (ese día sale el camión "
-                    f"de la ruta). No ofrezcas entrega en jueves."),
+                    f"por la mañana y NO hay reparto los {no_day.upper()} (ese día sale el "
+                    f"camión de la ruta). No ofrezcas entrega ese día."),
             }
 
         if not circuit:

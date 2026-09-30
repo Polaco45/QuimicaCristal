@@ -136,8 +136,9 @@ class CristalAgentRouteDeparture(models.Model):
             day = self.date - timedelta(days=RESCUE_CUTOFF_DAYS_BEFORE)
             return self._local_to_utc(day, RESCUE_CUTOFF_HOUR)
         config = self.env['cristal.agent.config'].sudo().get_active()
-        cutoff_weekday = int(getattr(config, 'route_preventa_cutoff_weekday', 1) or 1)
-        cutoff_hour = float(getattr(config, 'route_preventa_cutoff_hour', 18.0) or 18.0)
+        # Sin `or default`: lunes = 0 y medianoche = 0.0 son valores válidos.
+        cutoff_weekday = int(config.route_preventa_cutoff_weekday) % 7 if config else 1
+        cutoff_hour = float(config.route_preventa_cutoff_hour) if config else 18.0
         day = self.date - timedelta(days=1)
         while day.weekday() != cutoff_weekday:
             day -= timedelta(days=1)

@@ -7,6 +7,50 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.32.0] — 2026-09-30
+
+### Added — Ruta del camión mayorista (Fase 1)
+
+Un camión por semana (jueves) a uno de 4 circuitos que rotan (Sur-Oeste → Norte →
+Este → Sur-Este), desde el jueves 15/10/2026.
+
+- **Modelos:** `cristal.agent.circuit` (+ localidades con alias) y
+  `cristal.agent.route.departure` — las salidas son REGISTROS con estado (preventa /
+  rescate / confirmada / postergada / realizada). Postergar = cambiarle la fecha.
+  No se reusó `cristal.ruta.zona`: vive en `cristal_ruteo`, que depende de este
+  módulo (se invertiría la dependencia) y modela otra cosa (clúster de visitas).
+- **Tools:** `get_route_info` (nueva); `update_partner` normaliza la ciudad y
+  resuelve zona + circuito; `create_sale_order` exige localidad y aplica mínimo,
+  flete, fecha de entrega, etiqueta de circuito y escalamiento.
+- **Reglas:** mínimo $75.000 y envío gratis desde $99.000, ambos sobre el subtotal de
+  productos sin IVA **y sin el flete**. Flete $9.000 con `price_unit` fijo (no le
+  entra el -20% global de la Lista Mayorista). Rescate: envío gratis desde $75.000 +
+  producto de cortesía, cierre miércoles 12 h. Cierre de preventa martes 18 h hora
+  Córdoba → UTC. Río Cuarto nunca jueves. Fuera de circuito: fuera_zona + escalamiento,
+  sin ofrecer condiciones de envío.
+- **agent_zone:** nuevo valor `ruta_camion`.
+- **Plantillas ruta_*:** envío manual por tandas de 25 (aviso de paso, rescate) y
+  crons T-7 / T-1 / T+1 creados INACTIVOS hasta que Meta las apruebe.
+- **Autotest** (Ruta del camión → Autotest) + `tests/test_route.py`.
+- **Prompt v6** (`claudio_v6.md`).
+
+### Changed — Base de conocimiento
+
+Nueva entrada **"Ruta camión jueves"** (prioridad 100). Archivadas (no borradas) por
+contradecir la ruta:
+
+| # | Entrada | Motivo |
+|---|---|---|
+| 3 | Mínimo de compra Mayorista | $50.000 para todos; en la ruta el mínimo es $75.000 + IVA |
+| 4 | Filtros de calificación Mayorista | pide "facturar $50.000/mes" y "RC + 200 km" |
+| 12 | Cuándo escalar a Joaco | dice que los audios no se procesan (la transcripción está activa) y takeover 1 h |
+| 15 | Zona de entrega actual | solo RC/LH y "NO mandar lista fuera de zona" |
+| 43 | Zona de entrega: RC y LH | reemplazada por la ruta del camión |
+| 53 | Compra mínima mayorista $50.000 | "aplica a todo"; en la ruta es $75.000 + IVA |
+| 96 | Entregas: solo por la mañana | su contenido pasó a "Ruta camión jueves" y al prompt v6 (+ RC nunca jueves) |
+
+---
+
 ## [18.0.1.31.13] — 2026-09-07
 
 ### Fixed — "Perfumina/desodorante de pisos" = Limpiador Desodorante (no Perfume p/ropa)
