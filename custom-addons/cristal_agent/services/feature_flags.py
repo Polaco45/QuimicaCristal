@@ -30,6 +30,7 @@ TOOL_TO_FLAG = {
     'create_sale_order': 'enable_create_sale_orders',
     'generate_quote_pdf': 'enable_generate_quote_pdf',
     'generate_pricelist_pdf': 'enable_generate_pricelist_pdf',
+    'get_route_info': 'enable_truck_route',
 
     # Muestras
     'confirm_sample_sent': 'enable_confirm_sample',

@@ -126,6 +126,14 @@ class CristalAgentConfig(models.Model):
              "juntar los mensajes de una ráfaga en una sola respuesta. "
              "10 = buen balance inmediatez/costo. 0 = responde a cada mensaje (caro).",
     )
+    human_takeover_hours = fields.Integer(
+        string="Horas de takeover por intervención manual",
+        default=12,
+        help="Cuando un humano responde manualmente en el chat de un cliente, el "
+             "bot se calla por estas horas (no se mete mientras vos coordinás la "
+             "entrega o lo que sea). Antes era 1h y el bot volvía a interrumpir y "
+             "contradecir; 12 = queda afuera el resto del día.",
+    )
 
     # v1.11.0 — Escalado opcional del modelo SOLO para mensajes a clientes.
     # Apagado por default: todo el tráfico corre en anthropic_model (Haiku),
@@ -404,6 +412,34 @@ class CristalAgentConfig(models.Model):
         default=True,
         help="Si está OFF, el bot no califica — solo atiende consultas y escala.",
     )
+
+    # ═════════════════ RUTA DEL CAMIÓN MAYORISTA ═════════════════
+    enable_truck_route = fields.Boolean(
+        string="Ruta del camión mayorista",
+        default=True,
+        help="Si está ON, el bot aplica las reglas de la ruta del camión (localidad "
+             "obligatoria, mínimo, flete, fecha de paso). Si está OFF, cotiza como antes.")
+    route_min_order = fields.Float(
+        string="Pedido mínimo en ruta", default=75000.0,
+        help="Mínimo (subtotal de productos SIN IVA ni flete) para tomar un pedido en ruta.")
+    route_freight_amount = fields.Float(
+        string="Flete en ruta", default=9000.0,
+        help="Monto del flete cuando el pedido no llega al umbral de envío gratis.")
+    route_free_shipping_from = fields.Float(
+        string="Envío gratis desde", default=99000.0,
+        help="Desde este subtotal de productos (sin IVA ni flete) el envío es sin cargo.")
+    route_freight_product_id = fields.Many2one(
+        'product.product', string="Producto de flete",
+        help="Producto servicio que se agrega como línea de flete (FLETE-ZONA).")
+    route_preventa_cutoff_weekday = fields.Integer(
+        string="Cierre preventa — día", default=1,
+        help="Día de la semana del cierre de preventa (0=lunes … 6=domingo). Martes=1.")
+    route_preventa_cutoff_hour = fields.Float(
+        string="Cierre preventa — hora", default=18.0,
+        help="Hora (formato float, 18.0 = 18:00) del cierre de preventa, hora Córdoba.")
+    rc_no_delivery_weekday = fields.Integer(
+        string="Río Cuarto sin reparto — día", default=3,
+        help="Día en que NO hay reparto en Río Cuarto (por la ruta del camión). Jueves=3.")
 
     # ─────────── Broadcast semanal de oferta (lunes 14hs) ───────────
     enable_weekly_offer_broadcast = fields.Boolean(

@@ -7,6 +7,190 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.32.0] — 2026-09-30
+
+### Added — Ruta del camión mayorista (Fase 1)
+
+Un camión por semana (jueves) a uno de 4 circuitos que rotan (Sur-Oeste → Norte →
+Este → Sur-Este), desde el jueves 15/10/2026.
+
+- **Modelos:** `cristal.agent.circuit` (+ localidades con alias) y
+  `cristal.agent.route.departure` — las salidas son REGISTROS con estado (preventa /
+  rescate / confirmada / postergada / realizada). Postergar = cambiarle la fecha.
+  No se reusó `cristal.ruta.zona`: vive en `cristal_ruteo`, que depende de este
+  módulo (se invertiría la dependencia) y modela otra cosa (clúster de visitas).
+- **Tools:** `get_route_info` (nueva); `update_partner` normaliza la ciudad y
+  resuelve zona + circuito; `create_sale_order` exige localidad y aplica mínimo,
+  flete, fecha de entrega, etiqueta de circuito y escalamiento.
+- **Reglas:** mínimo $75.000 y envío gratis desde $99.000, ambos sobre el subtotal de
+  productos sin IVA **y sin el flete**. Flete $9.000 con `price_unit` fijo (no le
+  entra el -20% global de la Lista Mayorista). Rescate: envío gratis desde $75.000 +
+  producto de cortesía, cierre miércoles 12 h. Cierre de preventa martes 18 h hora
+  Córdoba → UTC. Río Cuarto nunca jueves. Fuera de circuito: fuera_zona + escalamiento,
+  sin ofrecer condiciones de envío.
+- **agent_zone:** nuevo valor `ruta_camion`.
+- **Plantillas ruta_*:** envío manual por tandas de 25 (aviso de paso, rescate) y
+  crons T-7 / T-1 / T+1 creados INACTIVOS hasta que Meta las apruebe.
+- **Autotest** (Ruta del camión → Autotest) + `tests/test_route.py`.
+- **Prompt v6** (`claudio_v6.md`).
+
+### Changed — Base de conocimiento
+
+Nueva entrada **"Ruta camión jueves"** (prioridad 100). Archivadas (no borradas) por
+contradecir la ruta:
+
+| # | Entrada | Motivo |
+|---|---|---|
+| 3 | Mínimo de compra Mayorista | $50.000 para todos; en la ruta el mínimo es $75.000 + IVA |
+| 4 | Filtros de calificación Mayorista | pide "facturar $50.000/mes" y "RC + 200 km" |
+| 12 | Cuándo escalar a Joaco | dice que los audios no se procesan (la transcripción está activa) y takeover 1 h |
+| 15 | Zona de entrega actual | solo RC/LH y "NO mandar lista fuera de zona" |
+| 43 | Zona de entrega: RC y LH | reemplazada por la ruta del camión |
+| 53 | Compra mínima mayorista $50.000 | "aplica a todo"; en la ruta es $75.000 + IVA |
+| 96 | Entregas: solo por la mañana | su contenido pasó a "Ruta camión jueves" y al prompt v6 (+ RC nunca jueves) |
+
+---
+
+## [18.0.1.31.13] — 2026-09-07
+
+### Fixed — "Perfumina/desodorante de pisos" = Limpiador Desodorante (no Perfume p/ropa)
+
+El bot mapeaba "perfumina de pisos" al producto **Perfume p/ropa** (que es para la
+ropa) y llegó a cotizar $36.000 por error (caso Julieta Castro). Perfumina /
+desodorante / limpiador perfumado **de pisos** es el **Limpiador Desodorante**.
+
+- **`search_products` (SYNONYMS):** `perfumina` y `desodorante` ahora expanden a
+  "limpiador desodorante", para que el fallback interpretativo encuentre el producto
+  correcto en vez de caer en Perfume p/ropa.
+- **Prompt v5 (INTERPRETÁ):** se distingue explícitamente perfumina/perfume **para
+  la ROPA** (= Perfume p/ropa) de perfumina/desodorante/limpiador perfumado **para
+  PISOS** (= Limpiador Desodorante). Para pisos ofrece los dos formatos: **Base 1+80**
+  (concentrado, 1 L rinde 80 L) o el **listo a granel** (Pino/Arpege/Citronella).
+  Nunca cotizar Perfume p/ropa para pisos.
+- **KB #100** (ya cargada en vivo, prioridad 95) refuerza lo mismo.
+
+---
+
+## [18.0.1.31.12] — 2026-08-25
+
+### Changed — Granel se cotiza en bidones de 20 L (múltiplos de 20)
+
+El granel va en bidones de 20 L: no existe 10/30/50. Antes la tool solo rechazaba
+< 20 L, pero dejaba pasar 30, 50, etc.
+
+- **`create_sale_order`:** para productos a granel, redondea la cantidad HACIA ARRIBA
+  al próximo múltiplo de 20 (30 → 40) y lo informa en `bidon_note` para que el bot se
+  lo comunique al cliente. Ya no pasan fracciones de bidón.
+- **Prompt v5:** granel siempre en múltiplos de 20 (20/40/60/80/100), nunca 5/10/30/50.
+
+Migración 1.31.12: recarga el prompt v5.
+
+---
+
+## [18.0.1.31.11] — 2026-08-25
+
+### Changed — Política de entregas: solo por la mañana + pedido grande consultar
+
+A pedido de Joaco, el bot ya debe SABER (no inventar):
+- **Entregamos SOLO por la mañana** (RC y Las Higueras) — eso sí lo puede decir. Sigue
+  sin comprometerse con hora exacta/ventana ni "te llama el chofer"; el día lo confirma
+  el equipo.
+- **Pedido grande o especial → consultar a Joaco** antes de comprometer la entrega.
+- Nueva entrada de KB "Entregas: solo por la mañana" (política editable, prioridad alta).
+
+Migración 1.31.11: recarga el prompt v5.
+
+---
+
+## [18.0.1.31.10] — 2026-08-25
+
+### Fixed — El bot se metía a coordinar la entrega e interrumpía al humano
+
+Caso real (Silvia): Joaco estaba coordinando la entrega a mano por la mañana
+("entregamos por la mañana, ¿hay quién reciba?"). El bot, 2 h después, saltó
+contradiciendo ("el reparto va entre 14 y 18 hs"), inventó que la llamaría el
+chofer y re-preguntó por los bidones ya resueltos.
+
+- **Takeover más largo:** cuando un humano responde a mano en el chat de un cliente,
+  el bot se calla ahora **12 h** (config `human_takeover_hours`), no 1 h. Antes se
+  vencía y el bot volvía a interrumpir mientras el humano seguía atendiendo.
+- **Prompt v5:** **la entrega la coordina el equipo, NO el bot.** Prohibido inventar
+  o comprometerse con día/hora/ventana de entrega o "te llama el chofer". Si un humano
+  ya está coordinando en el chat, el bot NO se mete ni contradice.
+
+Migración 1.31.10: setea `human_takeover_hours=12` y recarga el prompt v5.
+
+---
+
+## [18.0.1.31.9] — 2026-08-24
+
+### Fixed — El bot perseguía a clientes que YA compraron (seguimientos fantasma)
+
+Caso real (Silvia): hizo el pedido, Joaco lo confirmó A MANO y coordinó la entrega,
+y al otro día el bot le escribía *"¿vas a querer los productos?"* pensando que la
+venta nunca se gestionó. Causa: la cadencia miraba la fase (`phase_2_quoted`) y el
+borrador, pero al confirmar la venta manualmente la fase NO avanzaba → seguía
+siguiendo una cotización ya cerrada.
+
+- **`cron_cadence_quoted` (revisá antes de consultar):** antes de mandar un
+  seguimiento, chequea el estado REAL — si la última cotización de la oportunidad ya
+  está **confirmada** (`sale`/`done`), corta la cadencia y avanza la fase. No se
+  persigue a quien ya compró.
+- **Nuevo hook `sale.order`:** al **confirmar** una venta (a mano o por el bot), la
+  fase del lead avanza a "primera compra hecha" y se corta la cadencia. El estado del
+  cliente queda siempre correcto — esto también arregla que clientes con varias
+  compras siguieran figurando "en calificación" (raíz del 20% mal aplicado, caso Ariel).
+
+(Solo código; el bump de versión dispara la actualización del módulo.)
+
+---
+
+## [18.0.1.31.8] — 2026-08-24
+
+### Fixed — El bot inventaba el detalle y el total del pedido al cliente
+
+Caso real (Silvia, S05696): el bot le escribió al cliente *"cerramos en $64.732"*
+con 6 productos, cuando el pedido real (S05696) tenía **4 productos + bidones y
+$59.400**. Rearmaba el resumen de memoria (desvirtuada tras las idas y vueltas) en
+vez de usar los datos reales de la cotización.
+
+- **`create_sale_order`** ahora devuelve **`client_summary`**: el detalle LITERAL del
+  pedido real (productos, cantidades, subtotales y TOTAL exacto), + `client_summary_note`
+  obligando a copiarlo textual.
+- **Prompt v5:** prohibido inventar/agregar productos, cambiar cantidades o recalcular
+  el total de memoria — se copia `client_summary` tal cual; el total es SIEMPRE el de
+  la tool.
+
+### Changed — Mandar SIEMPRE la lista de precios al cliente
+
+A pedido de Joaco: a TODO cliente con interés comercial se le manda la Lista Mayorista
+(PDF) sí o sí, aunque no la pida (única excepción: no repetir dentro de 24 hs). Prompt v5.
+
+Migración 1.31.8: recarga el prompt v5.
+
+---
+
+## [18.0.1.31.7] — 2026-08-24
+
+### Fixed — El 20% de primera compra se aplicaba a clientes que YA compraron
+
+Caso real (Ariel, 3ra compra): el bot le aplicó el 20% de primera compra. Causa:
+el prompt decía *"ante la duda, tratalo como primera compra (aplicá el 20%)"* y no
+había ninguna validación real del historial — se confiaba en que el LLM infiriera
+"primera compra".
+
+- **Guardrail en `create_sale_order`:** cuenta las ventas confirmadas del cliente;
+  si ya compró y se pasó un descuento tipo primera compra (≥15%), lo **bloquea** y
+  cotiza a precio de nivel normal. Devuelve `previous_purchases`, `first_purchase_blocked`
+  y `first_purchase_note` para que el bot NO le diga al cliente que le aplicó el 20%.
+- **Prompt v5:** se da vuelta la regla — el 20% es SOLO para clientes sin NINGUNA
+  compra; ante la duda NO se aplica; si figura "última compra"/"nivel" en el contexto,
+  ya compró. La tool valida igual.
+
+Migración 1.31.7: recarga el prompt v5.
+
+---
+
 ## [18.0.1.31.6] — 2026-08-03
 
 ### Added — Promos con precio cerrado (campañas / Meta Ads), NO acumulables con el 20%

@@ -37,8 +37,10 @@
                             <field name="city"/>
                             <field name="agent_zone" widget="badge"
                                    decoration-success="agent_zone in ['rio_cuarto', 'las_higueras']"
+                                   decoration-info="agent_zone == 'ruta_camion'"
                                    decoration-warning="agent_zone == 'fuera_zona'"
                                    decoration-muted="agent_zone in ['unknown', 'other']"/>
+                            <field name="truck_circuit_id"/>
                         </group>
                     </group>
 
@@ -69,6 +71,8 @@
                         domain="[('agent_zone', '=', 'rio_cuarto')]"/>
                 <filter name="zone_las_higueras" string="Zona: Las Higueras"
                         domain="[('agent_zone', '=', 'las_higueras')]"/>
+                <filter name="zone_ruta_camion" string="Ruta del camión"
+                        domain="[('truck_circuit_id', '!=', False)]"/>
                 <filter name="zone_fuera" string="Fuera de zona (expansión)"
                         domain="[('agent_zone', '=', 'fuera_zona')]"/>
                 <filter name="zone_unknown" string="Zona sin relevar"
@@ -78,6 +82,8 @@
                             context="{'group_by': 'agent_zone'}"/>
                     <filter name="group_city" string="Ciudad"
                             context="{'group_by': 'city'}"/>
+                    <filter name="group_truck_circuit" string="Circuito de ruta"
+                            context="{'group_by': 'truck_circuit_id'}"/>
                 </group>
             </xpath>
         </field>

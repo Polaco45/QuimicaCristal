@@ -52,6 +52,31 @@
               sequence="40"
               action="action_cadence_mayorista"/>
 
+    <!-- 🚚 Ruta del camión mayorista (v1.32) -->
+    <menuitem id="menu_ruta_camion_root"
+              name="🚚 Ruta del camión"
+              parent="menu_mayorista_root"
+              sequence="45"/>
+
+    <menuitem id="menu_ruta_camion_salidas"
+              name="Salidas"
+              parent="menu_ruta_camion_root"
+              sequence="10"
+              action="action_cristal_agent_route_departure"/>
+
+    <menuitem id="menu_ruta_camion_circuitos"
+              name="Circuitos"
+              parent="menu_ruta_camion_root"
+              sequence="20"
+              action="action_cristal_agent_circuit"/>
+
+    <menuitem id="menu_ruta_camion_autotest"
+              name="🧪 Autotest"
+              parent="menu_ruta_camion_root"
+              sequence="90"
+              groups="base.group_system"
+              action="action_cristal_agent_route_selftest"/>
+
     <menuitem id="menu_mayorista_ofertas"
               name="🎁 Ofertas activas"
               parent="menu_mayorista_root"

@@ -1,0 +1,197 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Ruta del camión mayorista (v1.32): 4 circuitos que rotan los jueves.
+  Sur-Oeste → Norte → Este → Sur-Este, cada circuito cada 4 semanas.
+  noupdate="1": las ediciones manuales (alias, fechas) no se pisan al actualizar.
+  La etiqueta de contacto se resuelve por NOMBRE (35/32/50/51 en prod).
+-->
+<odoo>
+    <data noupdate="1">
+
+        <!-- ═══════════ SUR-OESTE (1ra salida jue 15/10/2026) ═══════════ -->
+        <record id="circuit_sur_oeste" model="cristal.agent.circuit">
+            <field name="name">Sur-Oeste</field>
+            <field name="sequence">1</field>
+            <field name="weekday">3</field>
+            <field name="first_departure_date">2026-10-15</field>
+            <field name="partner_category_id" search="[('name', '=', 'Ruta Sur-Oeste')]"/>
+        </record>
+        <record id="town_holmberg" model="cristal.agent.circuit.town">
+            <field name="name">Holmberg</field>
+            <field name="circuit_id" ref="circuit_sur_oeste"/>
+        </record>
+        <record id="town_santa_catalina" model="cristal.agent.circuit.town">
+            <field name="name">Santa Catalina</field>
+            <field name="circuit_id" ref="circuit_sur_oeste"/>
+        </record>
+        <record id="town_las_vertientes" model="cristal.agent.circuit.town">
+            <field name="name">Las Vertientes</field>
+            <field name="circuit_id" ref="circuit_sur_oeste"/>
+        </record>
+        <record id="town_sampacho" model="cristal.agent.circuit.town">
+            <field name="name">Sampacho</field>
+            <field name="circuit_id" ref="circuit_sur_oeste"/>
+        </record>
+        <record id="town_suco" model="cristal.agent.circuit.town">
+            <field name="name">Suco</field>
+            <field name="circuit_id" ref="circuit_sur_oeste"/>
+        </record>
+        <record id="town_chajan" model="cristal.agent.circuit.town">
+            <field name="name">Chaján</field>
+            <field name="aliases">Chajén, Chajen</field>
+            <field name="optional" eval="True"/>
+            <field name="circuit_id" ref="circuit_sur_oeste"/>
+        </record>
+        <record id="town_achiras" model="cristal.agent.circuit.town">
+            <field name="name">Achiras</field>
+            <field name="optional" eval="True"/>
+            <field name="circuit_id" ref="circuit_sur_oeste"/>
+        </record>
+        <record id="town_coronel_moldes" model="cristal.agent.circuit.town">
+            <field name="name">Coronel Moldes</field>
+            <field name="aliases">Moldes</field>
+            <field name="circuit_id" ref="circuit_sur_oeste"/>
+        </record>
+        <record id="town_vicuna_mackenna" model="cristal.agent.circuit.town">
+            <field name="name">Vicuña Mackenna</field>
+            <field name="aliases">Mackenna, Mackena, Makenna, Maqueda, Maquena, Vicuña Mackena, Vicuña Makenna, Vicuña Maqueda, Vicuña Maquena, Vicuña</field>
+            <field name="circuit_id" ref="circuit_sur_oeste"/>
+        </record>
+        <record id="town_tosquita" model="cristal.agent.circuit.town">
+            <field name="name">Tosquita</field>
+            <field name="circuit_id" ref="circuit_sur_oeste"/>
+        </record>
+        <record id="town_malena" model="cristal.agent.circuit.town">
+            <field name="name">Malena</field>
+            <field name="circuit_id" ref="circuit_sur_oeste"/>
+        </record>
+
+        <!-- ═══════════ NORTE (1ra salida jue 22/10/2026) ═══════════ -->
+        <record id="circuit_norte" model="cristal.agent.circuit">
+            <field name="name">Norte</field>
+            <field name="sequence">2</field>
+            <field name="weekday">3</field>
+            <field name="first_departure_date">2026-10-22</field>
+            <field name="partner_category_id" search="[('name', '=', 'Ruta Norte')]"/>
+        </record>
+        <record id="town_espinillo" model="cristal.agent.circuit.town">
+            <field name="name">Espinillo</field>
+            <field name="circuit_id" ref="circuit_norte"/>
+        </record>
+        <record id="town_coronel_baigorria" model="cristal.agent.circuit.town">
+            <field name="name">Coronel Baigorria</field>
+            <field name="aliases">Baigorria, Baygorría, Baygorria</field>
+            <field name="circuit_id" ref="circuit_norte"/>
+        </record>
+        <record id="town_alcira_gigena" model="cristal.agent.circuit.town">
+            <field name="name">Alcira Gigena</field>
+            <field name="aliases">Alcira, Gigena</field>
+            <field name="circuit_id" ref="circuit_norte"/>
+        </record>
+        <record id="town_elena" model="cristal.agent.circuit.town">
+            <field name="name">Elena</field>
+            <field name="circuit_id" ref="circuit_norte"/>
+        </record>
+        <record id="town_berrotaran" model="cristal.agent.circuit.town">
+            <field name="name">Berrotarán</field>
+            <field name="circuit_id" ref="circuit_norte"/>
+        </record>
+        <record id="town_general_cabrera" model="cristal.agent.circuit.town">
+            <field name="name">General Cabrera</field>
+            <field name="aliases">Cabrera</field>
+            <field name="circuit_id" ref="circuit_norte"/>
+        </record>
+        <record id="town_general_deheza" model="cristal.agent.circuit.town">
+            <field name="name">General Deheza</field>
+            <field name="aliases">Deheza</field>
+            <field name="circuit_id" ref="circuit_norte"/>
+        </record>
+        <record id="town_las_perdices" model="cristal.agent.circuit.town">
+            <field name="name">Las Perdices</field>
+            <field name="circuit_id" ref="circuit_norte"/>
+        </record>
+        <record id="town_dalmacio_velez" model="cristal.agent.circuit.town">
+            <field name="name">Dalmacio Vélez</field>
+            <field name="aliases">Dalmacio Velez Sarsfield, Dalmacio Vélez Sarsfield, Dalmacio</field>
+            <field name="circuit_id" ref="circuit_norte"/>
+        </record>
+        <record id="town_carnerillo" model="cristal.agent.circuit.town">
+            <field name="name">Carnerillo</field>
+            <field name="aliases">Carnillo</field>
+            <field name="circuit_id" ref="circuit_norte"/>
+        </record>
+        <record id="town_chucul" model="cristal.agent.circuit.town">
+            <field name="name">Chucul</field>
+            <field name="circuit_id" ref="circuit_norte"/>
+        </record>
+
+        <!-- ═══════════ ESTE (1ra salida jue 29/10/2026) ═══════════ -->
+        <record id="circuit_este" model="cristal.agent.circuit">
+            <field name="name">Este</field>
+            <field name="sequence">3</field>
+            <field name="weekday">3</field>
+            <field name="first_departure_date">2026-10-29</field>
+            <field name="partner_category_id" search="[('name', '=', 'Ruta Este')]"/>
+        </record>
+        <record id="town_las_acequias" model="cristal.agent.circuit.town">
+            <field name="name">Las Acequias</field>
+            <field name="circuit_id" ref="circuit_este"/>
+        </record>
+        <record id="town_reduccion" model="cristal.agent.circuit.town">
+            <field name="name">Reducción</field>
+            <field name="circuit_id" ref="circuit_este"/>
+        </record>
+        <record id="town_alejandro_roca" model="cristal.agent.circuit.town">
+            <field name="name">Alejandro Roca</field>
+            <field name="circuit_id" ref="circuit_este"/>
+        </record>
+        <record id="town_la_carlota" model="cristal.agent.circuit.town">
+            <field name="name">La Carlota</field>
+            <field name="circuit_id" ref="circuit_este"/>
+        </record>
+        <record id="town_chazon" model="cristal.agent.circuit.town">
+            <field name="name">Chazón</field>
+            <field name="circuit_id" ref="circuit_este"/>
+        </record>
+        <record id="town_ucacha" model="cristal.agent.circuit.town">
+            <field name="name">Ucacha</field>
+            <field name="circuit_id" ref="circuit_este"/>
+        </record>
+        <record id="town_bengolea" model="cristal.agent.circuit.town">
+            <field name="name">Bengolea</field>
+            <field name="circuit_id" ref="circuit_este"/>
+        </record>
+        <record id="town_olaeta" model="cristal.agent.circuit.town">
+            <field name="name">Olaeta</field>
+            <field name="circuit_id" ref="circuit_este"/>
+        </record>
+        <record id="town_charras" model="cristal.agent.circuit.town">
+            <field name="name">Charras</field>
+            <field name="circuit_id" ref="circuit_este"/>
+        </record>
+
+        <!-- ═══════════ SUR-ESTE (1ra salida jue 05/11/2026) ═══════════ -->
+        <record id="circuit_sur_este" model="cristal.agent.circuit">
+            <field name="name">Sur-Este</field>
+            <field name="sequence">4</field>
+            <field name="weekday">3</field>
+            <field name="first_departure_date">2026-11-05</field>
+            <field name="partner_category_id" search="[('name', '=', 'Ruta Sur-Este')]"/>
+        </record>
+        <record id="town_san_basilio" model="cristal.agent.circuit.town">
+            <field name="name">San Basilio</field>
+            <field name="circuit_id" ref="circuit_sur_este"/>
+        </record>
+        <record id="town_adelia_maria" model="cristal.agent.circuit.town">
+            <field name="name">Adelia María</field>
+            <field name="aliases">Adelia, Aleria María, Aleria Maria</field>
+            <field name="circuit_id" ref="circuit_sur_este"/>
+        </record>
+        <record id="town_monte_de_los_gauchos" model="cristal.agent.circuit.town">
+            <field name="name">Monte de los Gauchos</field>
+            <field name="aliases">Monte los Gauchos</field>
+            <field name="circuit_id" ref="circuit_sur_este"/>
+        </record>
+
+    </data>
+</odoo>

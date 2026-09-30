@@ -24,6 +24,15 @@ from ..tool_registry import ToolRegistry
 _logger = logging.getLogger(__name__)
 
 
+class _RouteBelowMin(Exception):
+    """Pedido de ruta por debajo del mínimo: dispara el rollback del savepoint
+    (no se crea nada). args[0] = dict con el detalle para responderle al bot."""
+
+
+def _fmt_money(value):
+    return '${:,.0f}'.format(value or 0).replace(',', '.')
+
+
 @ToolRegistry.register
 class CreateSaleOrder(AgentTool):
     name = "create_sale_order"
@@ -143,6 +152,176 @@ class CreateSaleOrder(AgentTool):
                 product = Product.search([('name', 'ilike', name), ('sale_ok', '=', True)], limit=1)
         return product
 
+    # ───────────────────────── Ruta del camión (v1.32) ─────────────────────────
+    def _route_context(self, env, config, partner):
+        """Clasifica al partner para la ruta. El circuito del partner (etiqueta o
+        manual) manda sobre la ciudad."""
+        info = env['cristal.agent.circuit'].sudo().classify_city(partner.city)
+        circuit = partner.truck_circuit_id or (
+            info['circuit'] if info['kind'] == 'circuit' else False)
+        canonical = info.get('canonical') or partner.city
+        if circuit:
+            return {'kind': 'circuit', 'circuit': circuit, 'canonical': canonical,
+                    'departure': circuit.get_next_departure()}
+        if info['kind'] == 'rio_cuarto':
+            return {'kind': 'rio_cuarto', 'canonical': canonical}
+        return {'kind': 'fuera_zona', 'canonical': canonical}
+
+    def _freight_product(self, env, config):
+        if config.route_freight_product_id:
+            return config.route_freight_product_id
+        return env['product.product'].sudo().search(
+            [('default_code', '=', 'FLETE-ZONA')], limit=1)
+
+    def _route_tag(self, env, circuit):
+        """Etiqueta de orden (crm.tag) del circuito, ej: 'Ruta Sur-Oeste'."""
+        Tag = env['crm.tag'].sudo()
+        name = f"Ruta {circuit.name}"
+        return Tag.search([('name', '=', name)], limit=1) or Tag.create({'name': name})
+
+    def _apply_route(self, env, config, route_ctx, order):
+        """Aplica las reglas de la ruta sobre la orden (dentro del savepoint).
+        Mínimo y envío gratis se miden sobre el subtotal de PRODUCTOS sin IVA,
+        después de la lista y SIN la línea de flete. Devuelve un dict; si
+        'below_min' viene en True, el llamador hace rollback."""
+        circuit = route_ctx['circuit']
+        departure = route_ctx.get('departure')
+        freight_product = self._freight_product(env, config)
+
+        # Idempotente: en un re-cotizado los umbrales pueden cambiar → se saca el
+        # flete anterior y se recalcula.
+        if freight_product:
+            order.order_line.filtered(lambda l: l.product_id == freight_product).unlink()
+        product_lines = order.order_line.filtered(
+            lambda l: not freight_product or l.product_id != freight_product)
+        product_subtotal = sum(product_lines.mapped('price_subtotal'))
+
+        rescate = bool(departure and departure.state == 'rescate')
+        free_from = (departure.rescue_free_shipping_from if rescate
+                     else config.route_free_shipping_from)
+        block = {
+            'circuit': circuit.name,
+            'town': route_ctx['canonical'],
+            'departure_id': departure.id if departure else False,
+            'delivery_date': departure.date.isoformat() if departure else None,
+            'product_subtotal': product_subtotal,
+            'min_order': config.route_min_order,
+            'free_shipping_from': free_from,
+            'rescate': rescate,
+            'lines': [{'product': l.product_id.display_name, 'qty': l.product_uom_qty,
+                       'subtotal': l.price_subtotal} for l in product_lines],
+        }
+        if product_subtotal < config.route_min_order:
+            block['below_min'] = True
+            block['missing'] = config.route_min_order - product_subtotal
+            return block
+
+        freight = 0.0
+        if product_subtotal < free_from and freight_product:
+            freight = config.route_freight_amount
+            order.write({'order_line': [(0, 0, {
+                'product_id': freight_product.id, 'product_uom_qty': 1,
+                'price_unit': freight, 'discount': 0.0})]})
+            # Última palabra sobre el flete: la Lista Mayorista tiene una regla global
+            # de -20% (item 9740) que Odoo podría aplicar como precio o como descuento.
+            order.order_line.filtered(lambda l: l.product_id == freight_product).write(
+                {'price_unit': freight, 'discount': 0.0})
+        block['freight'] = freight
+        block['missing_for_free_shipping'] = (free_from - product_subtotal) if freight else 0.0
+
+        vals = {'route_departure_id': departure.id if departure else False,
+                'tag_ids': [(4, self._route_tag(env, circuit).id)]}
+        if departure:
+            vals['commitment_date'] = departure.get_commitment_datetime()
+        order.write(vals)
+        if rescate and departure.courtesy_product_id:
+            block['courtesy_product'] = departure.courtesy_product_id.display_name
+        return block
+
+    def _route_below_min_response(self, block, sin_stock, problems):
+        return {
+            "ok": False,
+            "blocked_route_min": True,
+            "order_created": False,
+            "circuit": block['circuit'],
+            "product_subtotal": block['product_subtotal'],
+            "min_order": block['min_order'],
+            "missing": block['missing'],
+            "lines": block['lines'],
+            "sin_stock": sin_stock or None,
+            "problems": problems or None,
+            "message_for_bot": (
+                f"NO creé la cotización: los productos suman "
+                f"{_fmt_money(block['product_subtotal'])} + IVA y el pedido mínimo de la "
+                f"ruta ({block['circuit']}) es {_fmt_money(block['min_order'])} + IVA (sin "
+                f"contar flete). Faltan {_fmt_money(block['missing'])}. NO pierdas la venta: "
+                f"sugerí productos complementarios para completar el mínimo y volvé a "
+                f"llamar create_sale_order con la lista completa."),
+        }
+
+    def _route_result_fields(self, block):
+        out = {
+            "route": True,
+            "circuit": block['circuit'],
+            "town": block['town'],
+            "delivery_date": block.get('delivery_date'),
+            "product_subtotal": block['product_subtotal'],
+            "freight": block['freight'],
+            "free_shipping_from": block['free_shipping_from'],
+            "missing_for_free_shipping": block['missing_for_free_shipping'] or None,
+            "rescate": block['rescate'],
+            "courtesy_product": block.get('courtesy_product'),
+        }
+        freight_txt = (f"flete {_fmt_money(block['freight'])} + IVA (faltan "
+                       f"{_fmt_money(block['missing_for_free_shipping'])} de productos para "
+                       f"que el envío sea sin cargo)" if block['freight']
+                       else "envío sin cargo")
+        out["route_note"] = (
+            f"Pedido de ruta ({block['circuit']}): productos "
+            f"{_fmt_money(block['product_subtotal'])} + IVA, {freight_txt}. "
+            + ("Salida en RESCATE: ofrecé el producto de cortesía. "
+               if block['rescate'] and block.get('courtesy_product') else "")
+            + "La fecha de paso y el cierre de preventa salen de get_route_info: no "
+              "prometas otra. Ya escalé el pedido a Joaco.")
+        return out
+
+    def _escalate_route_order(self, env, run, partner, order, route_ctx, block):
+        departure = route_ctx.get('departure')
+        dep_txt = departure.date.strftime('%d/%m') if departure else 'SIN SALIDA PROGRAMADA'
+        freight_txt = _fmt_money(block['freight']) if block['freight'] else 'sin cargo'
+        msg = (
+            f"🚚 Pedido de ruta {order.name} — {partner.name} ({block['town']}, circuito "
+            f"{block['circuit']}). Productos {_fmt_money(block['product_subtotal'])} + IVA, "
+            f"flete {freight_txt}, entrega jueves {dep_txt}. Queda en borrador para revisar.")
+        self._escalate(env, run, partner, msg)
+
+    def _escalate_fuera_zona(self, env, run, partner, order, route_ctx):
+        msg = (
+            f"📍 {partner.name} es de {route_ctx['canonical']}, FUERA de los circuitos de "
+            f"la ruta. Cotización {order.name} en borrador: definí cómo le llega "
+            f"(retiro en Río Cuarto o transporte a su cargo).")
+        self._escalate(env, run, partner, msg)
+
+    def _escalate(self, env, run, partner, msg):
+        tool = ToolRegistry.get('escalate_to_joaco')
+        if not tool:
+            return
+        try:
+            tool.execute(env=env, run=run, message=msg, related_partner_id=partner.id)
+        except Exception as e:
+            _logger.warning("No pude escalar el pedido de ruta a Joaco: %s", e)
+
+    def _mark_fuera_zona(self, env, partner):
+        vals = {}
+        if partner.agent_zone != 'fuera_zona':
+            vals['agent_zone'] = 'fuera_zona'
+        fz_tag = env['res.partner.category'].sudo().search(
+            [('name', '=', 'Fuera de zona')], limit=1)
+        if fz_tag and fz_tag not in partner.category_id:
+            vals['category_id'] = [(4, fz_tag.id)]
+        if vals:
+            partner.write(vals)
+
     # ─────────────────────────────── Main ───────────────────────────────
     def _execute(self, env, run=None, partner_id=None, lines=None,
                  pricelist_name='Lista Mayorista', note=None,
@@ -153,6 +332,40 @@ class CreateSaleOrder(AgentTool):
         partner = env['res.partner'].sudo().browse(int(partner_id))
         if not partner.exists():
             return {"error": f"partner_id={partner_id} no existe"}
+
+        # ── RUTA DEL CAMIÓN (v1.32): la localidad es obligatoria para cotizar ──
+        config = env['cristal.agent.config'].sudo().get_active()
+        route_ctx = None
+        if config and config.enable_truck_route:
+            if not (partner.city or '').strip():
+                return {
+                    "ok": False,
+                    "needs_city": True,
+                    "blocked_no_city": True,
+                    "message_for_bot": (
+                        "NO puedo cotizar sin la LOCALIDAD del cliente. Preguntale de qué "
+                        "localidad es su comercio y guardala con update_partner(city=...). "
+                        "Después volvé a llamar create_sale_order."),
+                }
+            route_ctx = self._route_context(env, config, partner)
+
+        # ── GUARDRAIL: el 20% es SOLO de PRIMERA compra ──
+        # Bug real (caso Ariel, 3ra compra): el bot aplicó el 20% de primera compra
+        # a un cliente que YA había comprado. No se puede confiar en que el LLM
+        # infiera "primera compra": la tool valida el historial. Si el cliente ya
+        # tiene ventas confirmadas y se pasó un descuento tipo primera compra
+        # (>=15%), se BLOQUEA y se cotiza a precio de nivel normal.
+        prev_purchases = env['sale.order'].sudo().search_count([
+            ('partner_id', '=', partner.id),
+            ('state', 'in', ['sale', 'done']),
+        ])
+        first_purchase_blocked = False
+        if prev_purchases > 0 and discount_percent and float(discount_percent) >= 15:
+            first_purchase_blocked = True
+            _logger.info(
+                "🚫 20%% de primera compra BLOQUEADO: %s ya tiene %s compra(s) "
+                "confirmada(s).", partner.name, prev_purchases)
+            discount_percent = None
 
         Pricelist = env['product.pricelist'].sudo()
         pricelist = Pricelist.search([('name', '=', pricelist_name)], limit=1)
@@ -170,6 +383,7 @@ class CreateSaleOrder(AgentTool):
         fixed_price_pids = set()  # productos con precio de promo cerrado (no 20%)
         problems = []
         sin_stock = []
+        bidon_adjustments = []  # granel redondeado a múltiplo de 20 L (bidones)
         for i, ln in enumerate(lines):
             qty = float(ln.get('qty', 0))
             if qty <= 0:
@@ -181,13 +395,17 @@ class CreateSaleOrder(AgentTool):
                     f"Línea {i+1}: no encontré el producto "
                     f"(id={ln.get('product_id')}, name={ln.get('product_name')})")
                 continue
-            # Mínimo a granel 20 L — SIN excepción
-            if self._es_granel(product) and qty < self.GRANEL_MIN_L:
-                problems.append(
-                    f"'{product.display_name}': el mínimo a granel es "
-                    f"{self.GRANEL_MIN_L} L por producto SIN excepción "
-                    f"(pediste {qty:g}). Subí a {self.GRANEL_MIN_L} L o más.")
-                continue
+            # Granel: se vende en BIDONES de 20 L → la cantidad DEBE ser múltiplo
+            # de 20 (no existe medio bidón: nada de 10, 30, 50). Si no lo es (o es
+            # < 20), la redondeamos HACIA ARRIBA al próximo múltiplo de 20 y avisamos.
+            if self._es_granel(product):
+                mult = self.GRANEL_MIN_L
+                adj = int(-(-qty // mult)) * mult  # ceil(qty/mult) * mult
+                if adj != qty:
+                    bidon_adjustments.append(
+                        f"{product.display_name}: {qty:g} L → {adj} L "
+                        f"(granel en bidones de {mult} L)")
+                    qty = float(adj)
             # Stock (solo distribución/secos)
             disp = self._disponibilidad(product)
             if disp is not None and disp <= 0:
@@ -209,104 +427,119 @@ class CreateSaleOrder(AgentTool):
                 "sin_stock": sin_stock or None,
             }
 
-        # 2) Oportunidad + cotización ÚNICA (reusar borrador si existe)
-        Lead = env['crm.lead'].sudo()
-        opp = Lead.search([
-            ('partner_id', '=', partner.id),
-            ('type', '=', 'opportunity'),
-            ('active', '=', True),
-            ('stage_id', 'not in', [4, 13]),
-        ], limit=1, order='create_date desc')
-        if not opp:
-            opp = Lead.create({
-                'name': partner.name or 'Cliente mayorista',
-                'partner_id': partner.id,
-                'type': 'opportunity',
-                'agent_managed': True,
-            })
-
-        SaleOrder = env['sale.order'].sudo()
-        order = SaleOrder.search([
-            ('opportunity_id', '=', opp.id),
-            ('state', '=', 'draft'),
-        ], order='create_date desc', limit=1)
-
+        # 2) Oportunidad + cotización ÚNICA (reusar borrador si existe).
+        # Todo va dentro de un SAVEPOINT: si es un pedido de ruta que no llega al
+        # mínimo, se hace rollback y NO queda nada creado (ni orden ni oportunidad).
+        # Así el subtotal sin IVA sale del cálculo real de Odoo, no de una simulación.
+        route_block = None
         try:
-            if order:
-                # Mergear en el borrador existente (una sola cotización)
-                for product, qty, fixed_price in resolved:
-                    existing = order.order_line.filtered(
-                        lambda l: l.product_id.id == product.id)
-                    if existing:
-                        existing[0].product_uom_qty = qty
-                        if fixed_price is not None:
-                            existing[0].price_unit = fixed_price
-                            existing[0].discount = 0.0
-                        elif discount_percent:
-                            existing[0].discount = float(discount_percent)
-                    else:
+            with env.cr.savepoint():
+                Lead = env['crm.lead'].sudo()
+                opp = Lead.search([
+                    ('partner_id', '=', partner.id),
+                    ('type', '=', 'opportunity'),
+                    ('active', '=', True),
+                    ('stage_id', 'not in', [4, 13]),
+                ], limit=1, order='create_date desc')
+                if not opp:
+                    opp = Lead.create({
+                        'name': partner.name or 'Cliente mayorista',
+                        'partner_id': partner.id,
+                        'type': 'opportunity',
+                        'agent_managed': True,
+                    })
+
+                SaleOrder = env['sale.order'].sudo()
+                order = SaleOrder.search([
+                    ('opportunity_id', '=', opp.id),
+                    ('state', '=', 'draft'),
+                ], order='create_date desc', limit=1)
+
+                if order:
+                    # Mergear en el borrador existente (una sola cotización)
+                    for product, qty, fixed_price in resolved:
+                        existing = order.order_line.filtered(
+                            lambda l: l.product_id.id == product.id)
+                        if existing:
+                            existing[0].product_uom_qty = qty
+                            if fixed_price is not None:
+                                existing[0].price_unit = fixed_price
+                                existing[0].discount = 0.0
+                            elif discount_percent:
+                                existing[0].discount = float(discount_percent)
+                        else:
+                            vals_line = {'product_id': product.id, 'product_uom_qty': qty}
+                            if fixed_price is not None:
+                                vals_line['price_unit'] = fixed_price
+                            elif discount_percent:
+                                vals_line['discount'] = float(discount_percent)
+                            order.write({'order_line': [(0, 0, vals_line)]})
+                    reused = True
+                else:
+                    order_lines = []
+                    for product, qty, fixed_price in resolved:
                         vals_line = {'product_id': product.id, 'product_uom_qty': qty}
                         if fixed_price is not None:
                             vals_line['price_unit'] = fixed_price
                         elif discount_percent:
                             vals_line['discount'] = float(discount_percent)
-                        order.write({'order_line': [(0, 0, vals_line)]})
-                reused = True
-            else:
-                order_lines = []
-                for product, qty, fixed_price in resolved:
-                    vals_line = {'product_id': product.id, 'product_uom_qty': qty}
-                    if fixed_price is not None:
-                        vals_line['price_unit'] = fixed_price
-                    elif discount_percent:
-                        vals_line['discount'] = float(discount_percent)
-                    order_lines.append((0, 0, vals_line))
-                order = SaleOrder.create({
-                    'partner_id': partner.id,
-                    'pricelist_id': pricelist.id,
-                    'order_line': order_lines,
-                    'state': 'draft',
-                })
-                reused = False
+                        order_lines.append((0, 0, vals_line))
+                    order = SaleOrder.create({
+                        'partner_id': partner.id,
+                        'pricelist_id': pricelist.id,
+                        'order_line': order_lines,
+                        'state': 'draft',
+                    })
+                    reused = False
 
-            # ── GARANTÍA: Lista Mayorista SIEMPRE ──
-            # Odoo pisa el pricelist del pedido con el del partner (pricelist_id se
-            # recomputa desde partner_id). Bug real: partners CF re-etiquetados
-            # mayorista (ej. Sandra) tenían L.C 1 → la cotización salía con precios
-            # de consumidor final. Forzamos la Lista Mayorista, recomputamos el
-            # precio de cada línea desde esa lista, y reaplicamos el descuento
-            # (cambiar el pricelist lo resetea). Las líneas con precio FIJO de promo
-            # se saltean (mantienen su precio cerrado).
-            if order.pricelist_id.id != pricelist.id:
-                order.pricelist_id = pricelist.id
-                for line in order.order_line:
-                    if line.product_id.id in fixed_price_pids:
-                        continue
-                    try:
-                        line.price_unit = pricelist._get_product_price(
-                            line.product_id, line.product_uom_qty or 1.0)
-                    except Exception:
-                        pass
-            if discount_percent and order.order_line:
-                # El 20% (u otro %) NO se aplica a las líneas con precio de promo cerrado.
-                order.order_line.filtered(
-                    lambda l: l.product_id.id not in fixed_price_pids
-                ).write({'discount': float(discount_percent)})
+                # ── GARANTÍA: Lista Mayorista SIEMPRE ──
+                # Odoo pisa el pricelist del pedido con el del partner (pricelist_id se
+                # recomputa desde partner_id). Bug real: partners CF re-etiquetados
+                # mayorista (ej. Sandra) tenían L.C 1 → la cotización salía con precios
+                # de consumidor final. Forzamos la Lista Mayorista, recomputamos el
+                # precio de cada línea desde esa lista, y reaplicamos el descuento
+                # (cambiar el pricelist lo resetea). Las líneas con precio FIJO de promo
+                # se saltean (mantienen su precio cerrado).
+                if order.pricelist_id.id != pricelist.id:
+                    order.pricelist_id = pricelist.id
+                    for line in order.order_line:
+                        if line.product_id.id in fixed_price_pids:
+                            continue
+                        try:
+                            line.price_unit = pricelist._get_product_price(
+                                line.product_id, line.product_uom_qty or 1.0)
+                        except Exception:
+                            pass
+                if discount_percent and order.order_line:
+                    # El 20% (u otro %) NO se aplica a las líneas con precio de promo cerrado.
+                    order.order_line.filtered(
+                        lambda l: l.product_id.id not in fixed_price_pids
+                    ).write({'discount': float(discount_percent)})
 
-            # Forzar el precio fijo de promo por si Odoo lo recomputó desde el
-            # pricelist al setear product/pricelist (última palabra sobre esas líneas).
-            if fixed_price_pids:
-                for product, qty, fixed_price in resolved:
-                    if fixed_price is None:
-                        continue
-                    fp_lines = order.order_line.filtered(
-                        lambda l: l.product_id.id == product.id)
-                    if fp_lines:
-                        fp_lines.write({'price_unit': fixed_price, 'discount': 0.0})
+                # Forzar el precio fijo de promo por si Odoo lo recomputó desde el
+                # pricelist al setear product/pricelist (última palabra sobre esas líneas).
+                if fixed_price_pids:
+                    for product, qty, fixed_price in resolved:
+                        if fixed_price is None:
+                            continue
+                        fp_lines = order.order_line.filtered(
+                            lambda l: l.product_id.id == product.id)
+                        if fp_lines:
+                            fp_lines.write({'price_unit': fixed_price, 'discount': 0.0})
 
-            if note:
-                order.note = note
-            order.opportunity_id = opp.id
+                if note:
+                    order.note = note
+                order.opportunity_id = opp.id
+
+                # ── Ruta del camión: mínimo, flete, fecha de entrega, salida, etiqueta ──
+                if route_ctx and route_ctx['kind'] == 'circuit':
+                    route_block = self._apply_route(env, config, route_ctx, order)
+                    if route_block.get('below_min'):
+                        # Rollback del savepoint: no queda orden ni oportunidad creada.
+                        raise _RouteBelowMin(route_block)
+        except _RouteBelowMin as e:
+            env.invalidate_all()
+            return self._route_below_min_response(e.args[0], sin_stock, problems)
         except Exception as e:
             _logger.exception("Error creando/actualizando sale.order: %s", e)
             return {"error": f"No se pudo armar la cotización: {e}"}
@@ -329,7 +562,9 @@ class CreateSaleOrder(AgentTool):
         except Exception:
             pass
 
-        # 4) Mínimo de compra (piso duro + upsell)
+        # 4) Mínimo de compra (piso duro + upsell). En RUTA el mínimo ya se validó en
+        #    el savepoint (sobre subtotal de productos sin IVA ni flete): no se repite.
+        is_route = bool(route_block)
         total = order.amount_total
         line_details = [{
             'product': l.product_id.display_name,
@@ -338,7 +573,7 @@ class CreateSaleOrder(AgentTool):
             'subtotal': l.price_subtotal,
         } for l in order.order_line]
 
-        if total < self.COMPRA_PISO:
+        if not is_route and total < self.COMPRA_PISO:
             return {
                 "ok": False,
                 "blocked_min_compra": True,
@@ -357,7 +592,7 @@ class CreateSaleOrder(AgentTool):
             }
 
         upsell = None
-        if total < self.COMPRA_MIN:
+        if not is_route and total < self.COMPRA_MIN:
             falta = self.COMPRA_MIN - total
             upsell = (
                 f"El total va ${total:,.0f}. La compra mínima es ${self.COMPRA_MIN:,.0f} "
@@ -378,7 +613,7 @@ class CreateSaleOrder(AgentTool):
                 f"Faltan ${falta_s:,.0f} para llegar a ${SAMPLES_THRESHOLD:,.0f} y "
                 f"ganar 3 MUESTRAS GRATIS de productos que no lleva. Usalo de upsell.")
 
-        return {
+        result = {
             "ok": True,
             "order_id": order.id,
             "order_name": order.name,
@@ -392,6 +627,34 @@ class CreateSaleOrder(AgentTool):
             "sin_stock": sin_stock or None,
             "upsell": upsell,
             "samples_hint": samples_hint,
+            "previous_purchases": prev_purchases,
+            "first_purchase_blocked": first_purchase_blocked,
+            "first_purchase_note": (
+                f"⚠️ Este cliente YA compró {prev_purchases} vez/veces: NO corresponde el "
+                f"20% de primera compra, lo saqué. Está cotizado a precio de nivel normal. "
+                f"NO le digas que le aplicaste el 20% ni menciones 'primera compra'."
+            ) if first_purchase_blocked else None,
+            # Resumen LITERAL del pedido real (para que el bot lo copie TEXTUAL y NO
+            # invente productos/total de memoria — caso Silvia: dijo 6 productos y
+            # $64.732 cuando el pedido real tenía 4 productos + bidones y $59.400).
+            "client_summary": (
+                "\n".join(
+                    f"• {d['qty']:g} {d['product']} — ${d['subtotal']:,.0f}"
+                    for d in line_details)
+                + f"\nTOTAL: ${order.amount_total:,.0f}"
+            ),
+            "client_summary_note": (
+                "⚠️ OBLIGATORIO: detallá al cliente EXACTAMENTE lo que dice `client_summary` "
+                "(esos productos, esas cantidades y ese TOTAL), TEXTUAL. PROHIBIDO agregar "
+                "productos, cambiar cantidades o recalcular el total de memoria. El total "
+                "es SIEMPRE el de esta tool; el detalle fiel es el PDF (adjuntalo siempre)."
+            ),
+            "bidon_adjustments": bidon_adjustments or None,
+            "bidon_note": (
+                "Ajusté cantidades de granel al múltiplo de 20 L (se vende en bidones "
+                "de 20 L, no hay fracciones): " + "; ".join(bidon_adjustments)
+                + ". Avisale al cliente el ajuste."
+            ) if bidon_adjustments else None,
             "problems": problems if problems else None,
             "summary": (
                 f"Cotización {order.name} ({'actualizada' if reused else 'nueva'}, draft) "
@@ -400,3 +663,20 @@ class CreateSaleOrder(AgentTool):
                 f"{'⚠️ SIN STOCK: ' + ', '.join(sin_stock) if sin_stock else ''} "
                 f"Pasale order_id={order.id} a generate_quote_pdf."),
         }
+
+        # 5) Ruta del camión: condiciones de envío + escalamiento a Joaco
+        if is_route:
+            result.update(self._route_result_fields(route_block))
+            self._escalate_route_order(env, run, partner, order, route_ctx, route_block)
+        elif route_ctx and route_ctx['kind'] == 'rio_cuarto':
+            result['route_note'] = (
+                "Cliente de Río Cuarto: reparto normal SOLO por la mañana y NO los jueves "
+                "(ese día sale el camión de la ruta). No ofrezcas entrega en jueves.")
+        elif route_ctx and route_ctx['kind'] == 'fuera_zona':
+            self._mark_fuera_zona(env, partner)
+            self._escalate_fuera_zona(env, run, partner, order, route_ctx)
+            result['route_note'] = (
+                f"{route_ctx['canonical']} está FUERA de los 4 circuitos de la ruta. NO "
+                f"ofrezcas condiciones de envío (ni mínimo de ruta, ni flete, ni fecha): ya "
+                f"escalé a Joaco para que defina cómo le llega.")
+        return result
