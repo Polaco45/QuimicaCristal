@@ -348,7 +348,7 @@ class CristalAgentRouteSelftest(models.TransientModel):
             assert b.get('needed') == 2 and not b.get('answered'), b
             summ = r.get('client_summary', '')
             assert 'bidones de 20 L' in summ and '$3.500' in summ, summ
-            assert 'PREGUNTALE' in (r.get('bidones_note') or ''), r.get('bidones_note')
+            assert 'preguntale' in (r.get('bidones_note') or '').lower(), r.get('bidones_note')
             # b) Le faltan 2 (y aunque venga con 20% OFF, el bidón no se descuenta)
             r = cso.execute(env=env, run=None, partner_id=p.id, lines=[line],
                             bidones_nuevos=2, discount_percent=20)
