@@ -442,12 +442,12 @@ class CristalAgentConfig(models.Model):
     # ─────────── Bidones de 20 L (v1.33) ───────────
     bidon_product_id = fields.Many2one(
         'product.product', string="Producto bidón nuevo (20 L)",
-        help="Producto que se cobra cuando el cliente no trae bidones vacíos para el "
+        help="Producto que se cobra cuando el cliente no tiene bidones vacíos para el "
              "recambio ([DA0355] Bidón Plástico 20 lts).")
     bidon_price = fields.Float(
         string="Precio del bidón nuevo", default=3500.0,
-        help="Precio de cada bidón de 20 L nuevo. Si el cliente trae sus bidones "
-             "vacíos para el recambio, no se cobra.")
+        help="Precio de cada bidón de 20 L nuevo. Si el cliente canjea sus bidones "
+             "vacíos con tapa (al recibir el envío o al retirar), no se cobra.")
 
     rc_no_delivery_weekday = fields.Integer(
         string="Río Cuarto sin reparto — día", default=3,

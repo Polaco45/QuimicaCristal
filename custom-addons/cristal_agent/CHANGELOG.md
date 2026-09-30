@@ -7,6 +7,23 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.33.1] — 2026-09-30
+
+### Fixed — Bidones: el recambio es un canje, no "traerlos"
+
+Joaco aclaró que el recambio es general: con envío, el cliente recibe los bidones
+con producto y en ese momento entrega sus bidones vacíos **con tapa**; si retira, los
+lleva a la planta. Solo si no tiene vacíos para canjear se cobra el bidón nuevo
+($3.500). Antes los textos decían "si trae sus bidones", que a un cliente con envío
+le da a entender que tiene que acercarlos.
+
+- `create_sale_order` (resumen y nota), aviso automático al enviar, `search_products`
+  y prompt v7: redacción de canje, con tapa, según envío o retiro.
+- Migración 1.33.1: recarga el prompt y corrige el texto de bidones en la KB #89,
+  #102 y #16.
+
+---
+
 ## [18.0.1.33.0] — 2026-09-30
 
 ### Fixed — Claridad con el cliente: reglas de oro
