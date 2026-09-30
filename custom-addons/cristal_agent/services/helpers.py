@@ -32,6 +32,13 @@ _RE_AFTER_GREETING = re.compile(
 _RE_OPENER_START = re.compile(
     r'(^|>)\s*¡?\s*' + _TONE_OPENERS + r'\s*!*[.,]?\s*(\w)?',
     re.IGNORECASE)
+# Muletilla al inicio de una ORACIÓN (después de . ! ?): "Soy Claudio de Química
+# Cristal. Perfecto, te doy los precios" → "... Cristal. Te doy los precios".
+# Exige puntuación después de la palabra (forma de muletilla), para no tocar un
+# adjetivo real que arranca oración ("Excelente calidad la de este jabón").
+_RE_OPENER_SENTENCE = re.compile(
+    r'([.!?]\s+)¡?\s*' + _TONE_OPENERS + r'\s*!*[,.!]\s*(\w)?',
+    re.IGNORECASE)
 
 
 def _cap_after_start(m):
@@ -50,6 +57,7 @@ def sanitize_tone(body_html):
     txt = _RE_DALE_OPENER.sub('Dale', body_html)
     txt = _RE_AFTER_GREETING.sub(r'\1.', txt)
     txt = _RE_OPENER_START.sub(_cap_after_start, txt)
+    txt = _RE_OPENER_SENTENCE.sub(_cap_after_start, txt)
     return txt
 
 
