@@ -7,6 +7,30 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.35.0] — 2026-10-02
+
+### Changed — La ruta del camión sale los MIÉRCOLES (antes jueves)
+
+Joaco ya cambió por MCP la config (Río Cuarto sin reparto = miércoles; cierre de
+preventa lunes 18 h) y las plantillas 252-257.
+
+- Circuitos: miércoles; primeras salidas Sur-Oeste 14/10, Norte 21/10, Este 28/10,
+  Sur-Este 4/11. Migración: genera las salidas de los miércoles (12 semanas), pasa las
+  cotizaciones en borrador de las salidas de jueves al miércoles anterior (con
+  commitment_date nuevo), borra las salidas de jueves sin pedidos y, si alguna tiene
+  pedidos confirmados, NO la borra y avisa a Joaco por el canal interno.
+- Rescate: se avisa el lunes y se confirma hasta el martes 12 h (día anterior a la
+  salida). Crons T-7 / T-1 / T+1 quedan miércoles previo / martes / jueves (son
+  relativos a la fecha de la salida).
+- Plantillas: el código busca `ruta_camion_rescate_lunes` y
+  `ruta_camion_confirmacion_de_entrega_martes` (los nombres viejos quedan de respaldo).
+- Textos del bot: el día sin reparto en Río Cuarto y el día de la ruta salen de la
+  config/circuitos (`rc_no_delivery_day`, `route_weekday`), no están más fijos.
+- KB #102 → "Ruta camión miércoles"; KB #89 (planta): sin reparto los miércoles.
+- Prompt v7: jueves/martes → miércoles/lunes. Autotest: fechas nuevas + caso 17.
+
+---
+
 ## [18.0.1.34.0] — 2026-10-02
 
 ### Fixed — Precios inventados

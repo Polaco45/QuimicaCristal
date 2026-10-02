@@ -50,7 +50,7 @@ class UpdatePartner(AgentTool):
                          'other', 'unknown'],
                 "description": "Zona de reparto. Si pasás city, se calcula sola (gana la "
                                "ciudad). 'rio_cuarto'/'las_higueras' = reparto normal; "
-                               "'ruta_camion' = localidad de un circuito del camión (jueves); "
+                               "'ruta_camion' = localidad de un circuito del camión; "
                                "'fuera_zona' = fuera de los circuitos (auto-etiqueta "
                                "'Fuera de zona').",
             },
@@ -197,6 +197,7 @@ class UpdatePartner(AgentTool):
         """Clasifica kwargs['city'] y deja en kwargs la ciudad canónica y la
         zona. Devuelve info para el resto del flujo. NUNCA pisa una etiqueta de
         circuito que el partner ya tenga (la fuente de verdad son las etiquetas)."""
+        from ..helpers import rc_no_delivery_day, route_weekday
         Circuit = env['cristal.agent.circuit'].sudo()
         info = Circuit.classify_city(kwargs['city'])
         if info['kind'] == 'empty':
@@ -226,15 +227,16 @@ class UpdatePartner(AgentTool):
             out.update(zone='ruta_camion', circuit_name=info['circuit'].name,
                        truck_circuit_id=info['circuit'].id,
                        note=f"{info['canonical']} está en el circuito "
-                            f"{info['circuit'].name} (ruta del camión, jueves). Usá "
+                            f"{info['circuit'].name} (ruta del camión, {route_weekday(env)}). Usá "
                             f"get_route_info para la fecha de paso. Cliente de pueblo: "
                             f"si es nuevo, tratalo de USTED.")
         elif info['kind'] == 'rio_cuarto':
             kwargs['agent_zone'] = ('las_higueras' if info['canonical'] == 'Las Higueras'
                                     else 'rio_cuarto')
             out.update(zone=kwargs['agent_zone'],
-                       note="Río Cuarto: reparto por la mañana, NO los jueves (el retiro "
-                            "en planta el jueves sí se puede, en el horario oficial).")
+                       note=f"Río Cuarto: reparto por la mañana, NO los "
+                            f"{rc_no_delivery_day(env)} (el retiro en planta ese día sí "
+                            f"se puede, en el horario oficial).")
         else:  # fuera_zona
             kwargs['agent_zone'] = 'fuera_zona'
             out.update(zone='fuera_zona',

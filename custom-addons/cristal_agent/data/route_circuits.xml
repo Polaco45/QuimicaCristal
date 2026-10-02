@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Ruta del camión mayorista (v1.32): 4 circuitos que rotan los jueves.
+  Ruta del camión mayorista (v1.32): 4 circuitos que rotan los miércoles (v1.35; antes jueves).
   Sur-Oeste → Norte → Este → Sur-Este, cada circuito cada 4 semanas.
   noupdate="1": las ediciones manuales (alias, fechas) no se pisan al actualizar.
   La etiqueta de contacto se resuelve por NOMBRE (35/32/50/51 en prod).
@@ -8,12 +8,12 @@
 <odoo>
     <data noupdate="1">
 
-        <!-- ═══════════ SUR-OESTE (1ra salida jue 15/10/2026) ═══════════ -->
+        <!-- ═══════════ SUR-OESTE (1ra salida mié 14/10/2026) ═══════════ -->
         <record id="circuit_sur_oeste" model="cristal.agent.circuit">
             <field name="name">Sur-Oeste</field>
             <field name="sequence">1</field>
-            <field name="weekday">3</field>
-            <field name="first_departure_date">2026-10-15</field>
+            <field name="weekday">2</field>
+            <field name="first_departure_date">2026-10-14</field>
             <field name="partner_category_id" search="[('name', '=', 'Ruta Sur-Oeste')]"/>
         </record>
         <record id="town_holmberg" model="cristal.agent.circuit.town">
@@ -66,12 +66,12 @@
             <field name="circuit_id" ref="circuit_sur_oeste"/>
         </record>
 
-        <!-- ═══════════ NORTE (1ra salida jue 22/10/2026) ═══════════ -->
+        <!-- ═══════════ NORTE (1ra salida mié 21/10/2026) ═══════════ -->
         <record id="circuit_norte" model="cristal.agent.circuit">
             <field name="name">Norte</field>
             <field name="sequence">2</field>
-            <field name="weekday">3</field>
-            <field name="first_departure_date">2026-10-22</field>
+            <field name="weekday">2</field>
+            <field name="first_departure_date">2026-10-21</field>
             <field name="partner_category_id" search="[('name', '=', 'Ruta Norte')]"/>
         </record>
         <record id="town_espinillo" model="cristal.agent.circuit.town">
@@ -125,12 +125,12 @@
             <field name="circuit_id" ref="circuit_norte"/>
         </record>
 
-        <!-- ═══════════ ESTE (1ra salida jue 29/10/2026) ═══════════ -->
+        <!-- ═══════════ ESTE (1ra salida mié 28/10/2026) ═══════════ -->
         <record id="circuit_este" model="cristal.agent.circuit">
             <field name="name">Este</field>
             <field name="sequence">3</field>
-            <field name="weekday">3</field>
-            <field name="first_departure_date">2026-10-29</field>
+            <field name="weekday">2</field>
+            <field name="first_departure_date">2026-10-28</field>
             <field name="partner_category_id" search="[('name', '=', 'Ruta Este')]"/>
         </record>
         <record id="town_las_acequias" model="cristal.agent.circuit.town">
@@ -170,12 +170,12 @@
             <field name="circuit_id" ref="circuit_este"/>
         </record>
 
-        <!-- ═══════════ SUR-ESTE (1ra salida jue 05/11/2026) ═══════════ -->
+        <!-- ═══════════ SUR-ESTE (1ra salida mié 04/11/2026) ═══════════ -->
         <record id="circuit_sur_este" model="cristal.agent.circuit">
             <field name="name">Sur-Este</field>
             <field name="sequence">4</field>
-            <field name="weekday">3</field>
-            <field name="first_departure_date">2026-11-05</field>
+            <field name="weekday">2</field>
+            <field name="first_departure_date">2026-11-04</field>
             <field name="partner_category_id" search="[('name', '=', 'Ruta Sur-Este')]"/>
         </record>
         <record id="town_san_basilio" model="cristal.agent.circuit.town">

@@ -149,6 +149,19 @@ def fmt_day(d):
     return f"{WEEKDAYS_ES[d.weekday()]} {d.strftime('%d/%m')}"
 
 
+def rc_no_delivery_day(env):
+    """Día sin reparto en Río Cuarto (sale el camión de la ruta), de la config.
+    v1.35: la ruta pasó de jueves a miércoles; los textos salen de acá."""
+    config = env['cristal.agent.config'].sudo().get_active()
+    return WEEKDAYS_ES[int(config.rc_no_delivery_weekday) % 7] if config else 'miércoles'
+
+
+def route_weekday(env):
+    """Día de salida del camión (el de los circuitos activos)."""
+    circuit = env['cristal.agent.circuit'].sudo().search([('active', '=', True)], limit=1)
+    return WEEKDAYS_ES[int(circuit.weekday)] if circuit and circuit.weekday else 'miércoles'
+
+
 def date_context_ar(env, now=None):
     """Calendario listo para el prompt: hoy, mañana y pasado mañana con su día de
     la semana ya calculado (Haiku se equivoca si tiene que calcularlo solo)."""

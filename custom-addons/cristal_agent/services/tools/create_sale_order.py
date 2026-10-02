@@ -384,12 +384,13 @@ class CreateSaleOrder(AgentTool):
 
     def _escalate_route_order(self, env, run, partner, order, route_ctx, block):
         departure = route_ctx.get('departure')
-        dep_txt = departure.date.strftime('%d/%m') if departure else 'SIN SALIDA PROGRAMADA'
+        from ..helpers import fmt_day
+        dep_txt = fmt_day(departure.date) if departure else 'SIN SALIDA PROGRAMADA'
         freight_txt = _fmt_money(block['freight']) if block['freight'] else 'sin cargo'
         msg = (
             f"🚚 Pedido de ruta {order.name} — {partner.name} ({block['town']}, circuito "
             f"{block['circuit']}). Productos {_fmt_money(block['product_subtotal'])}, "
-            f"flete {freight_txt}, entrega jueves {dep_txt}. Queda en borrador para revisar.")
+            f"flete {freight_txt}, entrega {dep_txt}. Queda en borrador para revisar.")
         self._escalate(env, run, partner, msg)
 
     def _escalate_fuera_zona(self, env, run, partner, order, route_ctx):
@@ -780,10 +781,13 @@ class CreateSaleOrder(AgentTool):
             result.update(self._route_result_fields(route_block))
             self._escalate_route_order(env, run, partner, order, route_ctx, route_block)
         elif route_ctx and route_ctx['kind'] == 'rio_cuarto':
+            from ..helpers import rc_no_delivery_day
+            no_day = rc_no_delivery_day(env)
             result['route_note'] = (
-                "Cliente de Río Cuarto: reparto normal SOLO por la mañana y NO los jueves "
-                "(ese día sale el camión de la ruta). No ofrezcas ENTREGA en jueves; el "
-                "RETIRO en planta el jueves SÍ se puede, en el horario oficial.")
+                f"Cliente de Río Cuarto: reparto normal SOLO por la mañana y NO los "
+                f"{no_day.upper()} (ese día sale el camión de la ruta). No ofrezcas ENTREGA "
+                f"el {no_day}; el RETIRO en planta el {no_day} SÍ se puede, en el horario "
+                f"oficial.")
         elif route_ctx and route_ctx['kind'] == 'fuera_zona':
             self._mark_fuera_zona(env, partner)
             self._escalate_fuera_zona(env, run, partner, order, route_ctx)

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Salidas de la ruta del camión — un registro por jueves de cada circuito.
+Salidas de la ruta del camión — un registro por salida (miércoles desde v1.35) de cada circuito.
 
 Las salidas NO se calculan al vuelo: se generan como registros (`generate_upcoming`)
 para poder darles estado (preventa / rescate / confirmada / postergada / realizada),
@@ -8,8 +8,8 @@ postergarlas (cambiar la fecha), activar el Plan B (rescate: envío gratis desde
 $75.000 + producto de cortesía) y acumular el monto de preventa.
 
 Comunicación (plantillas de WhatsApp de la cuenta Crilimp, pendientes de Meta):
-- ruta_aviso_paso / ruta_rescate: se disparan A MANO desde la salida, en tandas de 25.
-- ruta_confirmacion_entrega (T-1), ruta_proxima_pasada (T+1): crons, creados
+- ruta_aviso_paso / ruta_camion_rescate_lunes: se disparan A MANO desde la salida, en tandas de 25.
+- ruta_camion_confirmacion_de_entrega_martes (T-1), ruta_proxima_pasada (T+1): crons, creados
   INACTIVOS hasta que Meta apruebe las plantillas.
 - ruta_salida_reprogramada: a mano, al postergar.
 """
@@ -25,11 +25,21 @@ _logger = logging.getLogger(__name__)
 
 DEFAULT_TZ = 'America/Argentina/Cordoba'
 BATCH_SIZE = 25
-# El rescate (Plan B) cierra el miércoles a las 12 h: así lo dice la plantilla
-# 'ruta_rescate' ("Si nos confirma hasta mañana miércoles a las 12 h").
+# El rescate (Plan B) cierra el día anterior a la salida (martes) a las 12 h: así lo dice la plantilla
+# 'ruta_camion_rescate_lunes' ("Si nos confirma hasta mañana martes a las 12 h").
 RESCUE_CUTOFF_DAYS_BEFORE = 1
 RESCUE_CUTOFF_HOUR = 12
 DEFAULT_PAYMENT_TEXT = 'transferencia anticipada o efectivo contra entrega'
+# Nombres técnicos de las plantillas (v1.35: Joaco renombró dos al pasar la ruta a
+# los miércoles). Se prueba en orden: el nombre nuevo primero y el viejo de respaldo.
+TEMPLATE_NAMES = {
+    'aviso': ('ruta_aviso_paso',),
+    'rescate': ('ruta_camion_rescate_lunes', 'ruta_rescate'),
+    'confirmacion': ('ruta_camion_confirmacion_de_entrega_martes',
+                     'ruta_confirmacion_entrega'),
+    'proxima': ('ruta_proxima_pasada',),
+    'reprogramada': ('ruta_salida_reprogramada',),
+}
 
 
 def _fmt_money(value):
@@ -48,7 +58,7 @@ class CristalAgentRouteDeparture(models.Model):
     name = fields.Char(compute='_compute_name', store=True)
     circuit_id = fields.Many2one(
         'cristal.agent.circuit', required=True, ondelete='cascade', index=True)
-    date = fields.Date(string="Fecha de salida (jueves)", required=True, index=True)
+    date = fields.Date(string="Fecha de salida", required=True, index=True)
     original_date = fields.Date(
         string="Fecha original", readonly=True, copy=False,
         help="Se completa sola la primera vez que se cambia la fecha (postergación).")
@@ -130,15 +140,15 @@ class CristalAgentRouteDeparture(models.Model):
 
     def get_preventa_cutoff(self):
         """Cierre para tomar pedidos de esta salida, como datetime naive UTC.
-        - Preventa: el martes (config) a las 18:00 hora Córdoba previo a la salida.
-        - Rescate: el miércoles a las 12:00 (lo que promete la plantilla de rescate)."""
+        - Preventa: el lunes (config) a las 18:00 hora Córdoba previo a la salida.
+        - Rescate: el día anterior (martes) a las 12:00 (lo que promete la plantilla de rescate)."""
         self.ensure_one()
         if self.state == 'rescate':
             day = self.date - timedelta(days=RESCUE_CUTOFF_DAYS_BEFORE)
             return self._local_to_utc(day, RESCUE_CUTOFF_HOUR)
         config = self.env['cristal.agent.config'].sudo().get_active()
         # Sin `or default`: lunes = 0 y medianoche = 0.0 son valores válidos.
-        cutoff_weekday = int(config.route_preventa_cutoff_weekday) % 7 if config else 1
+        cutoff_weekday = int(config.route_preventa_cutoff_weekday) % 7 if config else 0
         cutoff_hour = float(config.route_preventa_cutoff_hour) if config else 18.0
         day = self.date - timedelta(days=1)
         while day.weekday() != cutoff_weekday:
@@ -146,7 +156,7 @@ class CristalAgentRouteDeparture(models.Model):
         return self._local_to_utc(day, cutoff_hour)
 
     def get_commitment_datetime(self):
-        """Entrega comprometida: el jueves de la salida a las 09:00 hora Córdoba
+        """Entrega comprometida: el día de la salida a las 09:00 hora Córdoba
         (repartimos por la mañana), como datetime naive UTC."""
         self.ensure_one()
         return self._local_to_utc(self.date, 9.0)
@@ -187,15 +197,21 @@ class CristalAgentRouteDeparture(models.Model):
         return self.generate_upcoming(weeks=12)
 
     # ───────────────────────── Envío de plantillas ─────────────────────────
-    def _send_template(self, partner, template_name, values_by_index):
-        """Manda una plantilla de la ruta. values_by_index = {n: valor} para cada
-        {{n}} del cuerpo. Solo se pasan las variables free_text de la plantilla (las
-        de campo, como el nombre, las completa Odoo solo). Devuelve (ok, error)."""
+    def _send_template(self, partner, kind, values_by_index):
+        """Manda una plantilla de la ruta (kind = clave de TEMPLATE_NAMES).
+        values_by_index = {n: valor} para cada {{n}} del cuerpo. Solo se pasan las
+        variables free_text de la plantilla (las de campo, como el nombre, las
+        completa Odoo solo). Devuelve (ok, error)."""
         from ..services.tool_registry import ToolRegistry
         Template = self.env['whatsapp.template'].sudo()
-        template = Template.search([('template_name', '=', template_name)], limit=1)
+        template = Template
+        for template_name in TEMPLATE_NAMES[kind]:
+            template = Template.search([('template_name', '=', template_name)], limit=1)
+            if template:
+                break
         if not template:
-            return False, f"No existe la plantilla {template_name}"
+            return False, f"No existe la plantilla {' / '.join(TEMPLATE_NAMES[kind])}"
+        template_name = template.template_name
         free_vars = template.variable_ids.filtered(
             lambda v: v.field_type == 'free_text' and v.line_type == 'body')
         ordered = sorted(free_vars, key=lambda v: int(''.join(
@@ -234,9 +250,9 @@ class CristalAgentRouteDeparture(models.Model):
         mensaje (aviso de paso o rescate). Se dispara a mano, tanda por tanda."""
         self.ensure_one()
         if kind == 'aviso':
-            template_name, done_field = 'ruta_aviso_paso', 'aviso_partner_ids'
+            kind_tpl, done_field = 'aviso', 'aviso_partner_ids'
         else:
-            template_name, done_field = 'ruta_rescate', 'rescate_partner_ids'
+            kind_tpl, done_field = 'rescate', 'rescate_partner_ids'
             if self.state != 'rescate':
                 raise UserError("El rescate solo se manda con la salida en estado Rescate.")
         pending = self._circuit_contacts() - self[done_field]
@@ -249,7 +265,7 @@ class CristalAgentRouteDeparture(models.Model):
             city = partner.city or self.circuit_id.name
             values = {1: partner.name, 2: _ddmm(self.date), 3: city,
                       4: cutoff.strftime('%d/%m')}
-            ok, err = self._send_template(partner, template_name, values)
+            ok, err = self._send_template(partner, kind_tpl, values)
             if ok:
                 sent |= partner
             else:
@@ -285,7 +301,7 @@ class CristalAgentRouteDeparture(models.Model):
         for partner in partners:
             values = {1: partner.name, 2: partner.city or self.circuit_id.name,
                       3: _ddmm(self.original_date), 4: _ddmm(self.date)}
-            ok, err = self._send_template(partner, 'ruta_salida_reprogramada', values)
+            ok, err = self._send_template(partner, 'reprogramada', values)
             if ok:
                 sent += 1
             else:
@@ -302,7 +318,7 @@ class CristalAgentRouteDeparture(models.Model):
     # ───────────────────────── Crons (inactivos hasta aprobación Meta) ─────────────────────────
     @api.model
     def _cron_aviso_ready(self):
-        """T-7: avisa en el canal interno que el aviso de paso está listo para
+        """T-7 (miércoles previo): avisa en el canal interno que el aviso de paso está listo para
         dispararse (NO manda WhatsApp: el envío es manual, en tandas de 25)."""
         target = self._local_today() + timedelta(days=7)
         deps = self.search([('date', '=', target), ('state', 'in', ('preventa', 'rescate'))])
@@ -320,7 +336,7 @@ class CristalAgentRouteDeparture(models.Model):
 
     @api.model
     def _cron_confirmations(self):
-        """T-1 (miércoles): confirma la entrega a las órdenes confirmadas de la salida."""
+        """T-1 (martes): confirma la entrega a las órdenes confirmadas de la salida."""
         target = self._local_today() + timedelta(days=1)
         for dep in self.search([('date', '=', target), ('state', '!=', 'realizada')]):
             for order in dep.order_ids.filtered(lambda o: o.state in ('sale', 'done')):
@@ -329,14 +345,14 @@ class CristalAgentRouteDeparture(models.Model):
                           3: partner.city or dep.circuit_id.name,
                           4: _fmt_money(order.amount_total),
                           5: order.payment_term_id.name or DEFAULT_PAYMENT_TEXT}
-                ok, err = dep._send_template(partner, 'ruta_confirmacion_entrega', values)
+                ok, err = dep._send_template(partner, 'confirmacion', values)
                 if not ok:
                     _logger.warning("Confirmación de ruta %s a %s falló: %s",
                                     dep.name, partner.name, err)
 
     @api.model
     def _cron_next_pass(self):
-        """T+1 (viernes): a quienes recibieron, agenda la próxima pasada."""
+        """T+1 (jueves): a quienes recibieron, agenda la próxima pasada."""
         target = self._local_today() - timedelta(days=1)
         for dep in self.search([('date', '=', target)]):
             nxt = dep.circuit_id.get_next_departure()
@@ -348,7 +364,7 @@ class CristalAgentRouteDeparture(models.Model):
             for partner in partners:
                 values = {1: partner.name, 2: partner.city or dep.circuit_id.name,
                           3: _ddmm(nxt.date), 4: cutoff.strftime('%d/%m')}
-                ok, err = dep._send_template(partner, 'ruta_proxima_pasada', values)
+                ok, err = dep._send_template(partner, 'proxima', values)
                 if not ok:
                     _logger.warning("Próxima pasada %s a %s falló: %s",
                                     dep.name, partner.name, err)

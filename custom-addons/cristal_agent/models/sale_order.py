@@ -28,7 +28,7 @@ _ADVANCEABLE_PHASES = (
 class SaleOrder(models.Model):
     _inherit = 'sale.order'
 
-    # Ruta del camión (v1.32): salida (jueves) a la que va esta orden.
+    # Ruta del camión (v1.32): salida (miércoles desde v1.35) a la que va esta orden.
     route_departure_id = fields.Many2one(
         'cristal.agent.route.departure', string="Salida de ruta (camión)",
         index=True, copy=False, ondelete='set null',

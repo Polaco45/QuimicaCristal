@@ -29,10 +29,10 @@ def _fmt_money(value):
 class GetRouteInfo(AgentTool):
     name = "get_route_info"
     description = (
-        "Info REAL de la ruta del camión mayorista (sale los jueves a pueblos de la "
+        "Info REAL de la ruta del camión mayorista (sale los miércoles a pueblos de la "
         "zona) para un cliente (partner_id) o una ciudad (city). Devuelve: si es Río "
         "Cuarto, un circuito de la ruta o fuera de zona; la PRÓXIMA SALIDA (fecha del "
-        "jueves) y el CIERRE DE PREVENTA (martes 18 h); el pedido mínimo, el flete y "
+        "miércoles) y el CIERRE DE PREVENTA (lunes 18 h); el pedido mínimo, el flete y "
         "desde cuánto el envío es gratis; y una frase sugerida para el cliente. "
         "Llamala SIEMPRE antes de hablar de fechas/envío con un cliente de pueblo. "
         "NUNCA prometas una fecha que no salga de acá."
@@ -75,7 +75,7 @@ class GetRouteInfo(AgentTool):
 
         if not circuit and info.get('kind') == 'rio_cuarto':
             no_day = WEEKDAYS_ES[int(config.rc_no_delivery_weekday) % 7] if config \
-                else 'jueves'
+                else 'miércoles'
             return {
                 "ok": True, "zone": "rio_cuarto", "city": info['canonical'],
                 "no_delivery_weekday": no_day,
