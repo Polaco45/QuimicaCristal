@@ -301,7 +301,7 @@ class CreateSaleOrder(AgentTool):
             'min_order': config.route_min_order,
             'free_shipping_from': free_from,
             'rescate': rescate,
-            'lines': [{'product': l.product_id.display_name, 'qty': l.product_uom_qty,
+            'lines': [{'product': l.product_id.display_name, 'qty': l.product_uom_qty, 'price_unit': l.price_unit,
                        'subtotal': l.price_subtotal} for l in product_lines],
         }
         if product_subtotal < config.route_min_order:

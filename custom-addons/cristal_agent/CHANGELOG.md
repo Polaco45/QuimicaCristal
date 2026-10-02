@@ -7,6 +7,27 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.34.0] — 2026-10-02
+
+### Fixed — Precios inventados
+
+Caso real (02/10): un cliente pidió precios de jabones líquidos y detergentes;
+Claudio le pasó Ariel y Skip a granel a $720/L (el precio del detergente Magistral)
+cuando la Lista Mayorista los tenía a $664 y $656. La búsqueda "jabón líquido" no
+traía los jabones a granel (se llaman "Jabon B/E ... a granel", sin "líquido").
+
+- `search_products`: búsqueda sin importar acentos y **catálogo mayorista primero**
+  por la palabra clave ("jabón líquido" → Jabon B/E Ariel/Skip/Extra a granel);
+  instrucción explícita de usar solo precios de la lista devuelta.
+- **Control de precios al enviar:** `send_whatsapp` no manda un mensaje con un precio
+  por litro de un producto que no salió de las herramientas en esa conversación (o
+  con un precio que no coincide; se admiten 20% de 1ra compra, niveles y precios de
+  ofertas vigentes). El bot tiene que buscarlo; si vuelve a fallar, manda sin esos
+  precios y avisa a Joaco.
+- Prompt v7: regla 6 reforzada. Autotest: +2 casos (búsqueda de jabón, control).
+
+---
+
 ## [18.0.1.33.1] — 2026-09-30
 
 ### Fixed — Bidones: el recambio es un canje, no "traerlos"
