@@ -89,7 +89,7 @@
                     <button name="action_send_rescate_batch" type="object"
                             string="Rescate (tanda de 25)"
                             invisible="state != 'rescate'"
-                            confirm="Se van a mandar hasta 25 mensajes de WhatsApp (plantilla ruta_rescate). ¿Enviamos?"/>
+                            confirm="Se van a mandar hasta 25 mensajes de WhatsApp (plantilla de rescate). ¿Enviamos?"/>
                     <button name="action_send_rescheduled" type="object"
                             string="Avisar reprogramación"
                             invisible="not original_date"

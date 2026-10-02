@@ -100,7 +100,7 @@ class CristalAgentRouteSelftest(models.TransientModel):
             return
 
         # Salidas fijas para el caso del 29/09/2026 (idempotente).
-        for circ, d in ((so, date(2026, 10, 15)), (este, date(2026, 10, 29))):
+        for circ, d in ((so, date(2026, 10, 14)), (este, date(2026, 10, 28))):
             dep = Dep.search([('circuit_id', '=', circ.id), ('date', '=', d)], limit=1)
             if not dep:
                 dep = Dep.create({'circuit_id': circ.id, 'date': d})
@@ -132,9 +132,9 @@ class CristalAgentRouteSelftest(models.TransientModel):
         def freight_lines(order):
             return order.order_line.filtered(lambda l: l.product_id == freight)
 
-        next_thu = date.today() + timedelta(days=14)
-        while next_thu.weekday() != 3:
-            next_thu += timedelta(days=1)
+        next_dep = date.today() + timedelta(days=14)
+        while next_dep.weekday() != 2:  # miércoles (v1.35)
+            next_dep += timedelta(days=1)
 
         # 1) Normalización
         def c_normalizacion():
@@ -161,16 +161,16 @@ class CristalAgentRouteSelftest(models.TransientModel):
         def c_fechas():
             ref = self._utc_from_local(date(2026, 9, 29), 12)
             d = so.get_next_departure(ref)
-            assert d and d.date == date(2026, 10, 15), f"Sampacho: {d.date if d else None}"
+            assert d and d.date == date(2026, 10, 14), f"Sampacho: {d.date if d else None}"
             cl = d.get_cutoff_local()
-            assert (cl.date(), cl.hour, cl.minute) == (date(2026, 10, 13), 18, 0), (
+            assert (cl.date(), cl.hour, cl.minute) == (date(2026, 10, 12), 18, 0), (
                 f"Cierre Sampacho: {cl}")
             d2 = este.get_next_departure(ref)
-            assert d2 and d2.date == date(2026, 10, 29), f"Ucacha: {d2.date if d2 else None}"
+            assert d2 and d2.date == date(2026, 10, 28), f"Ucacha: {d2.date if d2 else None}"
             p = mk_partner('InfoSampacho', 'Sampacho')
             gi = gri.execute(env=env, run=None, partner_id=p.id)
             assert gi.get('zone') == 'ruta_camion' and gi.get('circuit') == 'Sur-Oeste', gi
-            return "Sampacho → jue 15/10 (cierre mar 13/10 18 h); Ucacha → jue 29/10"
+            return "Sampacho → mié 14/10 (cierre lun 12/10 18 h); Ucacha → mié 28/10"
         self._case(results, "2. Próxima salida (29/09/2026)", c_fechas)
 
         # 3) Pedido en Sampacho: $60k / $80k / $120k
@@ -195,7 +195,7 @@ class CristalAgentRouteSelftest(models.TransientModel):
                 f"commitment_date {order.commitment_date}")
             local_commit = pytz.utc.localize(order.commitment_date).astimezone(
                 pytz.timezone('America/Argentina/Cordoba'))
-            assert local_commit.weekday() == 3, "la entrega no cae jueves"
+            assert local_commit.weekday() == 2, "la entrega no cae miércoles"
             assert 'Ruta Sur-Oeste' in order.tag_ids.mapped('name'), "etiqueta de circuito"
             if channel:
                 esc = env['mail.message'].sudo().search_count([
@@ -207,7 +207,7 @@ class CristalAgentRouteSelftest(models.TransientModel):
             r = quote(p120, 120000)
             order = SaleOrder.browse(r['order_id'])
             assert r.get('ok') and not freight_lines(order), "$120.000 no lleva flete"
-            return "$60k no crea; $80k borrador + flete $9.000 + jueves + etiqueta + escalado; $120k sin flete"
+            return "$60k no crea; $80k borrador + flete $9.000 + miércoles + etiqueta + escalado; $120k sin flete"
         self._case(results, "3. Pedidos en Sampacho", c_pedidos)
 
         # 4) Mínimo y envío gratis SIN contar el flete
@@ -221,32 +221,32 @@ class CristalAgentRouteSelftest(models.TransientModel):
             return "$95.000 → flete → total s/IVA $104.000, sigue con flete"
         self._case(results, "4. Umbrales sin contar el flete", c_sin_flete)
 
-        # 5) Zona horaria: martes 17:59 entra, 18:01 pasa a la siguiente
+        # 5) Zona horaria: lunes 17:59 entra, 18:01 pasa a la siguiente
         def c_timezone():
             tc = Circuit.create({'name': 'ZZ Autotest TZ', 'sequence': 99,
-                                 'first_departure_date': next_thu})
-            d1 = Dep.create({'circuit_id': tc.id, 'date': next_thu})
-            d2 = Dep.create({'circuit_id': tc.id, 'date': next_thu + timedelta(days=28)})
+                                 'first_departure_date': next_dep})
+            d1 = Dep.create({'circuit_id': tc.id, 'date': next_dep})
+            d2 = Dep.create({'circuit_id': tc.id, 'date': next_dep + timedelta(days=28)})
             cl = d1.get_cutoff_local()
-            assert (cl.weekday(), cl.hour, cl.minute) == (1, 18, 0), f"cierre local {cl}"
+            assert (cl.weekday(), cl.hour, cl.minute) == (0, 18, 0), f"cierre local {cl}"
             cut = d1.get_preventa_cutoff()
             got1 = tc.get_next_departure(cut - timedelta(minutes=1))
             got2 = tc.get_next_departure(cut + timedelta(minutes=1))
             assert got1 == d1, f"17:59 → {got1.date if got1 else None}"
             assert got2 == d2, f"18:01 → {got2.date if got2 else None}"
-            return f"cierre mar {cl.strftime('%d/%m')} 18:00 (Córdoba); 17:59 entra, 18:01 pasa"
+            return f"cierre lun {cl.strftime('%d/%m')} 18:00 (Córdoba); 17:59 entra, 18:01 pasa"
         self._case(results, "5. Cierre de preventa y zona horaria", c_timezone)
 
         # 6) Rescate (Plan B)
         def c_rescate():
             rc_c = Circuit.create({'name': 'ZZ Autotest Rescate', 'sequence': 98,
-                                   'first_departure_date': next_thu})
+                                   'first_departure_date': next_dep})
             courtesy = env['product.product'].sudo().create(
                 {'name': 'ZZ Autotest Cortesía', 'type': 'consu', 'sale_ok': True})
-            dep = Dep.create({'circuit_id': rc_c.id, 'date': next_thu, 'state': 'rescate',
+            dep = Dep.create({'circuit_id': rc_c.id, 'date': next_dep, 'state': 'rescate',
                               'courtesy_product_id': courtesy.id})
             cl = dep.get_cutoff_local()
-            assert (cl.weekday(), cl.hour) == (2, 12), f"cierre rescate {cl}"
+            assert (cl.weekday(), cl.hour) == (1, 12), f"cierre rescate {cl}"
             p = mk_partner('Rescate', 'ZZ Pueblo', circuit=rc_c)
             r = quote(p, 80000)
             order = SaleOrder.browse(r['order_id'])
@@ -254,7 +254,7 @@ class CristalAgentRouteSelftest(models.TransientModel):
             assert r.get('courtesy_product'), "no ofrece cortesía"
             gi = gri.execute(env=env, run=None, partner_id=p.id)
             assert gi.get('free_shipping_from') == 75000 and gi.get('rescate'), gi
-            return "$80k sin flete (umbral $75.000), ofrece cortesía, cierre mié 12 h"
+            return "$80k sin flete (umbral $75.000), ofrece cortesía, cierre mar 12 h"
         self._case(results, "6. Rescate (Plan B)", c_rescate)
 
         # 7) Sin localidad
@@ -268,20 +268,20 @@ class CristalAgentRouteSelftest(models.TransientModel):
             return "no cotiza y pide la localidad"
         self._case(results, "7. Cliente sin localidad", c_sin_ciudad)
 
-        # 8) Río Cuarto nunca jueves
+        # 8) Río Cuarto nunca miércoles (v1.35)
         def c_rio_cuarto():
             p = mk_partner('RC', 'Rio Cuarto')
             gi = gri.execute(env=env, run=None, partner_id=p.id)
             assert gi.get('zone') == 'rio_cuarto' and 'departure_date' not in gi, gi
-            assert 'JUEVES' in gi.get('message_for_bot', ''), gi
+            assert 'MIÉRCOLES' in gi.get('message_for_bot', ''), gi
             r = quote(p, 80000)
             order = SaleOrder.browse(r['order_id'])
             assert r.get('ok') and not r.get('route'), r
-            assert 'jueves' in (r.get('route_note') or '').lower(), r.get('route_note')
+            assert 'miércoles' in (r.get('route_note') or '').lower(), r.get('route_note')
             assert not order.commitment_date and not order.route_departure_id, (
-                "a Río Cuarto no se le asigna salida de jueves")
-            return "sin salida de ruta y aviso de NO jueves"
-        self._case(results, "8. Río Cuarto nunca jueves", c_rio_cuarto)
+                "a Río Cuarto no se le asigna salida de ruta")
+            return "sin salida de ruta y aviso de NO miércoles"
+        self._case(results, "8. Río Cuarto nunca miércoles", c_rio_cuarto)
 
         # 9) Backfill: la etiqueta manda, la ciudad solo si no hay etiqueta
         def c_backfill():
@@ -442,3 +442,21 @@ class CristalAgentRouteSelftest(models.TransientModel):
                 assert not verify_prices(env, run, msg), f"bloqueó de más: {msg}"
             return "bloquea Ariel/Skip a $720 (inventados); deja Magistral $720, el 20% y frases sin producto"
         self._case(results, "16. Control de precios al enviar", c_control_precios)
+
+        # ───────────────────── Ruta de los miércoles (v1.35) ─────────────────────
+        # 17) Todas las salidas abiertas de los circuitos reales caen miércoles, y
+        #     Río Cuarto no tiene reparto ese día.
+        def c_miercoles():
+            from ..services.helpers import rc_no_delivery_day, route_weekday
+            real = Circuit.search([('active', '=', True), ('name', 'not ilike', 'ZZ Autotest')])
+            assert real and all(c.weekday == '2' for c in real), (
+                f"circuitos: {[(c.name, c.weekday) for c in real]}")
+            deps = Dep.search([('circuit_id', 'in', real.ids),
+                               ('date', '>=', date.today()),
+                               ('state', 'in', ('preventa', 'rescate'))])
+            bad = deps.filtered(lambda d: d.date.weekday() != 2)
+            assert deps and not bad, f"salidas que no caen miércoles: {bad.mapped('name')}"
+            assert rc_no_delivery_day(env) == 'miércoles', rc_no_delivery_day(env)
+            assert route_weekday(env) == 'miércoles', route_weekday(env)
+            return f"{len(deps)} salidas abiertas, todas miércoles; RC sin reparto el miércoles"
+        self._case(results, "17. Ruta de los miércoles", c_miercoles)

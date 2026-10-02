@@ -434,8 +434,8 @@ class CristalAgentConfig(models.Model):
         'product.product', string="Producto de flete",
         help="Producto servicio que se agrega como línea de flete (FLETE-ZONA).")
     route_preventa_cutoff_weekday = fields.Integer(
-        string="Cierre preventa — día", default=1,
-        help="Día de la semana del cierre de preventa (0=lunes … 6=domingo). Martes=1.")
+        string="Cierre preventa — día", default=0,
+        help="Día de la semana del cierre de preventa (0=lunes … 6=domingo). Lunes=0 (ruta de los miércoles).")
     route_preventa_cutoff_hour = fields.Float(
         string="Cierre preventa — hora", default=18.0,
         help="Hora (formato float, 18.0 = 18:00) del cierre de preventa, hora Córdoba.")
@@ -450,8 +450,8 @@ class CristalAgentConfig(models.Model):
              "vacíos con tapa (al recibir el envío o al retirar), no se cobra.")
 
     rc_no_delivery_weekday = fields.Integer(
-        string="Río Cuarto sin reparto — día", default=3,
-        help="Día en que NO hay reparto en Río Cuarto (por la ruta del camión). Jueves=3.")
+        string="Río Cuarto sin reparto — día", default=2,
+        help="Día en que NO hay reparto en Río Cuarto (por la ruta del camión). Miércoles=2.")
 
     # ─────────── Broadcast semanal de oferta (lunes 14hs) ───────────
     enable_weekly_offer_broadcast = fields.Boolean(

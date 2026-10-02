@@ -52,7 +52,7 @@ class ResPartner(models.Model):
     agent_zone = fields.Selection([
         ('rio_cuarto', 'Río Cuarto'),
         ('las_higueras', 'Las Higueras'),
-        ('ruta_camion', 'Ruta del camión (jueves)'),
+        ('ruta_camion', 'Ruta del camión'),
         ('fuera_zona', 'Fuera de zona (expansión futura)'),
         ('other', 'Otra (sin clasificar)'),
         ('unknown', 'No relevada'),
@@ -61,7 +61,7 @@ class ResPartner(models.Model):
              "para cuando expandamos. Se completa durante la calificación.")
 
     # ─────────── Ruta del camión mayorista (v1.32) ───────────
-    # Circuito de la ruta del camión (jueves). Se resuelve de la etiqueta de
+    # Circuito de la ruta del camión. Se resuelve de la etiqueta de
     # circuito ya cargada (35/32/50/51) o, si no tiene, de la ciudad normalizada.
     # Se puede fijar a mano. Al setearlo se AGREGA la etiqueta del circuito (nunca
     # se quitan otras etiquetas).
