@@ -25,6 +25,30 @@ SYNONYMS = {
 }
 
 
+# Palabras que no distinguen un producto (para buscar en el catálogo mayorista
+# por la palabra clave real: "jabón líquido para ropa" → "jabon").
+GENERIC_WORDS = {
+    'liquido', 'liquida', 'liquidos', 'liquidas', 'para', 'de', 'del', 'la', 'el',
+    'los', 'las', 'x', 'por', 'en', 'con', 'y', 'ropa', 'granel', 'precio',
+    'precios', 'litro', 'litros', 'lt', 'lts', 'bidon', 'bidones', 'producto',
+    'productos', 'mayorista', 'que', 'tenes', 'tienen', 'hay',
+}
+
+
+def _strip_accents(txt):
+    import unicodedata
+    txt = unicodedata.normalize('NFKD', txt or '')
+    return ''.join(c for c in txt if not unicodedata.combining(c))
+
+
+def _word_domain(word):
+    """Dominio para una palabra sin importar acentos: 'jabón' → jabón | jabon."""
+    plain = _strip_accents(word)
+    if plain.lower() == word.lower():
+        return [('name', 'ilike', word)]
+    return ['|', ('name', 'ilike', word), ('name', 'ilike', plain)]
+
+
 @ToolRegistry.register
 class SearchProducts(AgentTool):
     name = "search_products"
@@ -72,7 +96,10 @@ class SearchProducts(AgentTool):
         if exact:
             products = exact
         elif words:
-            word_domain = [('name', 'ilike', w) for w in words]
+            # v1.34: sin importar acentos ("jabón" encuentra "Jabon B/E Ariel").
+            word_domain = []
+            for w in words:
+                word_domain += _word_domain(w)
             products = Product.search(word_domain, limit=int(limit or 10))
         else:
             # query de 1 letra: usar ilike directo
@@ -102,6 +129,23 @@ class SearchProducts(AgentTool):
                 key = max(words, key=len)
                 products = Product.search(
                     [('sale_ok', '=', True), ('name', 'ilike', key)], limit=int(limit or 10))
+
+        # v1.34 — CATÁLOGO MAYORISTA PRIMERO. Caso real: "jabón líquido" no traía
+        # los jabones de ropa a granel ("Jabon B/E Ariel/Skip a granel": ninguno
+        # dice "líquido") y Claudio les inventó el precio del detergente. Ahora,
+        # con las palabras distintivas (sin "líquido", "para", "ropa"...), se
+        # buscan los productos del catálogo mayorista y van adelante.
+        if not exact and words:
+            distinct = [w for w in words
+                        if _strip_accents(w).lower() not in GENERIC_WORDS and len(w) > 2]
+            if distinct:
+                cat_domain = [('sale_ok', '=', True),
+                              ('product_tmpl_id.is_mayorista_catalog', '=', True)]
+                for w in distinct:
+                    cat_domain += _word_domain(w)
+                catalog = Product.search(cat_domain, limit=int(limit or 10))
+                if catalog:
+                    products = (catalog | products)[:int(limit or 10) + len(catalog)]
 
         # Pricelist: este bot es mayorista, así que el precio que cotizamos es el
         # de 'Lista Mayorista'. Si no existe, caemos a la del partner / list_price.
@@ -170,6 +214,16 @@ class SearchProducts(AgentTool):
                 f"canjear, cada bidón nuevo sale {price_txt}. Decíselo SIEMPRE cuando "
                 "hables de granel, aunque todavía no cotices.")
             msg = (msg + " " + reminder) if msg else reminder
+
+        # v1.34 — Precios: SOLO los de esta lista, del producto correcto (caso real:
+        # a Ariel y Skip les puso el precio del detergente porque no los encontró).
+        if results:
+            rule = ("PRECIOS: decí SOLO precios de productos que aparecen en ESTA lista, "
+                    "con ESTE precio. Si el cliente pide un producto que no está acá (ej: "
+                    "una marca), buscalo de nuevo con esa palabra (ej: 'ariel', 'skip'); "
+                    "NUNCA le pongas el precio de otro producto. Ofrecé primero los del "
+                    "catálogo mayorista (is_mayorista_catalog=true).")
+            msg = (msg + " " + rule) if msg else rule
 
         return {
             "ok": True,

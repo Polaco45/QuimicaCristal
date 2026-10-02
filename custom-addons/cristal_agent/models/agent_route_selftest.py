@@ -402,3 +402,43 @@ class CristalAgentRouteSelftest(models.TransientModel):
             assert ensure_bidones_notice(env, 0, ya) == ya, "duplicó el aviso"
             return "agrega el aviso si habla de granel sin bidones; no duplica ni ensucia"
         self._case(results, "14. Aviso de bidones al enviar", c_aviso_bidones)
+
+        # ───────────────────── Precios (v1.34) ─────────────────────
+        # 15) "jabón líquido" trae los jabones a granel del catálogo mayorista
+        def c_busqueda_jabon():
+            sp = ToolRegistry.get('search_products')
+            r = sp.execute(env=env, run=None, query='jabón líquido')
+            names = [p['name'] for p in r.get('products') or []]
+            granel = [n for n in names if 'granel' in n.lower() and 'jabon b/e' in n.lower()]
+            assert granel, f"no trajo jabones a granel: {names[:6]}"
+            assert names[0] in granel or r['products'][0]['is_mayorista_catalog'], (
+                f"el catálogo no va primero: {names[:3]}")
+            return f"trae {len(granel)} jabones B/E a granel primero ({granel[0]})"
+        self._case(results, "15. Búsqueda 'jabón líquido'", c_busqueda_jabon)
+
+        # 16) Control de precios al enviar (mensaje real del 02/10)
+        def c_control_precios():
+            import json as _json
+            from ..services.helpers import verify_prices
+            log = [{'tool_name': 'search_products', 'output': {'products': [
+                {'name': 'Jabon Liquido Ariel Platinum x 3 Lts', 'price': 10512},
+                {'name': 'Detergente Magistral Limón a granel', 'price': 720},
+                {'name': 'Detergente Magistral Marina a  granel', 'price': 720},
+                {'name': 'Jabon B/E Extra c/Desmanchador y sauv a granel', 'price': 600},
+            ]}}]
+            run = env['cristal.agent.run'].sudo().create({
+                'trigger': 'whatsapp_message', 'tool_calls_log': _json.dumps(log)})
+            real = ("<p><b>JABONES LÍQUIDOS (a granel):</b></p><p>• Jabon B/E Ariel: $720/L<br>"
+                    "• Jabon B/E Skip: $720/L</p><p>• Detergente Magistral Limón: $720/L<br>"
+                    "• Detergente Magistral Marina: $720/L</p>")
+            bad = verify_prices(env, run, real)
+            assert len(bad) == 2 and 'Ariel' in bad[0] and 'Skip' in bad[1], bad
+            ok_msgs = [
+                "<p>• Detergente Magistral Limón: $720/L</p>",
+                "<p>Con el 20% le queda el Magistral Limón a $576 el litro.</p>",
+                "<p>Te paso el precio: $408/L</p>",
+            ]
+            for msg in ok_msgs:
+                assert not verify_prices(env, run, msg), f"bloqueó de más: {msg}"
+            return "bloquea Ariel/Skip a $720 (inventados); deja Magistral $720, el 20% y frases sin producto"
+        self._case(results, "16. Control de precios al enviar", c_control_precios)

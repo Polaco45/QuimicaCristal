@@ -229,3 +229,108 @@ def ensure_bidones_notice(env, channel_id, body_html):
         f"lleno se entrega uno vacío de 20 L con tapa (si se lo enviamos, al recibir el "
         f"pedido; si retira, en la planta). Si no tiene vacíos para canjear, cada bidón "
         f"nuevo sale {price_txt}.</p>")
+
+
+# ─────────────────────── Control de precios al enviar (v1.34) ───────────────────────
+# Caso real (02/10): el cliente pidió precios de jabones; search_products no trajo
+# los jabones a granel y Claudio les puso "$720/L" (el precio del detergente).
+# Antes de mandar, cada precio POR LITRO del mensaje tiene que corresponder a un
+# producto que las tools devolvieron en esta corrida, con ese precio (o con un
+# descuento válido: 20% 1ra compra, 5%/10% de nivel) o a un precio de una oferta
+# vigente. Si no, el mensaje no sale y el bot tiene que buscar el producto.
+_RE_PRICE_PER_L = re.compile(
+    r'\$\s?(\d{1,3}(?:\.\d{3})*|\d+)(?:,\d+)?\s*'
+    r'(?:/\s*(?:l|lt|lts|litro)\b|(?:x|por|el)\s+(?:litro|lt|l)\b)',
+    re.IGNORECASE)
+_GENERIC_NAME_WORDS = {
+    'jabon', 'jabones', 'b', 'e', 'be', 'detergente', 'detergentes', 'liquido',
+    'liquidos', 'a', 'granel', 'de', 'del', 'el', 'la', 'los', 'las', 'x', 'l', 'lt',
+    'lts', 'litro', 'litros', 'para', 'ropa', 'y', 'c', 'con', 'en', 'por', 'precio',
+    'mayorista', 'sale', 'esta', 'cuesta', 'vale',
+}
+_ALLOWED_FACTORS = (1.0, 0.8, 0.95, 0.9)
+
+
+def _tokens(txt):
+    plain = _strip_accents(txt or '').lower()
+    return {w for w in re.findall(r'[a-z0-9]+', plain) if w not in _GENERIC_NAME_WORDS
+            and not w.isdigit()}
+
+
+def _known_prices_from_run(run):
+    """[(tokens_del_nombre, precio)] de lo que devolvieron las tools en esta corrida
+    y en las corridas del mismo cliente de las últimas 24 h (el cliente pregunta en
+    un mensaje y confirma en el siguiente)."""
+    import json
+    known = []
+    runs = run
+    if run.partner_id:
+        runs |= run.env['cristal.agent.run'].sudo().search([
+            ('partner_id', '=', run.partner_id.id), ('id', '!=', run.id),
+            ('create_date', '>=', datetime.now() - timedelta(hours=24)),
+        ], order='id desc', limit=10)
+    calls = []
+    for r in runs:
+        try:
+            calls += json.loads(r.tool_calls_log or '[]')
+        except Exception:
+            continue
+    for c in calls:
+        out = c.get('output') or {}
+        if not isinstance(out, dict):
+            continue
+        if c.get('tool_name') == 'search_products':
+            for p in out.get('products') or []:
+                known.append((_tokens(p.get('name')), float(p.get('price') or 0)))
+        elif c.get('tool_name') == 'create_sale_order':
+            for ln in out.get('lines') or []:
+                known.append((_tokens(ln.get('product')), float(ln.get('price_unit') or 0)))
+    return known
+
+
+def _offer_prices(env):
+    prices = set()
+    for off in env['cristal.agent.offer'].sudo().search([('active', '=', True)]):
+        for m in re.findall(r'\$\s?(\d{1,3}(?:\.\d{3})*|\d+)', off.description or ''):
+            prices.add(float(m.replace('.', '')))
+    return prices
+
+
+def verify_prices(env, run, body_html):
+    """Devuelve la lista de líneas con un precio por litro NO verificado (vacía = OK)."""
+    if not run or not body_html:
+        return []
+    plain = re.sub(r'<\s*(br|/p|/li)\s*/?>', '\n', body_html, flags=re.IGNORECASE)
+    plain = re.sub(r'<[^>]+>', ' ', plain)
+    known = _known_prices_from_run(run)
+    # Vocabulario de productos: nombres del catálogo mayorista + lo que devolvieron
+    # las tools. Solo se controla un precio si el texto nombra un producto real
+    # (así "Te paso el precio: $408/L" no se bloquea por "te paso").
+    vocab = set()
+    for toks, _p in known:
+        vocab |= toks
+    catalog = env['product.product'].sudo().search(
+        [('sale_ok', '=', True), ('product_tmpl_id.is_mayorista_catalog', '=', True)])
+    for prod in catalog:
+        vocab |= _tokens(prod.name)
+    offers = None
+    problems = []
+    for line in plain.split('\n'):
+        prev_end = 0
+        for m in _RE_PRICE_PER_L.finditer(line):
+            price = float(m.group(1).replace('.', ''))
+            # Solo el tramo entre el precio anterior y este (dos precios por línea).
+            segment = line[prev_end:m.start()].split('•')[-1]
+            prev_end = m.end()
+            mention = _tokens(segment) & vocab
+            if not mention:
+                continue  # no nombra un producto: no se puede controlar
+            candidates = [p for toks, p in known if toks & mention]
+            ok = any(abs(price - p * f) <= 1.0 for p in candidates for f in _ALLOWED_FACTORS)
+            if not ok:
+                if offers is None:
+                    offers = _offer_prices(env)
+                ok = price in offers
+            if not ok:
+                problems.append(line.strip()[:160])
+    return problems
