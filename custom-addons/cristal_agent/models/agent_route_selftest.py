@@ -460,3 +460,18 @@ class CristalAgentRouteSelftest(models.TransientModel):
             assert route_weekday(env) == 'miércoles', route_weekday(env)
             return f"{len(deps)} salidas abiertas, todas miércoles; RC sin reparto el miércoles"
         self._case(results, "17. Ruta de los miércoles", c_miercoles)
+        # ───────────────────── Sin muestras gratis (v1.34.1) ─────────────────────
+        # 18) Joaco sacó la promo de 3 muestras gratis con compras de +$60.000: la
+        #     herramienta no existe más y el cotizador no la sugiere.
+        def c_sin_muestras():
+            assert ToolRegistry.get('add_free_samples') is None, "add_free_samples sigue registrada"
+            p = mk_partner('SinMuestras', 'Rio Cuarto')
+            r = quote(p, 90000)
+            assert r.get('ok'), r
+            assert 'samples_hint' not in r, "el cotizador sigue sugiriendo muestras"
+            assert 'muestra' not in str(r).lower(), "la respuesta del cotizador habla de muestras"
+            order = SaleOrder.browse(r['order_id'])
+            assert not order.order_line.filtered(
+                lambda l: 'muestra' in (l.product_id.name or '').lower()), "la orden trae muestras"
+            return "sin herramienta de muestras; pedido de $90k sin muestras ni aviso"
+        self._case(results, "18. Sin muestras gratis", c_sin_muestras)
