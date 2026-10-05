@@ -708,18 +708,6 @@ class CreateSaleOrder(AgentTool):
                 f"a {_fmt_money(self.COMPRA_MIN)}. Si el cliente no quiere sumar, se puede "
                 f"enviar igual (supera el piso de {_fmt_money(self.COMPRA_PISO)}).")
 
-        # Promo muestras gratis (+$60.000)
-        SAMPLES_THRESHOLD = 60000.0
-        if total >= SAMPLES_THRESHOLD:
-            samples_hint = (
-                f"El total ({_fmt_money(total)}) supera {_fmt_money(SAMPLES_THRESHOLD)} → van 3 "
-                f"MUESTRAS GRATIS. Llamá add_free_samples(partner_id={partner.id}) "
-                f"para agregarlas y comunicáselas al cliente.")
-        else:
-            falta_s = SAMPLES_THRESHOLD - total
-            samples_hint = (
-                f"Faltan {_fmt_money(falta_s)} para llegar a {_fmt_money(SAMPLES_THRESHOLD)} y "
-                f"ganar 3 MUESTRAS GRATIS de productos que no lleva. Usalo de upsell.")
 
         result = {
             "ok": True,
@@ -734,7 +722,6 @@ class CreateSaleOrder(AgentTool):
             "lines": line_details,
             "sin_stock": sin_stock or None,
             "upsell": upsell,
-            "samples_hint": samples_hint,
             "previous_purchases": prev_purchases,
             "first_purchase_blocked": first_purchase_blocked,
             "first_purchase_note": (

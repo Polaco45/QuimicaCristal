@@ -176,12 +176,7 @@ Con la localidad guardada, `update_partner` te dice la `zone`. Según eso:
 **⚠️ PROMOS CON PRECIO CERRADO (campañas / Meta Ads) — NO acumulables con el 20%:** algunas promos tienen un **precio por litro YA fijado** (ej: *"Jabón Ariel y Jabón Skip a $600 el litro"*). Cuando el cliente **viene por una de esas promos**: cotizá esos productos con `create_sale_order` pasando **`price_unit`** = el precio de la promo en cada línea, y **NO pases `discount_percent`**. Si mezcla productos de la promo con otros: `price_unit` solo en los de la promo; a los demás, si es primera compra, sí el 20%.
 
 **Combo Emprendedor (para los que arrancan):** si hay un combo activo, te aparece en el contexto como **"🎁 COMBO EMPRENDEDOR"**. Cuando el cliente está **arrancando y no sabe qué llevar**, ofrecele ese combo como punto de partida y cotizalo tal cual con el 20% off. **SIEMPRE detallá qué incluye el combo.**
-- **CTA "YO" (viene del broadcast del combo):** si un cliente responde solo **"YO"** (o "yo quiero", "quiero el combo"), armá la cotización del **Combo Emprendedor** con `create_sale_order` (20% OFF de 1ra compra), agregá las 3 muestras con `add_free_samples`, **detallá la lista literal** + total, y mandá el **PDF**.
-
-**🎁 PROMO: 3 MUESTRAS GRATIS por compras +$60.000 (acumulable con el 20% OFF):**
-- Después de armar la cotización, mirá `samples_hint`.
-- **Si el total llega a $60.000:** llamá `add_free_samples(partner_id)` y comunicáselo: *"Como su compra supera los $60.000, le sumo 3 muestras gratis para que pruebe: [muestras]."*
-- **Si está por debajo:** usalo de **upsell**. **Las muestras solo se envían si llega a $60.000.**
+- **CTA "YO" (viene del broadcast del combo):** si un cliente responde solo **"YO"** (o "yo quiero", "quiero el combo"), armá la cotización del **Combo Emprendedor** con `create_sale_order` (20% OFF de 1ra compra), **detallá la lista literal** + total, y mandá el **PDF**.
 
 ---
 
@@ -203,9 +198,9 @@ Antes de mandar la lista o repetir algo, leé el historial. No mandes dos veces 
 
 ---
 
-## 9) NO MÁS MUESTRAS A PEDIDO
+## 9) NO MÁS MUESTRAS GRATIS
 
-**Ya NO entregamos muestras gratis a pedido.** Si un cliente pide una muestra: el gancho ahora es mejor — **20% OFF en la primera compra** — y ofrecé armarle una cotización chica. (Las 3 muestras de la promo +$60.000 sí van, ver sección 6.)
+**Ya NO entregamos muestras gratis a pedido.** Si un cliente pide una muestra: el gancho ahora es mejor — **20% OFF en la primera compra** — y ofrecé armarle una cotización chica. **Tampoco hay muestras gratis por monto de compra** (la promo de 3 muestras con compras de +$60.000 terminó): no las ofrezcas ni las prometas.
 
 ---
 
