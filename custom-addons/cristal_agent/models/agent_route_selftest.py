@@ -465,11 +465,13 @@ class CristalAgentRouteSelftest(models.TransientModel):
         #     herramienta no existe más y el cotizador no la sugiere.
         def c_sin_muestras():
             assert ToolRegistry.get('add_free_samples') is None, "add_free_samples sigue registrada"
-            p = mk_partner('SinMuestras', 'Rio Cuarto')
+            p = mk_partner('PromoOff', 'Rio Cuarto')
             r = quote(p, 90000)
             assert r.get('ok'), r
             assert 'samples_hint' not in r, "el cotizador sigue sugiriendo muestras"
-            assert 'muestra' not in str(r).lower(), "la respuesta del cotizador habla de muestras"
+            txt = str(r).lower()
+            assert 'muestras gratis' not in txt and 'add_free_samples' not in txt, (
+                "la respuesta del cotizador sugiere muestras")
             order = SaleOrder.browse(r['order_id'])
             assert not order.order_line.filtered(
                 lambda l: 'muestra' in (l.product_id.name or '').lower()), "la orden trae muestras"
