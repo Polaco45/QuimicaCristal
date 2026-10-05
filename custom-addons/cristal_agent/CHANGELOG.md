@@ -7,6 +7,20 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.34.1] — 2026-10-05
+
+### Removed — Promo de 3 muestras gratis por compras de +$60.000
+
+Joaco: "que no se envíen más automáticamente con todos los pedidos +60".
+- Se desregistra la herramienta `add_free_samples` (el archivo queda, sin importar).
+- `create_sale_order` ya no devuelve `samples_hint` (no sugiere muestras ni las usa
+  de upsell).
+- Prompt v7: se saca la sección de la promo y el paso de muestras del CTA "YO"; la
+  sección 9 ahora dice que no hay muestras gratis ni a pedido ni por monto.
+- Autotest: caso 17 (sin muestras).
+
+---
+
 ## [18.0.1.34.0] — 2026-10-02
 
 ### Fixed — Precios inventados
