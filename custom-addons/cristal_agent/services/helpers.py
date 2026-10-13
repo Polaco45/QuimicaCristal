@@ -316,6 +316,10 @@ def verify_prices(env, run, body_html):
     plain = re.sub(r'<\s*(br|/p|/li)\s*/?>', '\n', body_html, flags=re.IGNORECASE)
     plain = re.sub(r'<[^>]+>', ' ', plain)
     known = _known_prices_from_run(run)
+    # v1.36: el precio con 20% solo vale para clientes con derecho a la 1ra compra.
+    factors = _ALLOWED_FACTORS
+    if run.partner_id and first_purchase_discount_status(env, run.partner_id)[0] != 'allowed':
+        factors = tuple(f for f in _ALLOWED_FACTORS if f != 0.8)
     # Vocabulario de productos: nombres del catálogo mayorista + lo que devolvieron
     # las tools. Solo se controla un precio si el texto nombra un producto real
     # (así "Te paso el precio: $408/L" no se bloquea por "te paso").
@@ -339,7 +343,7 @@ def verify_prices(env, run, body_html):
             if not mention:
                 continue  # no nombra un producto: no se puede controlar
             candidates = [p for toks, p in known if toks & mention]
-            ok = any(abs(price - p * f) <= 1.0 for p in candidates for f in _ALLOWED_FACTORS)
+            ok = any(abs(price - p * f) <= 1.0 for p in candidates for f in factors)
             if not ok:
                 if offers is None:
                     offers = _offer_prices(env)
@@ -347,3 +351,203 @@ def verify_prices(env, run, body_html):
             if not ok:
                 problems.append(line.strip()[:160])
     return problems
+
+
+# ─────────────────────── 20% de primera compra: SOLO Río Cuarto (v1.36) ───────────────────────
+# Joaco (13/10): el 20% OFF de primera compra es SOLO para clientes de Río Cuarto /
+# Las Higueras. A los de la ruta del camión (truck_circuit_id) y a los de fuera de
+# zona NUNCA se les aplica ni se les ofrece. Casos reales: S06359 (Any, Coronel
+# Moldes) y S06367 (Miriancordoba, Vicuña Mackenna) salieron con 20% en cada línea.
+FIRST_PURCHASE_ZONES = ('rio_cuarto', 'las_higueras')
+
+
+def first_purchase_discount_status(env, partner):
+    """('allowed' | 'blocked' | 'unknown', motivo).
+    - allowed: cliente de Río Cuarto / Las Higueras.
+    - blocked: ruta del camión (circuito) o fuera de zona.
+    - unknown: todavía no sabemos la localidad → no se ofrece hasta saberla."""
+    if not partner:
+        return 'unknown', 'sin cliente'
+    if partner.truck_circuit_id:
+        return 'blocked', f"cliente de la ruta del camión ({partner.truck_circuit_id.name})"
+    zone = partner.agent_zone or 'unknown'
+    if zone in ('fuera_zona', 'ruta_camion'):
+        return 'blocked', 'cliente de la zona/fuera de zona (no es Río Cuarto)'
+    if zone in FIRST_PURCHASE_ZONES:
+        return 'allowed', 'cliente de Río Cuarto / Las Higueras'
+    city = (partner.city or '').strip()
+    if not city:
+        return 'unknown', 'todavía no sé la localidad'
+    info = env['cristal.agent.circuit'].sudo().classify_city(city)
+    if info.get('kind') == 'rio_cuarto':
+        return 'allowed', 'cliente de Río Cuarto / Las Higueras'
+    if info.get('kind') in ('circuit', 'fuera_zona'):
+        return 'blocked', f"{info.get('canonical') or city} no es Río Cuarto"
+    return 'unknown', 'localidad sin confirmar'
+
+
+_RE_FIRST_PURCHASE_OFFER = re.compile(
+    r'[^.!?\n<]*(?:20\s?%|veinte por ciento)[^.!?\n<]*(?:[.!?]|(?=<)|$)', re.IGNORECASE)
+
+
+def strip_first_purchase_offer(body_html):
+    """Saca las oraciones que mencionan el 20% (último recurso del control al enviar)."""
+    return _RE_FIRST_PURCHASE_OFFER.sub('', body_html or '').replace('<p></p>', '')
+
+
+def mentions_first_purchase_discount(body_html):
+    plain = re.sub(r'<[^>]+>', ' ', body_html or '')
+    return bool(re.search(r'20\s?%|veinte por ciento', plain, re.IGNORECASE))
+
+
+# ─────────────────────── Feriados y horario de atención (v1.36) ───────────────────────
+# Caso real: el lunes 12/10 (feriado) Claudio dijo "hoy estamos abiertos hasta las
+# 19:30" y le prometió a un cliente entrega para ese día. Feriados nacionales de
+# Argentina (incluye los días no laborables con fines turísticos, que la planta no
+# abre). Las fechas extra (Día del Empleado de Comercio, puentes 2027 que todavía no
+# se decretaron, cierres puntuales) van en config.closed_dates.
+AR_HOLIDAYS = {
+    # 2026
+    '2026-01-01': 'Año Nuevo',
+    '2026-02-16': 'Carnaval', '2026-02-17': 'Carnaval',
+    '2026-03-23': 'feriado puente', '2026-03-24': 'Día de la Memoria',
+    '2026-04-02': 'Malvinas / Jueves Santo', '2026-04-03': 'Viernes Santo',
+    '2026-05-01': 'Día del Trabajador', '2026-05-25': 'Revolución de Mayo',
+    '2026-06-15': 'Paso a la Inmortalidad de Güemes', '2026-06-20': 'Día de la Bandera',
+    '2026-07-09': 'Día de la Independencia', '2026-07-10': 'feriado puente',
+    '2026-08-17': 'Paso a la Inmortalidad de San Martín',
+    '2026-10-12': 'Día de la Diversidad Cultural',
+    '2026-11-23': 'Día de la Soberanía Nacional',
+    '2026-12-07': 'feriado puente', '2026-12-08': 'Inmaculada Concepción',
+    '2026-12-25': 'Navidad',
+    # 2027 (los puentes turísticos de 2027 todavía no están decretados → config)
+    '2027-01-01': 'Año Nuevo',
+    '2027-02-08': 'Carnaval', '2027-02-09': 'Carnaval',
+    '2027-03-24': 'Día de la Memoria', '2027-03-26': 'Viernes Santo',
+    '2027-04-02': 'Malvinas',
+    '2027-05-01': 'Día del Trabajador', '2027-05-25': 'Revolución de Mayo',
+    '2027-06-20': 'Día de la Bandera', '2027-06-21': 'Paso a la Inmortalidad de Güemes',
+    '2027-07-09': 'Día de la Independencia',
+    '2027-08-16': 'Paso a la Inmortalidad de San Martín',
+    '2027-10-11': 'Día de la Diversidad Cultural',
+    '2027-11-20': 'Día de la Soberanía Nacional',
+    '2027-12-08': 'Inmaculada Concepción', '2027-12-25': 'Navidad',
+}
+# Horario oficial de la planta (KB #89): L-V 8:30-12:30 y 15:30-19:30; sáb 9-13.
+PLANT_HOURS = {0: [(8.5, 12.5), (15.5, 19.5)], 1: [(8.5, 12.5), (15.5, 19.5)],
+               2: [(8.5, 12.5), (15.5, 19.5)], 3: [(8.5, 12.5), (15.5, 19.5)],
+               4: [(8.5, 12.5), (15.5, 19.5)], 5: [(9.0, 13.0)], 6: []}
+
+
+def _configured_closed_dates(env):
+    """config.closed_dates: una fecha por línea, 'AAAA-MM-DD motivo' (o DD/MM/AAAA)."""
+    out = {}
+    config = env['cristal.agent.config'].sudo().get_active()
+    raw = getattr(config, 'closed_dates', '') if config else ''
+    for line in (raw or '').splitlines():
+        line = line.strip()
+        if not line or line.startswith('#'):
+            continue
+        m = re.match(r'(\d{4})-(\d{2})-(\d{2})\s*(.*)', line) or None
+        if m:
+            key, why = f"{m.group(1)}-{m.group(2)}-{m.group(3)}", m.group(4)
+        else:
+            m = re.match(r'(\d{1,2})/(\d{1,2})/(\d{4})\s*(.*)', line)
+            if not m:
+                continue
+            key = f"{m.group(3)}-{int(m.group(2)):02d}-{int(m.group(1)):02d}"
+            why = m.group(4)
+        out[key] = (why or 'cerrado').strip(' -—:')
+    return out
+
+
+def closed_day_reason(env, d, _extra=None):
+    """Motivo si la planta y el reparto NO operan ese día (feriado, cierre
+    configurado o domingo); None si es día hábil."""
+    key = d.strftime('%Y-%m-%d')
+    extra = _extra if _extra is not None else _configured_closed_dates(env)
+    if key in extra:
+        return extra[key]
+    if key in AR_HOLIDAYS:
+        return f"feriado ({AR_HOLIDAYS[key]})"
+    if d.weekday() == 6:
+        return 'domingo'
+    return None
+
+
+def next_business_day(env, d, include_today=False):
+    """Próximo día en que la planta abre (después de d, o d mismo si include_today)."""
+    extra = _configured_closed_dates(env)
+    day = d if include_today else d + timedelta(days=1)
+    for _i in range(15):
+        if not closed_day_reason(env, day, extra):
+            return day
+        day += timedelta(days=1)
+    return day
+
+
+def business_status(env, now=None):
+    """Estado de atención AHORA (hora Argentina):
+    {'open_now', 'closed_today' (motivo o None), 'next_open_text', 'next_business_day',
+     'confirm_when' ('hoy' o 'el lunes 19/10')}."""
+    now = now or now_ar(env)
+    today = now.date()
+    extra = _configured_closed_dates(env)
+    closed_today = closed_day_reason(env, today, extra)
+    hour = now.hour + now.minute / 60.0
+    open_now = False
+    later_today = None
+    if not closed_today:
+        for start, end in PLANT_HOURS.get(today.weekday(), []):
+            if start <= hour < end:
+                open_now = True
+            elif hour < start and later_today is None:
+                later_today = start
+    if open_now or later_today is not None:
+        nb = today
+        start = later_today if later_today is not None else None
+    else:
+        nb = next_business_day(env, today)
+        start = PLANT_HOURS.get(nb.weekday(), [(8.5, 12.5)])[0][0]
+    if open_now:
+        next_open_text = 'ahora (estamos en horario de atención)'
+    else:
+        h, mi = int(start), int(round((start - int(start)) * 60))
+        when = 'hoy' if nb == today else fmt_day(nb)
+        next_open_text = f"{when} a las {h}:{mi:02d}"
+    confirm_when = 'hoy' if (open_now or nb == today) else f"el {fmt_day(nb)}"
+    return {'open_now': open_now, 'closed_today': closed_today,
+            'next_open_text': next_open_text, 'next_business_day': nb,
+            'confirm_when': confirm_when}
+
+
+def holiday_context_lines(env, now=None):
+    """Líneas para el CONTEXTO TEMPORAL: si hoy/mañana/pasado no se trabaja."""
+    now = now or now_ar(env)
+    today = now.date()
+    extra = _configured_closed_dates(env)
+    lines = []
+    for label, d in (('HOY', today), ('MAÑANA', today + timedelta(days=1)),
+                     ('PASADO MAÑANA', today + timedelta(days=2))):
+        why = closed_day_reason(env, d, extra)
+        if why and why != 'domingo':
+            lines.append(f"- ⛔ {label} {fmt_day(d)} es {why}: la planta y el reparto NO "
+                         f"operan (sin retiros ni entregas).")
+    nb = next_business_day(env, today)
+    lines.append(f"- Próximo día hábil: {fmt_day(nb)}.")
+    return lines
+
+
+def attention_status_line(env, now=None):
+    """Una línea para el bloque del mensaje entrante: ¿estamos atendiendo ahora?"""
+    st = business_status(env, now)
+    if st['closed_today']:
+        return (f"⛔ HOY NO ATENDEMOS ({st['closed_today']}): la planta y el reparto no "
+                f"operan. Decile que hoy no atendemos y que le respondemos/confirmamos "
+                f"{st['confirm_when']}. NO confirmes retiros ni entregas para hoy.")
+    if st['open_now']:
+        return ("Planta ABIERTA ahora. Si tenés que consultar algo con Joaco, decí "
+                "'lo consulto y le confirmo hoy' (nunca prometas minutos).")
+    return (f"Planta CERRADA en este momento (abre {st['next_open_text']}). Si tenés que "
+            f"consultar algo, decí 'lo consulto y le confirmo {st['confirm_when']}'. "
+            f"NUNCA prometas 'en un minuto' ni 'ya te aviso'.")
