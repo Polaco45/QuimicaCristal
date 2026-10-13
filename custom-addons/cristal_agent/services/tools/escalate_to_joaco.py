@@ -101,6 +101,16 @@ class EscalateToJoaco(AgentTool):
             except Exception as e:
                 _logger.warning("Throttle de escalación interna falló (sigo y posteo): %s", e)
 
+        # v1.36 — UNA escalación por pedido / por cliente. Caso real: en 4 días hubo 37
+        # escalaciones; el pedido de Any (S06359) se escaló 5 veces y el de Santiago
+        # Bringas (S06368) 3. Si ya hay un aviso abierto de la misma cotización (72 h)
+        # o del mismo cliente (24 h), se ACTUALIZA ese mensaje en vez de crear otro
+        # (así también quedan agrupadas las consultas de producto del mismo cliente).
+        existing = self._find_open_escalation(env, internal_channel, bot_partner,
+                                              message, related_partner_id)
+        if existing:
+            return self._update_escalation(existing, message, urgency, related_partner_id, env)
+
         # Armar el body
         urgency_prefix = "🚨 " if urgency == 'alta' else ""
         joaco_mention = (
@@ -170,3 +180,59 @@ class EscalateToJoaco(AgentTool):
             "summary": "Escalado a Joaco por el canal interno.",
         }
 
+
+    # ───────────────────────── v1.36: una escalación por pedido ─────────────────────────
+    ORDER_WINDOW_HOURS = 72
+    PARTNER_WINDOW_HOURS = 24
+
+    def _find_open_escalation(self, env, channel, bot_partner, message, related_partner_id):
+        """Último aviso del bot en el canal interno sobre la MISMA cotización (Sxxxxx)
+        o, si no nombra cotización, sobre el mismo cliente."""
+        import re as _re
+        from datetime import datetime, timedelta
+        Msg = env['mail.message'].sudo()
+        base = [('model', '=', 'discuss.channel'), ('res_id', '=', channel.id),
+                ('author_id', '=', bot_partner.id)]
+        plain = _re.sub(r'<[^>]+>', ' ', message or '')
+        orders = _re.findall(r'\bS\d{5}\b', plain)
+        if orders:
+            found = Msg.search(base + [
+                ('create_date', '>=', datetime.now() - timedelta(hours=self.ORDER_WINDOW_HOURS)),
+                ('body', 'ilike', orders[0]),
+            ], order='id desc', limit=1)
+            if found:
+                return found
+        if related_partner_id:
+            return Msg.search(base + [
+                ('create_date', '>=', datetime.now() - timedelta(hours=self.PARTNER_WINDOW_HOURS)),
+                ('body', 'ilike', f"(id={int(related_partner_id)})"),
+            ], order='id desc', limit=1)
+        return Msg
+
+    def _update_escalation(self, msg, message, urgency, related_partner_id, env):
+        """Agrega la novedad al aviso existente (sin crear otro mensaje)."""
+        import re as _re
+        from ..helpers import now_ar
+        new_plain = _re.sub(r'\s+', ' ', _re.sub(r'<[^>]+>', ' ', message or '')).strip()
+        old_plain = _re.sub(r'\s+', ' ', _re.sub(r'<[^>]+>', ' ', msg.body or '')).strip()
+        if new_plain and new_plain[:120] in old_plain:
+            _logger.info("🔁 Escalación repetida (ya estaba en el aviso %s): no la repito.", msg.id)
+            return {"ok": True, "throttled": True, "escalation_message_id": msg.id,
+                    "summary": "Joaco ya tiene este aviso; no lo repetí."}
+        stamp = now_ar(env).strftime('%d/%m %H:%M')
+        prefix = "🚨 " if urgency == 'alta' else ""
+        msg.with_context(from_cristal_agent=True).write({
+            'body': (msg.body or '') + f"<p>{prefix}<b>🔄 Actualización {stamp}:</b> {message}</p>",
+        })
+        if related_partner_id:
+            try:
+                memory = env['cristal.agent.memory'].sudo().search(
+                    [('partner_id', '=', int(related_partner_id))], limit=1)
+                if memory:
+                    memory.increment_escalation()
+            except Exception:
+                pass
+        _logger.info("📝 Escalación agregada al aviso existente %s.", msg.id)
+        return {"ok": True, "updated_existing": True, "escalation_message_id": msg.id,
+                "summary": "Agregué la novedad al aviso que Joaco ya tenía de este "
+                           "pedido/cliente (no creé otro mensaje)."}
