@@ -477,3 +477,229 @@ class CristalAgentRouteSelftest(models.TransientModel):
                 lambda l: 'muestra' in (l.product_id.name or '').lower()), "la orden trae muestras"
             return "sin herramienta de muestras; pedido de $90k sin muestras ni aviso"
         self._case(results, "18. Sin muestras gratis", c_sin_muestras)
+
+        # ═════════════════ Correcciones del 13/10 (v1.36) ═════════════════
+        # 19) 20% de primera compra: SOLO Río Cuarto / Las Higueras.
+        def c_veinte_zona():
+            from ..services.helpers import first_purchase_discount_status
+            prod = env['product.product'].sudo().create({
+                'name': 'ZZ Autotest Lista', 'type': 'consu', 'list_price': 200000.0,
+                'sale_ok': True, 'taxes_id': [(6, 0, [])]})
+            mayorista_pl = env['product.pricelist'].sudo().search(
+                [('name', '=', 'Lista Mayorista')], limit=1)
+            env['product.pricelist.item'].sudo().create({
+                'pricelist_id': mayorista_pl.id, 'applied_on': '0_product_variant',
+                'product_id': prod.id, 'product_tmpl_id': prod.product_tmpl_id.id,
+                'compute_price': 'fixed', 'fixed_price': 160000.0})
+            ps = mk_partner('Veinte Sampacho', 'Sampacho')
+            assert first_purchase_discount_status(env, ps)[0] == 'blocked'
+            r = cso.execute(env=env, run=None, partner_id=ps.id, discount_percent=20,
+                            lines=[{'product_id': prod.id, 'qty': 1}])
+            assert r.get('zone_discount_blocked'), f"Sampacho: no bloqueó el 20% ({r})"
+            if r.get('order_id'):
+                o = SaleOrder.browse(r['order_id'])
+                assert not o.order_line.filtered(lambda l: l.discount), "Sampacho con descuento"
+            prc = mk_partner('Veinte RC', 'Rio Cuarto')
+            assert first_purchase_discount_status(env, prc)[0] == 'allowed'
+            r = cso.execute(env=env, run=None, partner_id=prc.id, discount_percent=20,
+                            lines=[{'product_id': prod.id, 'qty': 1}])
+            assert r.get('ok') and not r.get('zone_discount_blocked'), r
+            o = SaleOrder.browse(r['order_id'])
+            assert o.order_line.filtered(lambda l: l.product_id == prod).discount == 20, (
+                "Río Cuarto sin el 20%")
+            pf = mk_partner('Veinte Laboulaye', 'Laboulaye')
+            assert first_purchase_discount_status(env, pf)[0] == 'blocked'
+            pn = mk_partner('Veinte SinCiudad', False)
+            assert first_purchase_discount_status(env, pn)[0] == 'unknown'
+            return "Sampacho sin 20% · Río Cuarto con 20% · Laboulaye bloqueado · sin ciudad: no se ofrece"
+        self._case(results, "19. 20% solo Río Cuarto", c_veinte_zona)
+
+        # 20) Localidades mal escritas: alias + parecido (pregunta, no fuera de zona).
+        def c_localidades():
+            casos = [('Olver', 'circuit', 'Holmberg'), ('olmberg', 'circuit', 'Holmberg'),
+                     ('Holver', 'circuit', 'Holmberg'), ('Moldes', 'circuit', 'Coronel Moldes'),
+                     ('Cnel Moldes', 'circuit', 'Coronel Moldes'),
+                     ('Vicuña', 'circuit', 'Vicuña Mackenna'),
+                     ('Mackena', 'circuit', 'Vicuña Mackenna'),
+                     ('Gral Cabrera', 'circuit', 'General Cabrera'),
+                     ('Deheza', 'circuit', 'General Deheza'),
+                     ('La Carlota', 'circuit', 'La Carlota'),
+                     ('Adelia', 'circuit', 'Adelia María'),
+                     ('Rio IV', 'rio_cuarto', 'Río Cuarto'),
+                     ('Laboulaye', 'fuera_zona', None)]
+            for text, kind, canon in casos:
+                info = Circuit.classify_city(text)
+                got = info['canonical'] if info['kind'] != 'fuera_zona' else None
+                assert (info['kind'], got) == (kind, canon), f"'{text}' → {info['kind']}/{got}"
+            maybe = Circuit.classify_city('Berrotaram')
+            assert maybe['kind'] == 'maybe' and maybe['candidate'] == 'Berrotarán', maybe
+            p = mk_partner('Tipeo', 'Berrotaram')
+            gi = gri.execute(env=env, run=None, partner_id=p.id)
+            assert gi.get('needs_confirmation') and gi.get('candidate_city') == 'Berrotarán', gi
+            r = cso.execute(env=env, run=None, partner_id=p.id,
+                            lines=[{'product_id': product.id, 'qty': 1, 'price_unit': 90000}])
+            assert r.get('needs_city_confirmation'), f"cotizó con localidad dudosa: {r}"
+            p2 = mk_partner('TipeoUpd', False)
+            up = ToolRegistry.get('update_partner').execute(
+                env=env, run=None, partner_id=p2.id, city='Berrotaram')
+            assert up.get('needs_confirmation') and p2.agent_zone != 'fuera_zona', up
+            fz = env['res.partner.category'].sudo().search([('name', '=', 'Fuera de zona')], limit=1)
+            assert not fz or fz not in p2.category_id, "lo etiquetó Fuera de zona"
+            return "Olver/olmberg/Moldes/Vicuña/Gral Cabrera… OK · Laboulaye fuera · 'Berrotaram' → pregunta"
+        self._case(results, "20. Localidades mal escritas", c_localidades)
+
+        # 21) Feriados y días cerrados.
+        def c_feriados():
+            from ..services.helpers import (closed_day_reason, business_status,
+                                            next_business_day, attention_status_line)
+            tz = pytz.timezone('America/Argentina/Cordoba')
+            assert 'feriado' in (closed_day_reason(env, date(2026, 10, 12)) or ''), "12/10"
+            assert closed_day_reason(env, date(2026, 10, 13)) is None, "13/10 es hábil"
+            assert closed_day_reason(env, date(2026, 10, 18)) == 'domingo'
+            st = business_status(env, tz.localize(datetime(2026, 10, 12, 10, 0)))
+            assert st['closed_today'] and not st['open_now'], st
+            assert st['confirm_when'] == 'el martes 13/10', st['confirm_when']
+            line = attention_status_line(env, tz.localize(datetime(2026, 10, 12, 10, 0)))
+            assert 'HOY NO ATENDEMOS' in line, line
+            st = business_status(env, tz.localize(datetime(2026, 10, 16, 20, 30)))  # vie 20:30
+            assert not st['open_now'] and st['confirm_when'] == 'el sábado 17/10', st
+            st = business_status(env, tz.localize(datetime(2026, 10, 13, 10, 0)))  # mar 10 h
+            assert st['open_now'] and st['confirm_when'] == 'hoy', st
+            config.closed_dates = "2026-10-14 Inventario"
+            assert closed_day_reason(env, date(2026, 10, 14)) == 'Inventario'
+            assert next_business_day(env, date(2026, 10, 13)) == date(2026, 10, 15)
+            config.closed_dates = False
+            hc = Circuit.create({'name': 'ZZ Autotest Feriado', 'sequence': 97,
+                                 'first_departure_date': date(2026, 12, 8)})
+            Dep.create({'circuit_id': hc.id, 'date': date(2026, 12, 8)})
+            ph = mk_partner('Feriado', 'ZZ Pueblo', circuit=hc)
+            gi = gri.execute(env=env, run=None, partner_id=ph.id)
+            assert gi.get('departure_on_closed_day'), f"salida en feriado sin aviso: {gi}"
+            return ("12/10 feriado → 'hoy no atendemos', confirma el martes 13/10 · vie 20:30 "
+                    "→ sábado · config · salida 8/12 no se promete")
+        self._case(results, "21. Feriados y días cerrados", c_feriados)
+
+        # 22) Controles al enviar: 20%, "Joaquín coordina", minutos, entrega RC.
+        def c_controles_envio():
+            import json as _json
+            from ..services.send_guards import apply_send_guards
+            ch = config.internal_channel_id.id
+            pz = mk_partner('GuardSampacho', 'Sampacho')
+            prc = mk_partner('GuardRC', 'Rio Cuarto')
+            run = env['cristal.agent.run'].sudo().create({
+                'trigger': 'whatsapp_message', 'partner_id': pz.id})
+
+            def guard(body, partner):
+                return apply_send_guards(env, run, ch, body, partner)
+
+            _b, err = guard("<p>Le paso la lista. Su primer pedido lleva 20% OFF.</p>", pz)
+            assert err and err['guard'] == 'first_purchase_zone', err
+            _b, err = guard("<p>Le paso la lista. Su primer pedido lleva 20% OFF.</p>", prc)
+            assert not err, f"bloqueó el 20% a Río Cuarto: {err}"
+            _b, err = guard("<p>Para su localidad el envío lo coordina Joaquín.</p>", pz)
+            assert err and err['guard'] == 'coordina_envio', err
+            _b, err = guard("<p>Dejame chequear con Joaco, te aviso en un minuto.</p>", pz)
+            assert err and err['guard'] == 'promesa_minutos', err
+            _b, err = guard("<p>Te lo llevamos el lunes 19/10 a las 11 h.</p>", prc)
+            assert err and err['guard'] == 'entrega_rc', err
+            _b, err = guard("<p>Pasamos por Sampacho el miércoles 11/11; tomamos pedidos "
+                            "hasta el lunes 09/11 a las 18 h.</p>", pz)
+            assert not err, f"bloqueó la fecha de la ruta: {err}"
+            _b, err = guard("<p>¿Cuántos litros llevás hoy?</p>", prc)
+            assert not err, f"bloqueó una pregunta común: {err}"
+            # 2da vez en la misma corrida: corrige y manda.
+            run.tool_calls_log = _json.dumps([{'tool_name': 'send_whatsapp', 'output': {
+                'error': 'x', 'guard': 'first_purchase_zone'}}])
+            body, err = guard("<p>Le paso la lista. Su primer pedido lleva 20% OFF. "
+                              "¿Le armo la cotización?</p>", pz)
+            assert not err and '20%' not in body and 'cotización' in body, body
+            return ("20% zona · 'Joaquín coordina' · 'en un minuto' · entrega RC: bloqueados; "
+                    "ruta y preguntas OK; 2da vez corrige")
+        self._case(results, "22. Controles al enviar", c_controles_envio)
+
+        # 23) Una escalación por pedido (se actualiza, no se duplica).
+        def c_escalacion_unica():
+            esc = ToolRegistry.get('escalate_to_joaco')
+            ch = config.internal_channel_id
+            assert ch, "sin canal interno"
+            pe = mk_partner('Escala', 'Rio Cuarto')
+            Msg = env['mail.message'].sudo()
+            n0 = Msg.search_count([('model', '=', 'discuss.channel'), ('res_id', '=', ch.id)])
+            r1 = esc.execute(env=env, run=None, related_partner_id=pe.id,
+                             message="PEDIDO PARA CONFIRMAR — ZZ Escala. Cotización S99999, total $90.000.")
+            r2 = esc.execute(env=env, run=None, related_partner_id=pe.id,
+                             message="Ruta: el cliente sumó 20 L de lavandina a S99999.")
+            r3 = esc.execute(env=env, run=None, related_partner_id=pe.id,
+                             message="Pregunta si hay gamuzas.")
+            n1 = Msg.search_count([('model', '=', 'discuss.channel'), ('res_id', '=', ch.id)])
+            assert r1.get('ok') and r2.get('updated_existing') and r3.get('updated_existing'), (
+                r1, r2, r3)
+            assert n1 - n0 == 1, f"se crearon {n1 - n0} mensajes (esperado 1)"
+            body = Msg.browse(r2['escalation_message_id']).body
+            assert 'lavandina' in body and 'gamuzas' in body, "no agregó las novedades"
+            return "3 escalaciones del mismo pedido/cliente → 1 mensaje actualizado"
+        self._case(results, "23. Una escalación por pedido", c_escalacion_unica)
+
+        # 24) Duplicados y adjuntos inventados (canal 2997: mismo texto 2 veces).
+        def c_duplicados():
+            import json as _json
+            from ..services.send_guards import check_attachments, duplicate_recent
+            run = env['cristal.agent.run'].sudo().create({'trigger': 'whatsapp_message'})
+            att = env['ir.attachment'].sudo().create({'name': 'ZZ autotest.pdf', 'raw': b'%PDF'})
+            err = check_attachments(env, run, [att.id])
+            assert err and err['guard'] == 'attachment', "aceptó un adjunto que no generó ninguna tool"
+            run.tool_calls_log = _json.dumps([{'tool_name': 'generate_pricelist_pdf',
+                                               'output': {'attachment_id': att.id}}])
+            assert check_attachments(env, run, [att.id]) is None, "rechazó el PDF de la tool"
+            ch = config.internal_channel_id.id
+            bot = config.bot_partner_id.id if config.bot_partner_id else 2
+            text = "<p>ZZ autotest: Hola Carla, te paso la lista mayorista.</p>"
+            assert not duplicate_recent(env, ch, text, bot)
+            env['mail.message'].sudo().with_context(from_cristal_agent=True).create({
+                'author_id': bot, 'body': text, 'message_type': 'comment',
+                'model': 'discuss.channel', 'res_id': ch})
+            assert duplicate_recent(env, ch, text, bot), "no detectó el duplicado"
+            return "adjunto inventado → bloqueado · PDF de la tool OK · mismo texto en segundos → no se repite"
+        self._case(results, "24. Duplicados y adjuntos", c_duplicados)
+
+        # 25) Sin stock: la línea no se carga y se ofrecen alternativas.
+        def c_sin_stock():
+            categ = env['product.category'].sudo().create({'name': 'ZZ Autotest Categ'})
+            sin = env['product.product'].sudo().create({
+                'name': 'ZZ Aromatizante sin stock', 'type': 'consu', 'is_storable': True,
+                'list_price': 5000.0, 'sale_ok': True, 'categ_id': categ.id})
+            alt = env['product.product'].sudo().create({
+                'name': 'ZZ Aromatizante a granel', 'type': 'consu',
+                'list_price': 5000.0, 'sale_ok': True, 'categ_id': categ.id})
+            p = mk_partner('Stock', 'Rio Cuarto')
+            r = cso.execute(env=env, run=None, partner_id=p.id, lines=[
+                {'product_id': sin.id, 'qty': 2},
+                {'product_id': product.id, 'qty': 1, 'price_unit': 90000}])
+            assert r.get('ok'), r
+            o = SaleOrder.browse(r['order_id'])
+            assert sin not in o.order_line.mapped('product_id'), "cargó el producto sin stock"
+            ns = r.get('no_stock_lines') or []
+            assert ns and any(a['product_id'] == alt.id for a in ns[0]['alternativas']), ns
+            assert 'FALTA DE STOCK' in (r.get('no_stock_note') or ''), r.get('no_stock_note')
+            return "producto sin stock no se carga; ofrece alternativa del mismo tipo"
+        self._case(results, "25. Productos sin stock", c_sin_stock)
+
+        # 26) Cliente que no entiende: mensaje corto + escalar.
+        def c_no_entiende():
+            from ..services import send_guards as sg
+            assert sg._RE_NO_ENTIENDE.search("no entiendo nada")
+            assert sg._RE_PIDE_AUDIO.search("me podés mandar un audio?")
+            assert sg._RE_PIDE_AUDIO.search("llamame por favor")
+            original = sg.confusion_signal
+            sg.confusion_signal = lambda *a, **k: (2, False)
+            try:
+                largo = "<p>" + "Le explico cómo funciona la ruta del camión. " * 8 + "</p>"
+                _b, err = sg.apply_send_guards(env, None, 0, largo, None)
+                assert err and err['guard'] == 'cliente_no_entiende', err
+                _b, err = sg.apply_send_guards(
+                    env, None, 0, "<p>Le pido a Joaquín que lo llame.</p>", None)
+                assert not err, err
+            finally:
+                sg.confusion_signal = original
+            return "2 'no entiendo' o pedido de audio → bloquea textos largos y pide escalar"
+        self._case(results, "26. Cliente que no entiende", c_no_entiende)

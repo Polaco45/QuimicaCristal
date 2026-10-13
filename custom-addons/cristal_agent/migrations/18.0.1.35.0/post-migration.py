@@ -120,9 +120,13 @@ def _move_departures(env, config):
 def _update_knowledge(env):
     Knowledge = env['cristal.agent.knowledge'].sudo().with_context(active_test=False)
     kb = Knowledge.browse(KB_ROUTE_ID)
-    if kb.exists():
+    if kb.exists() and 'jueves' in (kb.name or '').lower():
         kb.write({'name': KB_ROUTE_NAME, 'content': KB_ROUTE_CONTENT})
         _logger.info("✅ MIGRATION 1.35.0: KB #%s → %s", KB_ROUTE_ID, KB_ROUTE_NAME)
+    elif kb.exists():
+        # Joaco ya la pasó a miércoles a mano (con su texto y su umbral de envío
+        # gratis): no se pisa.
+        _logger.info("MIGRATION 1.35.0: KB #%s ya está en miércoles; no la toco.", KB_ROUTE_ID)
     else:
         _logger.warning("⚠️ MIGRATION 1.35.0: KB #%s no existe", KB_ROUTE_ID)
 
