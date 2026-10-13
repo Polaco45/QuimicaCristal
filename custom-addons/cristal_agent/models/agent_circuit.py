@@ -35,6 +35,47 @@ _ABBREVIATIONS = {
 }
 
 
+# v1.36 — Alias extra por código (valen en cualquier base, sin depender de los
+# registros noupdate). Caso real: un cliente escribió "Olver" (= Holmberg) y Claudio
+# lo marcó fuera de zona.
+EXTRA_ALIASES = {
+    'Holmberg': ['olver', 'olber', 'holver', 'holber', 'olmberg', 'holberg',
+                 'holmber', 'holmbergh', 'holmbreg', 'olmber'],
+    'Santa Catalina': ['sta catalina', 'catalina', 'santa catalina holmberg'],
+    'Las Vertientes': ['vertientes', 'la vertiente', 'las vertiente'],
+    'Sampacho': ['sanpacho', 'sampacho cba', 'zampacho'],
+    'Suco': ['zuco'],
+    'Coronel Moldes': ['cnel moldes', 'crnel moldes', 'moldes', 'coronel molde'],
+    'Vicuña Mackenna': ['vicuna', 'vicuna mackenna', 'vicuna mackena', 'vicunia',
+                        'vicunia mackenna', 'mackena', 'makena', 'v mackenna'],
+    'Tosquita': ['tosquitas'],
+    'Coronel Baigorria': ['cnel baigorria', 'baigorria', 'baigoria'],
+    'Alcira Gigena': ['alcira gigena', 'gigena', 'alcira', 'jigena'],
+    'Berrotarán': ['berrotaran', 'berotaran'],
+    'General Cabrera': ['gral cabrera', 'cabrera', 'grl cabrera'],
+    'General Deheza': ['gral deheza', 'deheza', 'deeza', 'grl deheza'],
+    'Dalmacio Vélez': ['dalmacio velez', 'dalmacio', 'd velez'],
+    'Carnerillo': ['carnerilo'],
+    'Las Acequias': ['acequias', 'las asequias'],
+    'Reducción': ['reduccion', 'la reduccion', 'reducion'],
+    'Alejandro Roca': ['alejandro', 'a roca', 'alejandro rocca'],
+    'La Carlota': ['carlota', 'la carlota cba'],
+    'Chazón': ['chazon'],
+    'Bengolea': ['bengolia'],
+    'San Basilio': ['basilio'],
+    'Adelia María': ['adelia maria', 'adelia', 'a maria'],
+    'Monte de los Gauchos': ['monte de los gauchos', 'monte los gauchos'],
+}
+RIO_CUARTO_ALIASES = {
+    'rio 4': 'Río Cuarto', 'rio iv': 'Río Cuarto', 'riocuarto': 'Río Cuarto',
+    'rio cuatro': 'Río Cuarto', 'r cuarto': 'Río Cuarto', 'rio iv cordoba': 'Río Cuarto',
+    'rio cuarto cordoba': 'Río Cuarto', 'higueras': 'Las Higueras',
+}
+# Palabras que no distinguen una localidad (no se usan solas para el difuso).
+_FUZZY_STOPWORDS = {'general', 'coronel', 'santa', 'santo', 'san', 'las', 'los', 'la',
+                    'el', 'de', 'del', 'monte', 'maria', 'rio'}
+
+
 def normalize_town(text):
     """Normaliza una localidad: sin acentos (incl. acento grave), minúsculas,
     sin puntuación, espacios colapsados y abreviaturas expandidas.
@@ -48,6 +89,50 @@ def normalize_town(text):
         txt = txt.replace(ch, ' ')
     words = [_ABBREVIATIONS.get(w, w) for w in txt.split()]
     return ' '.join(words)
+
+
+def phonetic_town(text):
+    """Clave fonética aproximada (español rioplatense) sobre el texto normalizado:
+    h muda, v=b, z/ce/ci=s, ll=y, qu/k=c, letras dobles colapsadas.
+    'Olver' → 'olber'; 'Holmberg' → 'olmberg'."""
+    t = normalize_town(text)
+    if not t:
+        return ''
+    t = t.replace('ll', 'y').replace('qu', 'k').replace('ce', 'se').replace('ci', 'si')
+    t = t.replace('h', '').replace('v', 'b').replace('z', 's').replace('k', 'c')
+    out = []
+    for ch in t:
+        if out and out[-1] == ch:
+            continue
+        out.append(ch)
+    return ''.join(out)
+
+
+def levenshtein(a, b):
+    """Distancia de edición clásica (inserción, borrado, sustitución)."""
+    if a == b:
+        return 0
+    if not a or not b:
+        return len(a or b)
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        cur = [i]
+        for j, cb in enumerate(b, 1):
+            cur.append(min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (ca != cb)))
+        prev = cur
+    return prev[-1]
+
+
+def _fuzzy_limit(key):
+    """Distancia máxima aceptada según el largo (más corto = más estricto)."""
+    n = len(key.replace(' ', ''))
+    if n <= 4:
+        return 0
+    if n <= 6:
+        return 1
+    if n <= 10:
+        return 2
+    return 3
 
 
 class CristalAgentCircuit(models.Model):
@@ -80,26 +165,63 @@ class CristalAgentCircuit(models.Model):
     @api.model
     def classify_city(self, text):
         """Clasifica un texto de ciudad. Devuelve un dict:
-        {'kind': 'rio_cuarto'|'circuit'|'fuera_zona'|'empty',
-         'circuit': record|False, 'canonical': str}."""
+        {'kind': 'rio_cuarto'|'circuit'|'maybe'|'fuera_zona'|'empty',
+         'circuit': record|False, 'canonical': str, 'candidate': str (solo 'maybe')}.
+
+        v1.36: si no hay coincidencia exacta (nombre o alias) pero el texto se parece
+        mucho a una localidad conocida (similitud fonética + Levenshtein), devuelve
+        'maybe' con el candidato: el bot PREGUNTA ("¿Se refiere a Holmberg?") en vez
+        de marcarlo fuera de zona."""
         norm = normalize_town(text)
         if not norm:
             return {'kind': 'empty', 'circuit': False, 'canonical': ''}
-        if norm in RIO_CUARTO_TOWNS:
-            return {'kind': 'rio_cuarto', 'circuit': False,
-                    'canonical': RIO_CUARTO_TOWNS[norm]}
+        rc_keys = dict(RIO_CUARTO_TOWNS)
+        rc_keys.update(RIO_CUARTO_ALIASES)
+        if norm in rc_keys:
+            return {'kind': 'rio_cuarto', 'circuit': False, 'canonical': rc_keys[norm]}
         Town = self.env['cristal.agent.circuit.town'].sudo()
-        for town in Town.search([('circuit_id.active', '=', True)]):
+        towns = Town.search([('circuit_id.active', '=', True)])
+        for town in towns:
             if norm in town._normalized_keys():
                 return {'kind': 'circuit', 'circuit': town.circuit_id,
                         'canonical': town.name}
+        # ── Difuso: ¿se parece a alguna? ──
+        target = phonetic_town(norm)
+        single = len(norm.split()) == 1
+        scored = []  # (distancia, canonical, circuit|False)
+
+        def consider(key, canonical, circuit):
+            pk = phonetic_town(key)
+            options = [(levenshtein(target, pk), _fuzzy_limit(key))]
+            if single:
+                for w in key.split():
+                    if len(w) >= 5 and w not in _FUZZY_STOPWORDS:
+                        options.append((levenshtein(target, phonetic_town(w)),
+                                        _fuzzy_limit(w)))
+            for dist, limit in options:
+                if dist <= limit:
+                    scored.append((dist, canonical, circuit))
+
+        for key, canonical in rc_keys.items():
+            consider(key, canonical, False)
+        for town in towns:
+            for key in town._normalized_keys():
+                consider(key, town.name, town.circuit_id)
+        if scored:
+            best = min(s[0] for s in scored)
+            winners = {(s[1], s[2].id if s[2] else 0) for s in scored if s[0] == best}
+            if len(winners) == 1:
+                _d, canonical, circuit = next(s for s in scored if s[0] == best)
+                return {'kind': 'maybe', 'circuit': circuit or False,
+                        'canonical': (text or '').strip(), 'candidate': canonical}
         return {'kind': 'fuera_zona', 'circuit': False,
                 'canonical': (text or '').strip()}
 
     @api.model
     def resolve_circuit(self, text):
         """Devuelve el circuito para un texto de ciudad, o False."""
-        return self.classify_city(text).get('circuit') or False
+        info = self.classify_city(text)
+        return info['circuit'] if info.get('kind') == 'circuit' else False
 
     # ───────────────────────── Próxima salida ─────────────────────────
     # Estados de una salida que todavía toma pedidos. 'rescate' es el Plan B de la
@@ -198,6 +320,8 @@ class CristalAgentCircuitTown(models.Model):
         """Set de claves normalizadas (nombre + alias) para matchear texto libre."""
         self.ensure_one()
         keys = {normalize_town(self.name)}
+        for a in EXTRA_ALIASES.get(self.name, []):
+            keys.add(normalize_town(a))
         for a in (self.aliases or '').split(','):
             a = normalize_town(a)
             if a:

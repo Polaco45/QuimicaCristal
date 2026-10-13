@@ -166,7 +166,7 @@ class UpdatePartner(AgentTool):
         # Calificación "mínimo real": la localidad es el dato obligatorio. Queda en
         # la memoria (qual_zone) y el cliente queda calificado cuando además
         # sabemos que es comercio que revende (etiqueta Mayorista).
-        if route_info:
+        if route_info and not route_info.get('needs_confirmation'):
             try:
                 mem = env['cristal.agent.memory'].sudo().get_or_create(partner)
                 if mem:
@@ -189,6 +189,8 @@ class UpdatePartner(AgentTool):
                 "zone": route_info['zone'],
                 "truck_circuit": route_info.get('circuit_name'),
                 "route_note": route_info['note'],
+                "needs_confirmation": route_info.get('needs_confirmation') or None,
+                "candidate_city": route_info.get('candidate_city'),
             })
         return result
 
@@ -237,16 +239,28 @@ class UpdatePartner(AgentTool):
                        note=f"Río Cuarto: reparto por la mañana, NO los "
                             f"{rc_no_delivery_day(env)} (el retiro en planta ese día sí "
                             f"se puede, en el horario oficial).")
+        elif info['kind'] == 'maybe':
+            # v1.36: parecida a una localidad conocida ("Olver" → Holmberg). NO se
+            # marca fuera de zona: se guarda lo que escribió y se le pregunta.
+            kwargs.pop('agent_zone', None)
+            out.update(zone='pending', needs_confirmation=True,
+                       candidate_city=info['candidate'],
+                       note=f"'{info['canonical']}' no coincide exacto con ninguna "
+                            f"localidad, pero se parece a {info['candidate']}. "
+                            f"PREGUNTALE: '¿Se refiere a {info['candidate']}?'. Si dice que "
+                            f"sí, volvé a llamar update_partner(city='{info['candidate']}'). "
+                            f"NO lo trates como fuera de zona.")
         else:  # fuera_zona
             kwargs['agent_zone'] = 'fuera_zona'
             out.update(zone='fuera_zona',
                        note=f"{info['canonical']} está FUERA de los 4 circuitos. NO "
-                            f"ofrezcas condiciones de envío: si pregunta, decile que el "
-                            f"envío a su localidad lo coordina Joaquín directamente y "
-                            f"escalá a Joaco. Tratalo de USTED.")
+                            f"ofrezcas condiciones de envío ni digas que Joaquín le "
+                            f"coordina el envío: ofrecé retiro en planta o transporte a "
+                            f"cargo del cliente, y escalá a Joaco UNA vez. Tratalo de USTED.")
 
         # Si ahora es Río Cuarto o un circuito, la etiqueta "Fuera de zona" es errónea
         # (y excluye al cliente de los broadcasts): se la sacamos.
-        if out['zone'] != 'fuera_zona' and fz_tag and fz_tag in partner.category_id:
+        if out['zone'] in ('ruta_camion', 'rio_cuarto', 'las_higueras') and fz_tag \
+                and fz_tag in partner.category_id:
             out['remove_fuera_zona_tag'] = fz_tag.id
         return out
