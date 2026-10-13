@@ -109,7 +109,7 @@ class CristalAgentRouteSelftest(models.TransientModel):
         Dep.generate_upcoming(weeks=12)
 
         product = env['product.product'].sudo().create({
-            'name': 'ZZ Autotest Ruta', 'type': 'consu', 'list_price': 1.0,
+            'name': 'ZZ Autotest Ruta', 'type': 'consu', 'list_price': 1.0, 'is_storable': False,
             'sale_ok': True, 'taxes_id': [(6, 0, [])]})
         cso = ToolRegistry.get('create_sale_order')
         gri = ToolRegistry.get('get_route_info')
@@ -483,7 +483,7 @@ class CristalAgentRouteSelftest(models.TransientModel):
         def c_veinte_zona():
             from ..services.helpers import first_purchase_discount_status
             prod = env['product.product'].sudo().create({
-                'name': 'ZZ Autotest Lista', 'type': 'consu', 'list_price': 200000.0,
+                'name': 'ZZ Autotest Lista', 'type': 'consu', 'list_price': 200000.0, 'is_storable': False,
                 'sale_ok': True, 'taxes_id': [(6, 0, [])]})
             mayorista_pl = env['product.pricelist'].sudo().search(
                 [('name', '=', 'Lista Mayorista')], limit=1)
