@@ -90,6 +90,10 @@ def build_system_prompt(env, partner=None, base_prompt=None, client_type=None):
                         f"- Horarios de la planta y de entrega: SOLO los de la KB "
                         f"\"Dirección y horarios de la planta (OFICIAL)\". No uses otros.\n"
                         f"- (La hora exacta del mensaje viene en el bloque del mensaje entrante.)")
+    # v1.36 — feriados y días cerrados (caso: el lunes 12/10 feriado dijo "hoy
+    # estamos abiertos hasta las 19:30").
+    from .helpers import holiday_context_lines
+    stable_parts.append("\n".join(holiday_context_lines(env)))
 
     # ─── 3. Capacidades habilitadas (feature flags) — global ───
     stable_parts.append(_build_capabilities_status(env, config))
@@ -143,11 +147,11 @@ def _build_combo_context(env, config):
     body.append(
         "CUÁNDO: si el cliente está arrancando / es nuevo y no sabe bien qué llevar, "
         "ofrecele este combo como punto de partida (en vez de hacerle elegir producto "
-        "por producto). A los que ya saben qué quieren, cotizás lo que pidan con el 20% off."
+        "por producto). A los que ya saben qué quieren, cotizás lo que pidan (con el 20% off SOLO si el contexto del cliente dice que APLICA)."
     )
     body.append(
         "CÓMO cotizarlo: create_sale_order con EXACTAMENTE estos productos y cantidades + "
-        "discount_percent=20 (primera compra) → generate_quote_pdf → mandá el PDF. Queda "
+        "discount_percent=20 SOLO si el 20% de 1ra compra APLICA para este cliente (Río Cuarto / Las Higueras) → generate_quote_pdf → mandá el PDF. Queda "
         "en borrador colgado de la oportunidad; Joaco confirma."
     )
     return "\n".join(body)
@@ -241,6 +245,21 @@ def _build_partner_context(env, partner):
         if zone_label and partner.agent_zone != 'unknown':
             loc += f" — zona: {zone_label}"
         lines.append(f"- ubicación: {loc}")
+
+    # v1.36 — 20% de primera compra: SOLO Río Cuarto / Las Higueras.
+    from .helpers import first_purchase_discount_status
+    fp_status, fp_reason = first_purchase_discount_status(env, partner)
+    if fp_status == 'allowed':
+        lines.append("- 20% OFF 1ra compra: APLICA si nunca compró (cliente de Río Cuarto / "
+                     "Las Higueras).")
+    elif fp_status == 'blocked':
+        lines.append(f"- 20% OFF 1ra compra: ❌ NO APLICA ({fp_reason}). NO lo ofrezcas, NO "
+                     f"lo menciones y NO pases discount_percent. Sí vale la promo Ariel/Skip "
+                     f"$600/L desde 100 L.")
+    else:
+        lines.append("- 20% OFF 1ra compra: todavía NO sé si es de Río Cuarto → NO lo "
+                     "menciones hasta saber su localidad (es SOLO para Río Cuarto / Las "
+                     "Higueras).")
 
     # Etiquetas
     tags = [t.name for t in partner.category_id]
@@ -437,6 +456,8 @@ def build_user_message_for_whatsapp(env, wa_message, partner, plain_text):
     # v1.10.5 — la hora exacta va acá (no en el system prompt cacheado).
     _cal = date_context_ar(env)
     parts.append(f"Recibido: HOY {_cal['hoy']} a las {_cal['hora']} (hora Argentina)")
+    from .helpers import attention_status_line
+    parts.append(attention_status_line(env))
     parts.append(f"Datos técnicos del mensaje:")
     parts.append(f"- partner_id del cliente: {partner.id}")
     parts.append(f"- name: {partner.name}")
@@ -505,6 +526,8 @@ def build_user_message_for_cron(env, partner, cron_type, extra_context=None):
     parts.append("")
     _cal = date_context_ar(env)
     parts.append(f"Ahora: HOY {_cal['hoy']} a las {_cal['hora']} (hora Argentina)")
+    from .helpers import attention_status_line
+    parts.append(attention_status_line(env))
     parts.append(f"Cliente target: {partner.name} (id={partner.id})")
     if partner.mobile:
         parts.append(f"Mobile: {partner.mobile}")
@@ -522,7 +545,7 @@ def build_user_message_for_cron(env, partner, cron_type, extra_context=None):
                                "que corresponda según la cadencia de Onboarding (Fase 3).",
         'cadence_step_quoted': "El cliente recibió una COTIZACIÓN hace unos días y todavía no "
                                "respondió. Hacele un seguimiento corto y cordial: recordale el "
-                               "total, que tiene el 20% OFF de primera compra, las formas de pago "
+                               "total, el 20% OFF de primera compra SOLO si la cotización lo tiene, las formas de pago "
                                "(efectivo contraentrega o transferencia) y preguntá si la cierra. "
                                "PRIMERO leé el historial (read_message_history): si ya hubo charla "
                                "reciente sobre esta cotización, NO insistas. Si la ventana de 24hs "
@@ -534,9 +557,9 @@ def build_user_message_for_cron(env, partner, cron_type, extra_context=None):
                                "sistema YA la canceló. Mandale un último mensaje de reenganche, "
                                "cordial y corto: contale que se canceló por el tiempo y preguntá "
                                "si quiere confirmar el pedido o modificar algo para NO perder los "
-                               "beneficios (20% OFF de primera compra). Ej: 'Tu cotización se "
+                               "beneficios (el 20% OFF de primera compra, SOLO si la cotización lo tenía). Ej: 'Tu cotización se "
                                "canceló por el tiempo transcurrido. ¿La reactivamos? Si confirmás "
-                               "o ajustás algo no perdés el 20% OFF de primera compra.' Si "
+                               "o ajustás algo mantenemos las condiciones.' Si "
                                "responde que sí, armá la cotización de nuevo (create_sale_order). "
                                "Ventana cerrada → template 'hola_mayorista_crm'. AUTÓNOMO: NO "
                                "escales a Joaco.",

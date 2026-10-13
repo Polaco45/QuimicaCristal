@@ -7,6 +7,45 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.36.0] — 2026-10-13
+
+### Fixed — Errores de Claudio vistos en las conversaciones del 9 al 13/10
+
+Incluye la 1.35 (ruta de los miércoles), que no estaba en producción.
+
+1. **20% de primera compra SOLO Río Cuarto / Las Higueras.** `create_sale_order` lo saca
+   a clientes de la ruta (truck_circuit_id) y de fuera de zona (`zone_discount_note`);
+   el contexto del cliente dice si aplica; `send_whatsapp` bloquea los mensajes que lo
+   ofrecen a quien no corresponde; el control de precios ya no acepta precios con 20%
+   para esos clientes. Migración: se quita de las cotizaciones en borrador (S06359,
+   S06367…), respetando el flete; KB #59 y prompt v7 actualizados.
+2. **Localidades mal escritas.** Alias por código (Olver/olmberg/holver → Holmberg, Cnel
+   Moldes, Vicuña, Mackena, Gral Cabrera, Deheza, Adelia, Río IV…) + parecido fonético /
+   Levenshtein: si se parece pero no es exacta, `classify_city` devuelve `maybe` y Claudio
+   PREGUNTA ("¿Se refiere a Holmberg?") en vez de marcar fuera de zona. Partner 83205 →
+   Holmberg (Sur-Oeste).
+3. **Feriados.** Calendario de feriados nacionales 2026-2027 + `config.closed_dates`. El
+   contexto temporal y cada mensaje dicen si hoy se atiende; `get_route_info` avisa si la
+   salida cae en un día cerrado; KB #101 reactivada.
+4. **Sin compromisos propios.** Río Cuarto: "le confirmamos el día de entrega" (se bloquean
+   mensajes que prometen día/horario). Fuera de zona: retiro en planta o transporte a
+   cargo del cliente; "Joaquín te coordina el envío" bloqueado.
+5. **Días de la ruta** calculados desde la fecha (escalaciones "entrega miércoles 14/10").
+6. **Una escalación por pedido / cliente:** si ya hay un aviso de la cotización (72 h) o
+   del cliente (24 h), se actualiza ese mensaje.
+7. **Sin promesas de minutos:** "lo consulto y le confirmo hoy / el [próximo día hábil]".
+8. **Sin stock:** la línea no se carga; vuelven `no_stock_lines` con alternativas del
+   mismo tipo. Productos fuera de catálogo: decirlo y escalar una vez.
+9. **Duplicados:** causa real = el bot adjuntó un id inventado (1), el mensaje salió y lo
+   repitió con el PDF correcto. Ahora se validan los adjuntos (solo los que generaron las
+   tools) y no se manda el mismo texto dos veces en 5 minutos.
+10. **Cliente que no entiende / pide audio:** mensaje corto de una idea + escalar.
+11. **Revendedor vs. institucional:** pregunta explícita antes de derivar a Compras.
+
+Autotest: 26 casos (+8).
+
+---
+
 ## [18.0.1.35.1] — 2026-10-05
 
 Incluye 18.0.1.34.1 (sin muestras gratis) sobre la ruta de los miércoles. Autotest: 18 casos.

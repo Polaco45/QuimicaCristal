@@ -217,6 +217,14 @@ class CristalAgentConfig(models.Model):
         default=21.5,
         help="Hora Argentina (21.5 = 21:30).",
     )
+    closed_dates = fields.Text(
+        string="Días cerrados (además de los feriados nacionales)",
+        help="Una fecha por línea: AAAA-MM-DD motivo (o DD/MM/AAAA motivo). Ej: "
+             "2027-09-27 Día del Empleado de Comercio. Ese día la planta y el reparto "
+             "no operan: Claudio no confirma retiros ni entregas y avisa que se responde "
+             "el próximo día hábil. Los feriados nacionales 2026-2027 ya están cargados "
+             "en el código.",
+    )
 
     # ─────────── Identidades técnicas (referencias) ───────────
     bot_partner_id = fields.Many2one(

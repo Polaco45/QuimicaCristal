@@ -177,6 +177,23 @@ class SendWhatsApp(AgentTool):
             # "tiene que decirlo SIEMPRE").
             body_html = ensure_bidones_notice(env, channel_id, body_html)
 
+            # v1.36: adjuntos válidos, sin duplicados y controles de promesas/20%.
+            from ..send_guards import apply_send_guards, check_attachments, duplicate_recent
+            att_error = check_attachments(env, run, attachment_ids)
+            if att_error:
+                return att_error
+            bot_pid = config.bot_partner_id.id if config.bot_partner_id else 2
+            if duplicate_recent(env, channel_id, body_html, bot_pid):
+                _logger.info("🔁 Mensaje idéntico enviado hace instantes al canal %s: no "
+                             "lo repito.", channel_id)
+                return {"ok": True, "duplicate_skipped": True,
+                        "summary": ("Ese mismo texto ya se mandó hace instantes; no lo repetí. "
+                                    "Si te faltó el PDF, mandalo con un texto corto distinto "
+                                    "(ej: 'Le adjunto la lista').")}
+            body_html, guard_error = apply_send_guards(env, run, channel_id, body_html)
+            if guard_error:
+                return guard_error
+
             # v1.34: ningún precio por litro sale si no vino de las tools en esta
             # conversación (caso real: a Ariel y Skip les puso el precio del detergente).
             from ..helpers import verify_prices
@@ -202,7 +219,7 @@ class SendWhatsApp(AgentTool):
                 if prior >= 1:
                     instruction = (
                         "NO MANDÉ EL MENSAJE (otra vez precios sin verificar). Mandalo SIN "
-                        "esos precios (decí que se los confirmás enseguida) y avisá a Joaco "
+                        "esos precios (decí que se los confirmás) y avisá a Joaco "
                         "con escalate_to_joaco qué precios no pudiste confirmar.")
                 return {"error": instruction, "price_guard": True,
                         "unverified_lines": unverified}

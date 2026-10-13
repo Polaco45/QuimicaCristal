@@ -34,6 +34,7 @@
                             <field name="timezone"/>
                             <field name="work_hours_start" widget="float_time"/>
                             <field name="work_hours_end" widget="float_time"/>
+                            <field name="closed_dates" placeholder="2027-09-27 Día del Empleado de Comercio"/>
                         </group>
                     </group>
 

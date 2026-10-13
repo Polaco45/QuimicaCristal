@@ -114,6 +114,37 @@ class CreateSaleOrder(AgentTool):
         uom = (product.uom_id.name or '').lower() if product.uom_id else ''
         return ('granel' in name) or uom in ('l', 'lt', 'litro', 'litros', 'l.')
 
+    def _stock_alternatives(self, env, product, qty, limit=3):
+        """v1.36: productos del MISMO tipo (categoría) con stock suficiente (o granel,
+        que se fabrica a pedido), priorizando el catálogo mayorista."""
+        Product = env['product.product'].sudo()
+        cands = Product.search([
+            ('categ_id', '=', product.categ_id.id), ('sale_ok', '=', True),
+            ('id', '!=', product.id), ('active', '=', True),
+        ], limit=40)
+        out = []
+        for p in cands.sorted(lambda p: (not p.product_tmpl_id.is_mayorista_catalog, p.name)):
+            disp = self._disponibilidad(p)
+            if disp is None or disp >= qty:
+                out.append({"product_id": p.id, "name": p.display_name})
+            if len(out) >= limit:
+                break
+        return out
+
+    def _no_stock_note(self, no_stock_lines):
+        if not no_stock_lines:
+            return None
+        parts = []
+        for ln in no_stock_lines:
+            alts = ', '.join(a['name'] for a in ln['alternativas']) or 'ninguna con stock'
+            parts.append(f"{ln['product']} (pidió {ln['qty_pedida']:g}, hay "
+                         f"{ln['disponible']:g}) → alternativas: {alts}")
+        return ("⚠️ NO cargué estas líneas por FALTA DE STOCK: " + '; '.join(parts) + ". "
+                "Decile al cliente que ese producto no está disponible y ofrecé UNA "
+                "alternativa de la lista (con su precio de search_products). Si no hay "
+                "alternativa, avisale que no lo tenemos ahora. NO lo cotices igual ni lo "
+                "escales por esto.")
+
     def _disponibilidad(self, product):
         """Stock disponible para productos de DISTRIBUCIÓN/secos.
         Devuelve None si es fabricación a granel o no trackea stock (siempre disp.)."""
@@ -178,6 +209,8 @@ class CreateSaleOrder(AgentTool):
                     'departure': circuit.get_next_departure()}
         if info['kind'] == 'rio_cuarto':
             return {'kind': 'rio_cuarto', 'canonical': canonical}
+        if info['kind'] == 'maybe':
+            return {'kind': 'maybe', 'canonical': canonical, 'candidate': info['candidate']}
         return {'kind': 'fuera_zona', 'canonical': canonical}
 
     def _freight_product(self, env, config):
@@ -446,6 +479,18 @@ class CreateSaleOrder(AgentTool):
                         "Después volvé a llamar create_sale_order."),
                 }
             route_ctx = self._route_context(env, config, partner)
+            if route_ctx['kind'] == 'maybe':
+                cand = route_ctx['candidate']
+                return {
+                    "ok": False,
+                    "needs_city_confirmation": True,
+                    "candidate_city": cand,
+                    "message_for_bot": (
+                        f"NO cotizo todavía: la localidad '{partner.city}' no coincide exacto "
+                        f"con ninguna, pero se parece a {cand}. Preguntale '¿Se refiere a "
+                        f"{cand}?'; si dice que sí, guardala con update_partner(city='{cand}') "
+                        f"y volvé a cotizar. NO lo trates como fuera de zona."),
+                }
 
         # ── GUARDRAIL: el 20% es SOLO de PRIMERA compra ──
         # Bug real (caso Ariel, 3ra compra): el bot aplicó el 20% de primera compra
@@ -464,6 +509,22 @@ class CreateSaleOrder(AgentTool):
                 "🚫 20%% de primera compra BLOQUEADO: %s ya tiene %s compra(s) "
                 "confirmada(s).", partner.name, prev_purchases)
             discount_percent = None
+
+        # ── v1.36: el 20% de primera compra es SOLO para Río Cuarto / Las Higueras ──
+        # Casos reales: S06359 (Coronel Moldes) y S06367 (Vicuña Mackenna) salieron
+        # con 20% en cada línea. Ruta del camión y fuera de zona: NUNCA.
+        zone_discount_blocked = None
+        if discount_percent and float(discount_percent) >= 15:
+            from ..helpers import first_purchase_discount_status
+            fp_status, fp_reason = first_purchase_discount_status(env, partner)
+            if route_ctx and route_ctx['kind'] in ('circuit', 'fuera_zona'):
+                fp_status, fp_reason = 'blocked', (
+                    f"{route_ctx.get('canonical') or partner.city} no es Río Cuarto")
+            if fp_status != 'allowed':
+                zone_discount_blocked = fp_reason
+                _logger.info("🚫 20%% de primera compra BLOQUEADO por zona: %s (%s)",
+                             partner.name, fp_reason)
+                discount_percent = None
 
         Pricelist = env['product.pricelist'].sudo()
         pricelist = Pricelist.search([('name', '=', pricelist_name)], limit=1)
@@ -485,6 +546,7 @@ class CreateSaleOrder(AgentTool):
             fixed_price_pids.add(bidon_product.id)
         problems = []
         sin_stock = []
+        no_stock_lines = []  # v1.36: líneas NO cargadas por falta de stock
         bidon_adjustments = []  # granel redondeado a múltiplo de 20 L (bidones)
         for i, ln in enumerate(lines):
             qty = float(ln.get('qty', 0))
@@ -508,10 +570,20 @@ class CreateSaleOrder(AgentTool):
                         f"{product.display_name}: {qty:g} L → {adj} L "
                         f"(granel en bidones de {mult} L)")
                     qty = float(adj)
-            # Stock (solo distribución/secos)
+            # Stock (solo distribución/secos). v1.36: si no alcanza el stock, la línea
+            # NO se carga (caso real: cotizó Aromatizante Urban Fresh y Base
+            # Desodorante 1+80 sin stock y después tuvo que escalar). Se proponen
+            # alternativas del mismo tipo que sí hay.
             disp = self._disponibilidad(product)
-            if disp is not None and disp <= 0:
+            if disp is not None and disp < qty:
                 sin_stock.append(product.display_name)
+                no_stock_lines.append({
+                    "product": product.display_name,
+                    "qty_pedida": qty,
+                    "disponible": max(disp, 0.0),
+                    "alternativas": self._stock_alternatives(env, product, qty),
+                })
+                continue
             # Precio fijo de promo (opcional): esa línea NO lleva el 20% (no acumulable)
             fp = ln.get('price_unit')
             try:
@@ -527,6 +599,8 @@ class CreateSaleOrder(AgentTool):
                 "error": "No hay líneas válidas para cotizar (revisá mínimos y nombres).",
                 "problems": problems,
                 "sin_stock": sin_stock or None,
+                "no_stock_lines": no_stock_lines or None,
+                "no_stock_note": self._no_stock_note(no_stock_lines),
             }
 
         # 2) Oportunidad + cotización ÚNICA (reusar borrador si existe).
@@ -644,7 +718,13 @@ class CreateSaleOrder(AgentTool):
                         raise _RouteBelowMin(route_block)
         except _RouteBelowMin as e:
             env.invalidate_all()
-            return self._route_below_min_response(e.args[0], sin_stock, problems)
+            resp = self._route_below_min_response(e.args[0], sin_stock, problems)
+            if zone_discount_blocked:
+                resp['zone_discount_blocked'] = True
+                resp['zone_discount_note'] = (
+                    f"⚠️ El 20% de primera compra NO corresponde: {zone_discount_blocked}. "
+                    f"No lo menciones.")
+            return resp
         except Exception as e:
             _logger.exception("Error creando/actualizando sale.order: %s", e)
             return {"error": f"No se pudo armar la cotización: {e}"}
@@ -688,6 +768,8 @@ class CreateSaleOrder(AgentTool):
                 "total_amount": total,
                 "needs_upsell": True,
                 "sin_stock": sin_stock or None,
+                "no_stock_lines": no_stock_lines or None,
+                "no_stock_note": self._no_stock_note(no_stock_lines),
                 "problems": problems or None,
                 "lines": line_details,
                 "bidones_note": bid_info['note'] if bid_info else None,
@@ -721,9 +803,17 @@ class CreateSaleOrder(AgentTool):
             "reused_draft": reused,
             "lines": line_details,
             "sin_stock": sin_stock or None,
+            "no_stock_lines": no_stock_lines or None,
+            "no_stock_note": self._no_stock_note(no_stock_lines),
             "upsell": upsell,
             "previous_purchases": prev_purchases,
             "first_purchase_blocked": first_purchase_blocked,
+            "zone_discount_blocked": bool(zone_discount_blocked),
+            "zone_discount_note": (
+                f"⚠️ NO apliqué el 20% de primera compra: {zone_discount_blocked}. El 20% es "
+                f"SOLO para clientes de Río Cuarto / Las Higueras. Está cotizado a Lista "
+                f"Mayorista. NO le menciones el 20% ni 'primera compra'."
+            ) if zone_discount_blocked else None,
             "first_purchase_note": (
                 f"⚠️ Este cliente YA compró {prev_purchases} vez/veces: NO corresponde el "
                 f"20% de primera compra, lo saqué. Está cotizado a precio de nivel normal. "
