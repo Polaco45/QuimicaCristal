@@ -83,7 +83,25 @@ class GetRouteInfo(AgentTool):
                     f"{info['canonical']} es reparto normal de Río Cuarto: entregamos SOLO "
                     f"por la mañana y NO hay reparto los {no_day.upper()} (ese día sale el "
                     f"camión de la ruta). No ofrezcas ENTREGA ese día. El RETIRO en planta "
-                    f"ese día SÍ se puede, en el horario oficial de la planta."),
+                    f"ese día SÍ se puede, en el horario oficial de la planta. NUNCA "
+                    f"comprometas un día ni un horario de entrega: decí 'le confirmamos el "
+                    f"día de entrega' y escalá el pedido a Joaco."),
+                "suggested_phrase": "Le confirmamos el día de entrega apenas lo programemos.",
+            }
+
+        if not circuit and info.get('kind') == 'maybe':
+            # v1.36: localidad parecida a una de la ruta pero no exacta ("Olver" →
+            # Holmberg). Se PREGUNTA; nunca se marca fuera de zona por un error de tipeo.
+            cand = info['candidate']
+            return {
+                "ok": True, "zone": "unknown", "needs_confirmation": True,
+                "candidate_city": cand,
+                "suggested_phrase": f"¿Se refiere a {cand}?",
+                "message_for_bot": (
+                    f"'{city_text}' no coincide exacto con ninguna localidad, pero se parece "
+                    f"a {cand} (ruta del camión). PREGUNTALE: '¿Se refiere a {cand}?'. Si "
+                    f"dice que sí, guardala con update_partner(city='{cand}'). NO lo marques "
+                    f"fuera de zona ni hables de envío hasta confirmarlo."),
             }
 
         if not circuit:
@@ -91,14 +109,16 @@ class GetRouteInfo(AgentTool):
                 "ok": True, "zone": "fuera_zona", "city": info.get('canonical') or city_text,
                 "escalate": True,
                 "suggested_phrase": (
-                    "Para su localidad el envío lo coordina directamente Joaquín; ya le "
-                    "paso su consulta y le confirmamos cómo se lo hacemos llegar."),
+                    "A su localidad no llega nuestro reparto. Puede retirar el pedido en "
+                    "nuestra planta (San Martín 2350, Río Cuarto) o enviarlo con el "
+                    "transporte que usted elija, a su cargo."),
                 "message_for_bot": (
                     f"{info.get('canonical') or city_text} está FUERA de los 4 circuitos de "
                     f"la ruta. NO ofrezcas condiciones de envío (ni mínimo de ruta, ni "
-                    f"flete, ni fecha). Si pregunta por el envío, contestale con "
-                    f"`suggested_phrase` (no lo dejes sin respuesta). Pasale la lista, "
-                    f"tratalo de USTED y escalá a Joaco con escalate_to_joaco."),
+                    f"flete, ni fecha) y NUNCA digas que Joaquín le coordina el envío. "
+                    f"Ofrecé las dos opciones de `suggested_phrase` (retiro en planta o "
+                    f"transporte a cargo del cliente). Pasale la lista, tratalo de USTED y "
+                    f"escalá a Joaco UNA vez con escalate_to_joaco."),
             }
 
         # ── Es de un circuito: próxima salida real (registro en preventa) ──
@@ -137,6 +157,20 @@ class GetRouteInfo(AgentTool):
         if rescate and departure.courtesy_product_id:
             courtesy = departure.courtesy_product_id.display_name
             phrase += f" Y le sumamos de cortesía: {courtesy}."
+
+        # v1.36: si la salida cae en un día cerrado (feriado), no se promete.
+        from ..helpers import closed_day_reason
+        dep_closed = closed_day_reason(env, dep_date)
+        if dep_closed:
+            return {
+                "ok": True, "zone": "ruta_camion", "circuit": circuit.name, "city": town,
+                "departure_id": departure.id, "departure_on_closed_day": dep_closed,
+                "escalate": True,
+                "message_for_bot": (
+                    f"La próxima salida de {circuit.name} cae el {dep_txt}, que es "
+                    f"{dep_closed}. NO prometas esa fecha ni otra: decile que le confirmamos "
+                    f"la fecha de paso y escalá a Joaco para que reprograme la salida."),
+            }
 
         return {
             "ok": True,
