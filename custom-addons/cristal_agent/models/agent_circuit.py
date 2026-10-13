@@ -2,12 +2,12 @@
 """
 Ruta del camión mayorista — circuitos y localidades.
 
-Un camión sale UNA vez por semana (jueves) a uno de 4 circuitos, rotando cada 4
+Un camión sale UNA vez por semana (miércoles desde v1.35; antes jueves) a uno de 4 circuitos, rotando cada 4
 semanas: Sur-Oeste → Norte → Este → Sur-Este. Cada circuito agrupa localidades
 (con alias para normalizar el texto que escribe el cliente) y tiene su etiqueta de
 contacto (res.partner.category 35/32/50/51) ya cargada.
 
-Las SALIDAS concretas (cada jueves) son registros de `cristal.agent.route.departure`
+Las SALIDAS concretas (cada miércoles) son registros de `cristal.agent.route.departure`
 (ver agent_route_departure.py); acá vive la definición del circuito + la rotación.
 """
 import logging
@@ -63,14 +63,14 @@ class CristalAgentCircuit(models.Model):
     weekday = fields.Selection(
         [('0', 'Lunes'), ('1', 'Martes'), ('2', 'Miércoles'), ('3', 'Jueves'),
          ('4', 'Viernes'), ('5', 'Sábado'), ('6', 'Domingo')],
-        string="Día de salida", default='3',
-        help="Día de la semana en que sale el camión (jueves).")
+        string="Día de salida", default='2',
+        help="Día de la semana en que sale el camión (miércoles).")
     partner_category_id = fields.Many2one(
         'res.partner.category', string="Etiqueta de contacto",
         help="Etiqueta (res.partner.category) de los contactos de este circuito.")
     first_departure_date = fields.Date(
         string="Primera salida", required=True,
-        help="Fecha del primer jueves de este circuito. La rotación es cada 28 días.")
+        help="Fecha de la primera salida de este circuito. La rotación es cada 28 días.")
     town_ids = fields.One2many(
         'cristal.agent.circuit.town', 'circuit_id', string="Localidades")
     departure_ids = fields.One2many(
