@@ -140,11 +140,18 @@ class CristalAgentRun(models.Model):
         'haiku': {'in': 1.0, 'out': 5.0, 'cw': 2.0, 'cr': 0.10},
         'sonnet': {'in': 3.0, 'out': 15.0, 'cw': 6.0, 'cr': 0.30},
         'opus': {'in': 15.0, 'out': 75.0, 'cw': 30.0, 'cr': 1.50},
+        # v1.36.1 — generación 5 (precios de lista oct-2026). cw = 1h = 2x input.
+        'sonnet5': {'in': 2.0, 'out': 10.0, 'cw': 4.0, 'cr': 0.20},
+        'opus55': {'in': 4.0, 'out': 20.0, 'cw': 8.0, 'cr': 0.20},
     }
 
     @classmethod
     def _prices_for_model(cls, model_name):
         m = (model_name or '').lower()
+        if m.startswith('claude-sonnet-5'):
+            return cls.MODEL_PRICES['sonnet5']
+        if m.startswith('claude-opus-5-5'):
+            return cls.MODEL_PRICES['opus55']
         if 'sonnet' in m:
             return cls.MODEL_PRICES['sonnet']
         if 'opus' in m:

@@ -7,6 +7,20 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.36.1] — 2026-10-14
+
+### Changed — Claudio pasa a Claude Sonnet 5.5
+
+- `anthropic_model` = `claude-sonnet-5-5` (antes `claude-haiku-4-5-20251001`).
+- Modelos nuevos: thinking adaptativo con `output_config.effort` (campo nuevo
+  "Esfuerzo de razonamiento", default medio), sin `temperature` (la rechazan),
+  `fallbacks: "default"` ante una negativa (si la API no lo acepta, reintenta sin él).
+- `max_tokens` 16.000 (el razonamiento cuenta dentro) y timeout 180 s.
+- Costos: precios de Sonnet 5.5 / Opus 5.5 en `_prices_for_model`.
+- Autotest: caso 27 (parámetros por modelo y precios).
+
+---
+
 ## [18.0.1.36.0] — 2026-10-13
 
 ### Fixed — Errores de Claudio vistos en las conversaciones del 9 al 13/10

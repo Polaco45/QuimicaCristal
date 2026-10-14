@@ -108,6 +108,15 @@ class CristalAgentConfig(models.Model):
         default=0.7,
         help="0.0 = determinístico, 1.0 = más creativo. Para agente comercial: 0.5-0.8.",
     )
+    anthropic_effort = fields.Selection(
+        [('low', 'Bajo'), ('medium', 'Medio'), ('high', 'Alto')],
+        string="Esfuerzo de razonamiento",
+        default='medium',
+        help="Solo modelos nuevos (Sonnet 5.5 y familia): cuánto razona antes de "
+             "responder. Medio = recomendado para un agente que usa varias "
+             "herramientas por respuesta. Más alto = más preciso, más lento y caro. "
+             "Los modelos nuevos ignoran la Temperatura.",
+    )
     enable_prompt_caching = fields.Boolean(
         string="Activar prompt caching",
         default=True,
@@ -664,9 +673,12 @@ class CristalAgentConfig(models.Model):
         }
         body = {
             "model": self.anthropic_model,
-            "max_tokens": 50,
+            "max_tokens": 1024,
             "messages": [{"role": "user", "content": "Decí 'OK' si me leés."}],
         }
+        from ..services.claude_client import _is_modern_model
+        if _is_modern_model(self.anthropic_model):
+            body["output_config"] = {"effort": "low"}  # razona poco para un "OK"
         try:
             resp = requests.post(self.anthropic_api_url, headers=headers, json=body, timeout=30)
             resp.raise_for_status()

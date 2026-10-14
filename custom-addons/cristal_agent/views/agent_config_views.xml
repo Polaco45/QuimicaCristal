@@ -51,6 +51,7 @@
                                 <field name="max_tokens"/>
                                 <field name="max_iterations"/>
                                 <field name="temperature"/>
+                                <field name="anthropic_effort"/>
                                 <field name="enable_prompt_caching"/>
                                 <field name="debounce_seconds"/>
                                 <field name="escalate_client_msgs_to_strong" widget="boolean_toggle"/>

@@ -21,6 +21,18 @@ from odoo import SUPERUSER_ID
 
 _logger = logging.getLogger(__name__)
 
+# v1.36.1 — Modelos que razonan solos (thinking adaptativo), regulan la
+# profundidad con output_config.effort y NO aceptan temperature/top_p (400).
+# Los anteriores (Haiku 4.5, Sonnet/Opus 4.5-4.6) siguen con temperature.
+_MODERN_MODEL_PREFIXES = (
+    'claude-sonnet-5', 'claude-opus-5', 'claude-opus-4-7', 'claude-opus-4-8',
+    'claude-haiku-5', 'claude-fable', 'claude-mythos',
+)
+
+
+def _is_modern_model(model):
+    return (model or '').startswith(_MODERN_MODEL_PREFIXES)
+
 
 def dispatch_agent_for_message(env, wa_message, partner, memory, plain_text):
     """
@@ -494,6 +506,9 @@ class ClaudeClient:
             messages.append({"role": "assistant", "content": content_blocks})
 
             stop_reason = response.get('stop_reason')
+            if stop_reason == 'refusal':
+                _logger.warning("🛑 Claude se negó a responder (stop_details=%s)",
+                                response.get('stop_details'))
 
             # Si NO hay tool_uses, terminamos
             if not tool_uses or stop_reason == 'end_turn':
@@ -669,7 +684,21 @@ class ClaudeClient:
             "tools": tools_param,
         }
 
-        if self.config.temperature is not None:
+        # v1.36.1 — Modelos nuevos (Sonnet 5.5 y familia): razonan solos (thinking
+        # adaptativo, sin parámetro), NO aceptan temperature (400) y la profundidad
+        # se regula con output_config.effort. Los viejos (Haiku 4.5) siguen igual.
+        if _is_modern_model(model):
+            effort = getattr(self.config, 'anthropic_effort', None) or 'medium'
+            body["output_config"] = {"effort": effort}
+            if model.startswith('claude-sonnet-5-5'):
+                # Si el modelo se niega a responder algo (clasificadores de
+                # seguridad), la API responde con otro modelo en vez de dejar al
+                # cliente sin respuesta.
+                body["fallbacks"] = "default"
+                betas = [b for b in (headers.get("anthropic-beta") or "").split(",") if b]
+                betas.append("server-side-fallback-2026-07-01")
+                headers["anthropic-beta"] = ",".join(betas)
+        elif self.config.temperature is not None:
             body["temperature"] = self.config.temperature
 
         # Retry con backoff exponencial: 0s → 8s → 24s → 60s
@@ -691,10 +720,10 @@ class ClaudeClient:
                     self.config.anthropic_api_url,
                     headers=headers,
                     json=body,
-                    timeout=120,  # 2 min timeout por llamada
+                    timeout=180,  # 3 min por llamada (los modelos nuevos razonan antes)
                 )
             except self._requests.exceptions.Timeout:
-                raise RuntimeError("Timeout llamando a Claude API (>120s)")
+                raise RuntimeError("Timeout llamando a Claude API (>180s)")
             except Exception as e:
                 last_error = e
                 continue
@@ -711,6 +740,20 @@ class ClaudeClient:
                     except (ValueError, IndexError):
                         pass
                 continue  # reintenta
+
+            # v1.36.1: si la cuenta no tiene habilitado el modelo de respaldo, se
+            # reintenta sin él (nunca dejamos al cliente sin respuesta por esto).
+            if resp.status_code == 400 and 'fallback' in (resp.text or '').lower() \
+                    and 'fallbacks' in body:
+                _logger.warning("Claude API rechazó 'fallbacks'; reintento sin él: %s",
+                                resp.text[:200])
+                body.pop('fallbacks', None)
+                headers["anthropic-beta"] = ",".join(
+                    b for b in (headers.get("anthropic-beta") or "").split(",")
+                    if b and not b.startswith("server-side-fallback"))
+                if not headers["anthropic-beta"]:
+                    headers.pop("anthropic-beta")
+                continue
 
             # Otros errores: cortar
             if resp.status_code != 200:

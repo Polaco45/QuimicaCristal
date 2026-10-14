@@ -703,3 +703,19 @@ class CristalAgentRouteSelftest(models.TransientModel):
                 sg.confusion_signal = original
             return "2 'no entiendo' o pedido de audio → bloquea textos largos y pide escalar"
         self._case(results, "26. Cliente que no entiende", c_no_entiende)
+
+        # 27) Modelo: Sonnet 5.5 sin temperature y con esfuerzo; precios correctos.
+        def c_modelo():
+            from ..services.claude_client import _is_modern_model
+            assert _is_modern_model('claude-sonnet-5-5') and _is_modern_model('claude-opus-5-5')
+            assert not _is_modern_model('claude-haiku-4-5-20251001')
+            Run = env['cristal.agent.run']
+            p = Run._prices_for_model('claude-sonnet-5-5')
+            assert (p['in'], p['out'], p['cr']) == (2.0, 10.0, 0.20), p
+            assert Run._prices_for_model('claude-haiku-4-5-20251001')['in'] == 1.0
+            assert config.anthropic_model == 'claude-sonnet-5-5', config.anthropic_model
+            assert config.anthropic_effort in ('low', 'medium', 'high')
+            assert config.max_tokens >= 16000, config.max_tokens
+            return (f"modelo {config.anthropic_model} · esfuerzo {config.anthropic_effort} · "
+                    f"max_tokens {config.max_tokens} · sin temperature · precios Sonnet 5.5 OK")
+        self._case(results, "27. Modelo Sonnet 5.5", c_modelo)
