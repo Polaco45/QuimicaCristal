@@ -207,9 +207,9 @@ class CristalAgentRouteSelftest(models.TransientModel):
             gratis = max(120000, (config.route_free_shipping_from or 0) + 1000)
             r = quote(p120, gratis)
             order = SaleOrder.browse(r['order_id'])
+            assert r.get('ok') and not freight_lines(order), f"${gratis:,.0f} no lleva flete"
             return (f"$60k no crea; $80k borrador + flete $9.000 + miércoles + etiqueta + "
                     f"escalado; ${gratis:,.0f} sin flete")
-            return "$60k no crea; $80k borrador + flete $9.000 + miércoles + etiqueta + escalado; $120k sin flete"
         self._case(results, "3. Pedidos en Sampacho", c_pedidos)
 
         # 4) Mínimo y envío gratis SIN contar el flete
