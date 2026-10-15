@@ -795,3 +795,33 @@ class CristalAgentRouteSelftest(models.TransientModel):
             assert 'Kit Cloro' not in up, "sugirió una promo de consumidor final"
             return f"$100.000 → 'le faltan {falta}', sugiere UNA opción de las promos vigentes"
         self._case(results, "30. Upsell al envío sin cargo", c_upsell_umbral)
+
+        # ═════════════════ Retiro en planta sin mínimo (v1.38) ═════════════════
+        # 31) Caso Valeria: 1 bidón para retirar → se cotiza sin mínimo ni flete.
+        def c_retiro_sin_minimo():
+            def q(partner, amount, mode=None):
+                kw = {'delivery_mode': mode} if mode else {}
+                return cso.execute(env=env, run=None, partner_id=partner.id, lines=[
+                    {'product_id': product.id, 'qty': 1, 'price_unit': amount}], **kw)
+            p1 = mk_partner('Retiro RC', 'Rio Cuarto')
+            r = q(p1, 13120, 'retiro')
+            assert r.get('ok') and not r.get('blocked_min_compra') and not r.get('upsell'), r
+            o = SaleOrder.browse(r['order_id'])
+            assert o.cristal_delivery_mode == 'retiro', o.cristal_delivery_mode
+            assert 'RETIRO EN PLANTA' in (r.get('route_note') or ''), r.get('route_note')
+            p2 = mk_partner('Envio RC', 'Rio Cuarto')
+            r = q(p2, 13120)
+            assert r.get('blocked_min_compra'), "con envío $13.120 debía frenar por el mínimo"
+            assert "delivery_mode='retiro'" in r.get('message_for_bot', ''), "no ofrece el retiro"
+            p3 = mk_partner('Retiro Sampacho', 'Sampacho')
+            r = q(p3, 30000, 'retiro')
+            o = SaleOrder.browse(r['order_id']) if r.get('order_id') else SaleOrder
+            assert r.get('ok') and not r.get('blocked_route_min'), r
+            assert not freight_lines(o) and not o.route_departure_id, "retiro con flete o salida"
+            p4 = mk_partner('Retiro sin ciudad', False)
+            r = q(p4, 13120, 'retiro')
+            assert r.get('ok') and not r.get('needs_city'), r
+            return ("RC 1 bidón ($13.120) retirando → se cotiza · con envío → mínimo + ofrece "
+                    "retiro · Sampacho $30.000 retirando → sin mínimo, flete ni salida · "
+                    "sin localidad retirando → OK")
+        self._case(results, "31. Retiro en planta sin mínimo", c_retiro_sin_minimo)

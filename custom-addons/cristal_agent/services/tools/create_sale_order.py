@@ -49,7 +49,9 @@ class CreateSaleOrder(AgentTool):
         "productos en una sola llamada o se van sumando al mismo borrador). "
         "Pasale partner_id y lines: {product_id|product_name, qty}. "
         "Reglas que la tool valida sola: mínimo 20 L por producto a granel (sin "
-        "excepción), y piso de compra $39.990 (no se puede cotizar por menos). "
+        "excepción), y con ENVÍO el piso de compra $39.990 (Río Cuarto) o el mínimo de "
+        "la ruta. Si el cliente RETIRA en la planta pasá delivery_mode='retiro': NO hay "
+        "compra mínima ni flete (solo bidones de 20 L en el granel). "
         "Pasá discount_percent=20 para el 20% OFF de primera compra. "
         "PROMOS CON PRECIO CERRADO (ej: campaña 'Ariel y Skip a $600 el litro'): pasá "
         "price_unit en la línea (el precio por unidad final de la promo) y NO pases "
@@ -94,6 +96,15 @@ class CreateSaleOrder(AgentTool):
                 "description": "Descuento % que se aplica a las líneas SIN price_unit fijo. "
                                "20 = primera compra. NO lo pases junto con promos de precio "
                                "cerrado (price_unit) — no son acumulables.",
+            },
+            "delivery_mode": {
+                "type": "string",
+                "enum": ["envio", "retiro"],
+                "description": "'retiro' = el cliente lo busca en la planta (San Martín 2350): "
+                               "SIN compra mínima, sin flete ni salida del camión. 'envio' "
+                               "(default) = reparto en Río Cuarto o camión de la ruta: aplica "
+                               "el mínimo. Si no sabés, preguntale si lo retira o se lo "
+                               "enviamos.",
             },
             "bidones_nuevos": {
                 "type": "integer",
@@ -397,7 +408,9 @@ class CreateSaleOrder(AgentTool):
                 f"ruta ({block['circuit']}) es {_fmt_money(block['min_order'])} (sin "
                 f"contar flete). Faltan {_fmt_money(block['missing'])}. NO pierdas la venta: "
                 f"sugerí productos complementarios para completar el mínimo y volvé a "
-                f"llamar create_sale_order con la lista completa."),
+                f"llamar create_sale_order con la lista completa. Si el cliente prefiere "
+                f"RETIRAR en la planta de Río Cuarto, ahí NO hay mínimo ni flete: volvé a "
+                f"llamar con delivery_mode='retiro'."),
         }
 
     def _route_result_fields(self, block):
@@ -481,7 +494,7 @@ class CreateSaleOrder(AgentTool):
     # ─────────────────────────────── Main ───────────────────────────────
     def _execute(self, env, run=None, partner_id=None, lines=None,
                  pricelist_name='Lista Mayorista', note=None,
-                 discount_percent=None, bidones_nuevos=None, **kwargs):
+                 discount_percent=None, bidones_nuevos=None, delivery_mode=None, **kwargs):
         if not (partner_id and lines):
             return {"error": "partner_id y lines son obligatorios"}
 
@@ -489,10 +502,20 @@ class CreateSaleOrder(AgentTool):
         if not partner.exists():
             return {"error": f"partner_id={partner_id} no existe"}
 
+        # v1.38 — RETIRO EN PLANTA: sin compra mínima, sin flete ni salida de ruta
+        # (Joaco: "en el local pueden ir a buscar tranquilamente sin mínimo"). Caso
+        # real: Valeria di Giovanni quería mandar a buscar 1 bidón de Skip y Claudio
+        # se lo negó por el mínimo de $50.000.
+        is_pickup = (delivery_mode or '').strip().lower() == 'retiro'
+
         # ── RUTA DEL CAMIÓN (v1.32): la localidad es obligatoria para cotizar ──
+        # (con retiro en planta no hace falta: no hay envío).
         config = env['cristal.agent.config'].sudo().get_active()
         route_ctx = None
-        if config and config.enable_truck_route:
+        if config and config.enable_truck_route and is_pickup:
+            if (partner.city or '').strip():
+                route_ctx = self._route_context(env, config, partner)
+        elif config and config.enable_truck_route:
             if not (partner.city or '').strip():
                 return {
                     "ok": False,
@@ -735,8 +758,17 @@ class CreateSaleOrder(AgentTool):
                     order.note = note
                 order.opportunity_id = opp.id
 
+                # ── Retiro en planta: sin flete ni salida de ruta (aunque antes la tuviera) ──
+                if is_pickup:
+                    order.order_line.filtered(
+                        lambda l: l.product_id == self._freight_product(env, config)).unlink()
+                    order.write({'cristal_delivery_mode': 'retiro',
+                                 'route_departure_id': False, 'commitment_date': False})
+                else:
+                    order.cristal_delivery_mode = 'envio'
+
                 # ── Ruta del camión: mínimo, flete, fecha de entrega, salida, etiqueta ──
-                if route_ctx and route_ctx['kind'] == 'circuit':
+                if route_ctx and route_ctx['kind'] == 'circuit' and not is_pickup:
                     route_block = self._apply_route(env, config, route_ctx, order)
                     if route_block.get('below_min'):
                         # Rollback del savepoint: no queda orden ni oportunidad creada.
@@ -785,7 +817,10 @@ class CreateSaleOrder(AgentTool):
         # Bidones: se informan SIEMPRE, también cuando el pedido queda bajo el mínimo.
         bid_info = self._bidones_info(env, config, order)
 
-        if not is_route and total < self.COMPRA_PISO:
+        pickup_hint = (" Si el cliente RETIRA en la planta, NO hay compra mínima: "
+                       "preguntale si lo retira y, si es así, volvé a llamar "
+                       "create_sale_order con delivery_mode='retiro'.")
+        if not is_route and not is_pickup and total < self.COMPRA_PISO:
             return {
                 "ok": False,
                 "blocked_min_compra": True,
@@ -803,17 +838,19 @@ class CreateSaleOrder(AgentTool):
                     f"{_fmt_money(self.COMPRA_PISO)}. NO se puede cotizar ni enviar por "
                     f"menos. Comunicá que la compra mínima es {_fmt_money(self.COMPRA_MIN)} "
                     f"y hacé UPSELL (sumá productos) para llegar. Cuando supere el "
-                    f"piso, volvé a llamar create_sale_order con la lista completa."),
+                    f"piso, volvé a llamar create_sale_order con la lista completa."
+                    + pickup_hint),
             }
 
         upsell = None
-        if not is_route and total < self.COMPRA_MIN:
+        if not is_route and not is_pickup and total < self.COMPRA_MIN:
             falta = self.COMPRA_MIN - total
             upsell = (
-                f"El total va {_fmt_money(total)}. La compra mínima es {_fmt_money(self.COMPRA_MIN)} "
-                f"(faltan {_fmt_money(falta)}). COMUNICÁ el mínimo y hacé UPSELL para llegar "
-                f"a {_fmt_money(self.COMPRA_MIN)}. Si el cliente no quiere sumar, se puede "
-                f"enviar igual (supera el piso de {_fmt_money(self.COMPRA_PISO)}).")
+                f"El total va {_fmt_money(total)}. La compra mínima CON ENVÍO es "
+                f"{_fmt_money(self.COMPRA_MIN)} (faltan {_fmt_money(falta)}). COMUNICÁ el "
+                f"mínimo y hacé UPSELL para llegar a {_fmt_money(self.COMPRA_MIN)}. Si el "
+                f"cliente no quiere sumar, se puede enviar igual (supera el piso de "
+                f"{_fmt_money(self.COMPRA_PISO)})." + pickup_hint)
 
 
         result = {
@@ -878,8 +915,15 @@ class CreateSaleOrder(AgentTool):
                 f"Pasale order_id={order.id} a generate_quote_pdf."),
         }
 
+        result['delivery_mode'] = 'retiro' if is_pickup else 'envio'
         # 5) Ruta del camión: condiciones de envío + escalamiento a Joaco
-        if is_route:
+        if is_pickup:
+            result['route_note'] = (
+                "RETIRO EN PLANTA (San Martín 2350, Río Cuarto): sin compra mínima y sin "
+                "flete. Decile día + fecha + horario oficial de retiro y que traiga sus "
+                "bidones vacíos con tapa para el recambio (si es granel). Queda pendiente "
+                "de confirmación de Joaquín.")
+        elif is_route:
             result.update(self._route_result_fields(route_block))
             self._escalate_route_order(env, run, partner, order, route_ctx, route_block)
         elif route_ctx and route_ctx['kind'] == 'rio_cuarto':

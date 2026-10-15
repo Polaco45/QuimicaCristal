@@ -49,6 +49,12 @@ class SaleOrder(models.Model):
              "cotización no lleva flete de ruta aunque no llegue al monto de envío "
              "sin cargo. Claudio nunca lo marca.")
 
+    # v1.38 — Cómo recibe el pedido: con retiro en planta no hay compra mínima ni flete.
+    cristal_delivery_mode = fields.Selection(
+        [('envio', 'Envío'), ('retiro', 'Retira en planta')],
+        string="Entrega", copy=False, tracking=True,
+        help="Lo carga Claudio al cotizar. Retira en planta = sin compra mínima ni flete.")
+
     # ───────────────────── Flete de la ruta (v1.37) ─────────────────────
     def _cristal_freight_product(self, config):
         if config and config.route_freight_product_id:
