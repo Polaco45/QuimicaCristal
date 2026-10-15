@@ -445,8 +445,10 @@ class CristalAgentConfig(models.Model):
         string="Flete en ruta", default=9000.0,
         help="Monto del flete cuando el pedido no llega al umbral de envío gratis.")
     route_free_shipping_from = fields.Float(
-        string="Envío gratis desde", default=99000.0,
-        help="Desde este subtotal de productos (sin IVA ni flete) el envío es sin cargo.")
+        string="Envío gratis desde", default=150000.0,
+        help="Desde este monto el envío de la ruta es sin cargo. Base: subtotal sin IVA "
+             "de TODAS las líneas excepto el flete (los bidones nuevos cuentan). Todo el "
+             "módulo (cotizador, get_route_info, prompt) lee este campo.")
     route_freight_product_id = fields.Many2one(
         'product.product', string="Producto de flete",
         help="Producto servicio que se agrega como línea de flete (FLETE-ZONA).")

@@ -305,9 +305,12 @@ class CreateSaleOrder(AgentTool):
 
     def _apply_route(self, env, config, route_ctx, order):
         """Aplica las reglas de la ruta sobre la orden (dentro del savepoint).
-        Mínimo y envío gratis se miden sobre el subtotal de PRODUCTOS sin IVA,
-        después de la lista y SIN la línea de flete. Devuelve un dict; si
-        'below_min' viene en True, el llamador hace rollback."""
+        - MÍNIMO: subtotal de PRODUCTOS sin IVA (sin flete ni bidones nuevos).
+        - ENVÍO SIN CARGO (v1.37): subtotal sin IVA de TODAS las líneas excepto el
+          flete (los bidones cuentan), contra config.route_free_shipping_from (o el
+          umbral de rescate de la salida). Nunca hay flete si la orden tiene
+          'Envío sin cargo acordado'. Ver sale.order._cristal_apply_route_freight.
+        Devuelve un dict; si 'below_min' viene en True, el llamador hace rollback."""
         circuit = route_ctx['circuit']
         departure = route_ctx.get('departure')
         freight_product = self._freight_product(env, config)
@@ -316,8 +319,7 @@ class CreateSaleOrder(AgentTool):
         # flete anterior y se recalcula.
         if freight_product:
             order.order_line.filtered(lambda l: l.product_id == freight_product).unlink()
-        # El flete y los bidones nuevos no son "productos": no suman para el mínimo
-        # ni para el envío gratis.
+        # Para el MÍNIMO, el flete y los bidones nuevos no son "productos".
         non_products = freight_product | self._bidon_product(env, config)
         product_lines = order.order_line.filtered(lambda l: l.product_id not in non_products)
         product_subtotal = sum(product_lines.mapped('price_subtotal'))
@@ -345,18 +347,13 @@ class CreateSaleOrder(AgentTool):
             block['bidones_note'] = bid_info['note'] if bid_info else None
             return block
 
-        freight = 0.0
-        if product_subtotal < free_from and freight_product:
-            freight = config.route_freight_amount
-            order.write({'order_line': [(0, 0, {
-                'product_id': freight_product.id, 'product_uom_qty': 1,
-                'price_unit': freight, 'discount': 0.0})]})
-            # Última palabra sobre el flete: la Lista Mayorista tiene una regla global
-            # de -20% (item 9740) que Odoo podría aplicar como precio o como descuento.
-            order.order_line.filtered(lambda l: l.product_id == freight_product).write(
-                {'price_unit': freight, 'discount': 0.0})
+        freight, shipping_base = order._cristal_apply_route_freight(config, free_from)
         block['freight'] = freight
-        block['missing_for_free_shipping'] = (free_from - product_subtotal) if freight else 0.0
+        block['shipping_base'] = shipping_base
+        block['free_shipping_granted'] = bool(order.sudo().route_free_shipping_granted)
+        block['missing_for_free_shipping'] = (free_from - shipping_base) if freight else 0.0
+        if freight:
+            block['promos'] = self._active_promo_names(env)
 
         vals = {'route_departure_id': departure.id if departure else False,
                 'tag_ids': [(4, self._route_tag(env, circuit).id)]}
@@ -366,6 +363,20 @@ class CreateSaleOrder(AgentTool):
         if rescate and departure.courtesy_product_id:
             block['courtesy_product'] = departure.courtesy_product_id.display_name
         return block
+
+    def _active_promo_names(self, env, limit=4):
+        """Promos vigentes (cristal.agent.offer) para sugerir al llegar al umbral de
+        envío sin cargo. Solo las que existen: Claudio no inventa promos."""
+        from datetime import date
+        today = date.today()
+        offers = env['cristal.agent.offer'].sudo().search([
+            ('active', '=', True),
+            # Las promos de consumidor final no son para mayoristas.
+            ('name', 'not ilike', ' CF'), ('name', 'not ilike', 'consumidor final'),
+            '|', ('valid_from', '=', False), ('valid_from', '<=', today),
+            '|', ('valid_until', '=', False), ('valid_until', '>=', today),
+        ], order='priority desc, write_date desc', limit=limit)
+        return [o.name for o in offers]
 
     def _route_below_min_response(self, block, sin_stock, problems):
         return {
@@ -399,13 +410,27 @@ class CreateSaleOrder(AgentTool):
             "freight": block['freight'],
             "free_shipping_from": block['free_shipping_from'],
             "missing_for_free_shipping": block['missing_for_free_shipping'] or None,
+            "free_shipping_granted": block.get('free_shipping_granted') or None,
             "rescate": block['rescate'],
             "courtesy_product": block.get('courtesy_product'),
         }
-        freight_txt = (f"flete {_fmt_money(block['freight'])} (faltan "
-                       f"{_fmt_money(block['missing_for_free_shipping'])} de productos para "
-                       f"que el envío sea sin cargo)" if block['freight']
-                       else "envío sin cargo")
+        if block['freight']:
+            missing = _fmt_money(block['missing_for_free_shipping'])
+            freight_txt = (f"flete {_fmt_money(block['freight'])} (le faltan {missing} para "
+                           f"que el envío sea sin cargo)")
+            promos = block.get('promos') or []
+            out["free_shipping_upsell"] = (
+                f"Decile cuánto le falta ({missing}) para no pagar el flete de "
+                f"{_fmt_money(block['freight'])} y sugerí UNA sola opción concreta para "
+                f"llegar. Preferí una promo vigente"
+                + (": " + " | ".join(promos) if promos else "")
+                + ". Si ninguna sirve, un producto que ya lleva (más litros) o un "
+                  "complementario. NUNCA inventes una promo que no esté en esta lista o "
+                  "en las ofertas vigentes.")
+        elif block.get('free_shipping_granted'):
+            freight_txt = "envío sin cargo (acordado por Joaquín)"
+        else:
+            freight_txt = "envío sin cargo"
         out["route_note"] = (
             f"Pedido de ruta ({block['circuit']}): productos "
             f"{_fmt_money(block['product_subtotal'])}, {freight_txt}. "

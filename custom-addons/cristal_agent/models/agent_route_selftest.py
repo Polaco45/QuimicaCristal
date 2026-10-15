@@ -721,3 +721,77 @@ class CristalAgentRouteSelftest(models.TransientModel):
             return (f"modelo {config.anthropic_model} · esfuerzo {config.anthropic_effort} · "
                     f"max_tokens {config.max_tokens} · sin temperature · precios Sonnet 5.5 OK")
         self._case(results, "27. Modelo Sonnet 5.5", c_modelo)
+
+        # ═════════════════ Envío sin cargo desde config (v1.37) ═════════════════
+        free_from = config.route_free_shipping_from
+
+        # 28) Umbral: free_from - 1 → flete; free_from → sin flete. Base: todo menos flete.
+        def c_umbral_envio():
+            pa = mk_partner('Umbral A', 'Sampacho')
+            r = quote(pa, free_from - 1)
+            o = SaleOrder.browse(r['order_id'])
+            fl = freight_lines(o)
+            assert r.get('ok') and len(fl) == 1 and fl.price_unit == config.route_freight_amount, (
+                f"${free_from - 1:,.0f} debía llevar flete: {r.get('route_note')}")
+            pb = mk_partner('Umbral B', 'Sampacho')
+            r = quote(pb, free_from)
+            o = SaleOrder.browse(r['order_id'])
+            assert r.get('ok') and not freight_lines(o), f"${free_from:,.0f} no lleva flete"
+            # Base: los bidones cuentan, el flete no.
+            bidon = config.bidon_product_id
+            assert bidon, "falta el producto bidón en la config"
+            o.write({'order_line': [(0, 0, {'product_id': bidon.id, 'product_uom_qty': 2,
+                                            'price_unit': 3500.0})]})
+            base = o._cristal_shipping_base(config)
+            assert base == free_from + 7000, f"base {base} (esperado {free_from + 7000})"
+            pc = mk_partner('Umbral C', 'Sampacho')
+            r = quote(pc, free_from - 5000)
+            o = SaleOrder.browse(r['order_id'])
+            o.write({'order_line': [(0, 0, {'product_id': bidon.id, 'product_uom_qty': 2,
+                                            'price_unit': 3500.0})]})
+            freight, base = o._cristal_apply_route_freight(config, free_from)
+            assert not freight and not freight_lines(o), (
+                f"con 2 bidones llega a {base:,.0f}: no debía llevar flete")
+            return (f"${free_from - 1:,.0f} → flete ${config.route_freight_amount:,.0f} · "
+                    f"${free_from:,.0f} → sin flete · los bidones suman a la base, el flete no")
+        self._case(results, "28. Envío sin cargo desde la config", c_umbral_envio)
+
+        # 29) Envío sin cargo acordado: nunca flete, ni al re-cotizar; Claudio no lo toca.
+        def c_envio_acordado():
+            p = mk_partner('Acordado', 'Sampacho')
+            r = quote(p, 120000)
+            o = SaleOrder.browse(r['order_id'])
+            assert freight_lines(o), "$120.000 sin acuerdo debía llevar flete"
+            o.write({'route_free_shipping_granted': True})
+            assert not freight_lines(o), "al marcar el acuerdo no se sacó el flete"
+            r2 = cso.execute(env=env, run=None, partner_id=p.id, lines=[
+                {'product_id': product.id, 'qty': 1, 'price_unit': 120000},
+                {'product_id': product2.id, 'qty': 1, 'price_unit': 5000}])
+            o2 = SaleOrder.browse(r2['order_id'])
+            assert o2 == o, "no re-usó el borrador"
+            assert r2.get('ok') and not freight_lines(o2), (
+                f"re-cotizado con el acuerdo y $125.000: no debía llevar flete ({r2.get('route_note')})")
+            o2.with_context(from_cristal_agent=True).write({'route_free_shipping_granted': False})
+            assert o2.route_free_shipping_granted, "Claudio pudo sacar el envío acordado"
+            return "$120.000 con acuerdo → sin flete, también al re-cotizar; Claudio no lo puede cambiar"
+        product2 = env['product.product'].sudo().create({
+            'name': 'ZZ Autotest Ruta 2', 'type': 'consu', 'list_price': 1.0,
+            'is_storable': False, 'sale_ok': True, 'taxes_id': [(6, 0, [])]})
+        self._case(results, "29. Envío sin cargo acordado", c_envio_acordado)
+
+        # 30) Upsell al umbral: cuánto falta + UNA opción, solo promos vigentes.
+        def c_upsell_umbral():
+            env['cristal.agent.offer'].sudo().create({
+                'name': 'ZZ Promo 5+1 suavizante', 'description': 'ZZ autotest',
+                'offer_type': 'other', 'valid_from': date.today(),
+                'valid_until': date.today(), 'active': True, 'applies_to_levels': 'all',
+                'priority': 99})
+            p = mk_partner('Upsell', 'Sampacho')
+            r = quote(p, 100000)
+            up = r.get('free_shipping_upsell') or ''
+            falta = '${:,.0f}'.format(free_from - 100000).replace(',', '.')
+            assert falta in up and 'ZZ Promo 5+1 suavizante' in up, up
+            assert 'UNA sola opción' in up and 'NUNCA inventes' in up, up
+            assert 'Kit Cloro' not in up, "sugirió una promo de consumidor final"
+            return f"$100.000 → 'le faltan {falta}', sugiere UNA opción de las promos vigentes"
+        self._case(results, "30. Upsell al envío sin cargo", c_upsell_umbral)
