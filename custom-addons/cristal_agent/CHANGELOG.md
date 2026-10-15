@@ -7,6 +7,24 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.38.0] — 2026-10-15
+
+### Fixed — Retiro en planta SIN compra mínima
+
+Caso real: Valeria di Giovanni quiso mandar a buscar 1 bidón de Skip y Claudio se lo
+negó por la compra mínima de $50.000. La compra mínima es solo para envíos.
+
+- `create_sale_order(delivery_mode='retiro')`: sin compra mínima (ni la de Río Cuarto ni la
+  de la ruta), sin flete ni salida del camión, y sin exigir localidad. Los avisos de
+  mínimo ofrecen el retiro. Nuevo campo `sale.order.cristal_delivery_mode` (Envío /
+  Retira en planta) en la cotización.
+- Prompt v7: la compra mínima es solo con envío; si retira, nunca pedir mínimo.
+- KB #19 y #59 corregidas (decían que el mínimo aplica siempre); KB #89 y #102: retiro
+  sin mínimo.
+- Autotest: caso 31.
+
+---
+
 ## [18.0.1.37.0] — 2026-10-15
 
 ### Changed — Envío sin cargo de la ruta desde la configuración ($150.000)

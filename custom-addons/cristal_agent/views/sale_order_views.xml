@@ -10,6 +10,7 @@
         <field name="inherit_id" ref="sale.view_order_form"/>
         <field name="arch" type="xml">
             <xpath expr="//field[@name='payment_term_id']" position="after">
+                <field name="cristal_delivery_mode" invisible="not cristal_delivery_mode"/>
                 <field name="route_departure_id" readonly="1"
                        invisible="not route_departure_id"/>
                 <field name="route_free_shipping_granted"
