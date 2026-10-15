@@ -57,14 +57,16 @@ class SaleOrder(models.Model):
             [('default_code', '=', 'FLETE-ZONA')], limit=1)
 
     def _cristal_shipping_base(self, config):
-        """Base del umbral de ENVÍO SIN CARGO: subtotal sin IVA de TODAS las líneas
-        de la orden EXCEPTO la de flete (los bidones nuevos SÍ cuentan).
-        Regla de Joaco (15/10/2026). El MÍNIMO de la ruta se sigue midiendo solo
-        sobre productos (sin flete ni bidones)."""
+        """Base del umbral de ENVÍO SIN CARGO: subtotal sin IVA de los PRODUCTOS, sin
+        la línea de flete ni los bidones nuevos (misma base que el mínimo de la ruta).
+        Joaco (15/10/2026): el bidón deja ~15% de margen; si contara, 2 bidones
+        ($7.000) le ahorrarían al cliente $9.000 de flete."""
         self.ensure_one()
-        freight = self._cristal_freight_product(config)
+        excluded = self._cristal_freight_product(config)
+        if config and config.bidon_product_id:
+            excluded |= config.bidon_product_id
         return sum(self.order_line.filtered(
-            lambda l: l.product_id != freight).mapped('price_subtotal'))
+            lambda l: l.product_id not in excluded).mapped('price_subtotal'))
 
     def _cristal_apply_route_freight(self, config, free_from):
         """Saca el flete anterior y lo vuelve a poner SOLO si corresponde:

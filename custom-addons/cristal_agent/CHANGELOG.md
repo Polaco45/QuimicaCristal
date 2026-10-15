@@ -14,8 +14,8 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Nada fijo: cotizador, get_route_info y prompt leen `route_free_shipping_from` (el
   default del campo pasa a 150.000; se sacó el 99.000 de get_route_info, de la
   migración 1.35 y del prompt v6).
-- Base del envío sin cargo: subtotal sin IVA de TODAS las líneas excepto el flete (los
-  bidones cuentan). El mínimo de ruta sigue midiéndose solo sobre productos.
+- Base del envío sin cargo: la misma que el mínimo — productos sin IVA, sin flete ni
+  bidones nuevos (el bidón deja ~15% de margen; decisión de Joaco 15/10).
   Lógica única en `sale.order._cristal_apply_route_freight`.
 - `sale.order.route_free_shipping_granted` ("Envío sin cargo acordado"): con True nunca
   se agrega flete (tampoco al re-cotizar); lo marca un vendedor; Claudio no puede.
@@ -23,7 +23,8 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   las promos vigentes (sin las de consumidor final) para sugerir UNA opción.
 - Migración: KB #102 (base del umbral), KB #58 y #64 archivadas (20% a todos), envío
   acordado en S06319 y S06381, S06344 a la salida Sur-Oeste del 21/10 con flete si
-  corresponde, prompt v7 recargado.
+  corresponde, 20% devuelto a S06359 (Any) y S06367 (Miriancordoba) que ya lo habían
+  aceptado, prompt v7 recargado.
 - Autotest: casos 28-30.
 
 ---

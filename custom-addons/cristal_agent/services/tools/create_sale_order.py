@@ -306,9 +306,9 @@ class CreateSaleOrder(AgentTool):
     def _apply_route(self, env, config, route_ctx, order):
         """Aplica las reglas de la ruta sobre la orden (dentro del savepoint).
         - MÍNIMO: subtotal de PRODUCTOS sin IVA (sin flete ni bidones nuevos).
-        - ENVÍO SIN CARGO (v1.37): subtotal sin IVA de TODAS las líneas excepto el
-          flete (los bidones cuentan), contra config.route_free_shipping_from (o el
-          umbral de rescate de la salida). Nunca hay flete si la orden tiene
+        - ENVÍO SIN CARGO (v1.37): la misma base (productos sin IVA, sin flete ni
+          bidones), contra config.route_free_shipping_from (o el umbral de rescate
+          de la salida). Nunca hay flete si la orden tiene
           'Envío sin cargo acordado'. Ver sale.order._cristal_apply_route_freight.
         Devuelve un dict; si 'below_min' viene en True, el llamador hace rollback."""
         circuit = route_ctx['circuit']

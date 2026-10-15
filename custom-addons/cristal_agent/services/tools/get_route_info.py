@@ -129,7 +129,7 @@ class GetRouteInfo(AgentTool):
                                        "prometas condiciones; escalá a Joaco."}
         # v1.37: nada fijo en el código: mínimo, flete y envío sin cargo salen de la
         # configuración (route_*). La base del envío sin cargo son todas las líneas
-        # sin IVA excepto el flete (los bidones cuentan): ver sale.order.
+        # sin IVA de los productos, sin flete ni bidones (como el mínimo): ver sale.order.
         min_order = config.route_min_order
         freight = config.route_freight_amount
         free_from = config.route_free_shipping_from
@@ -198,8 +198,8 @@ class GetRouteInfo(AgentTool):
             "suggested_phrase": phrase,
             "message_for_bot": (
                 "Usá ESTA fecha y ESTE cierre (no inventes otros). El MÍNIMO se mide sobre "
-                "los productos (sin flete ni bidones); el ENVÍO SIN CARGO, sobre todo el "
-                "pedido sin IVA, bidones incluidos, sin contar el flete. NUNCA menciones el "
+                "los productos sin IVA (sin flete ni bidones), y el ENVÍO SIN CARGO también. "
+                "NUNCA menciones el "
                 "IVA. Es cliente de "
                 "pueblo: si es nuevo, tratalo de USTED (le / su / ¿cómo está?), nunca de "
                 "vos, salvo que él te tutee. "
