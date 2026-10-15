@@ -2,8 +2,8 @@
 """Migración 18.0.1.37.0 — Envío sin cargo de la ruta desde config.route_free_shipping_from.
 
 Joaco (15/10/2026): el envío sin cargo de la ruta pasa a $150.000 (ya cargado en
-config.route_free_shipping_from). Base del umbral: subtotal sin IVA de TODAS las
-líneas excepto el flete (los bidones cuentan).
+config.route_free_shipping_from). Base del umbral: subtotal de los
+productos sin IVA, sin el flete ni los bidones nuevos (misma base que el mínimo).
 
 1. KB #102: la línea del mínimo/flete se reescribe con el monto de la config y la base.
 2. KB #58 y #64 (20% de primera compra "a todos los mayoristas", campañas de junio):
@@ -11,7 +11,8 @@ líneas excepto el flete (los bidones cuentan).
 3. "Envío sin cargo acordado" en S06319 (Vero Machuca) y S06381 (Marina Duarte).
 4. Partner 83205 ("Olver") = Holmberg, Sur-Oeste; su cotización S06344 pasa a la
    salida Sur-Oeste del 21/10, con flete si corresponde.
-5. Recarga el prompt v7 (upsell al umbral de envío sin cargo).
+5. S06359 (Any) y S06367 (Miriancordoba): se devuelve el 20% que ya habían aceptado.
+6. Recarga el prompt v7 (upsell al umbral de envío sin cargo).
 """
 import logging
 import os
@@ -26,6 +27,7 @@ KB_ROUTE_ID = 102
 KB_ARCHIVE = {58: "20% a todos los mayoristas (regla de junio, reemplazada por la KB #59)",
               64: "campaña del 10/06 con 20% a todos y precios viejos (reemplazada por la KB #59)"}
 GRANTED_ORDERS = ('S06319', 'S06381')
+RESTORE_DISCOUNT_ORDERS = ('S06359', 'S06367')
 OLVER_PARTNER_ID = 83205
 OLVER_ORDER = 'S06344'
 OLVER_DEPARTURE_DATE = date(2026, 10, 21)
@@ -42,9 +44,9 @@ def _kb_route(env, config):
         return
     line = (f"- MÍNIMO EN RUTA: {_money(config.route_min_order)} en productos (el flete y los "
             f"bidones NO cuentan). ENVÍO SIN CARGO desde {_money(config.route_free_shipping_from)} "
-            f"(monto vigente de la configuración; lo da get_route_info): se mide sobre el "
-            f"subtotal sin IVA de TODO el pedido —bidones nuevos incluidos— sin contar el "
-            f"flete. Debajo de ese monto, FLETE {_money(config.route_freight_amount)}. Si "
+            f"(monto vigente de la configuración; lo da get_route_info): se mide igual que "
+            f"el mínimo, sobre los PRODUCTOS sin IVA, sin contar el flete ni los bidones "
+            f"nuevos. Debajo de ese monto, FLETE {_money(config.route_freight_amount)}. Si "
             f"Joaquín le acordó el envío sin cargo a un cliente, no se cobra flete. RESCATE "
             f"(Plan B): envío sin cargo desde el monto de rescate de la salida + un producto "
             f"de cortesía.")
@@ -118,6 +120,37 @@ def _fix_olver(env, config):
                  OLVER_ORDER, dep.name, base, freight)
 
 
+def _restore_accepted_discount(env, config):
+    """Any (S06359) y Miriancordoba (S06367) ya habían aceptado el precio con 20% y la
+    1.36 se los sacó. Joaco (15/10): se respeta lo aceptado → vuelve el 20% en las
+    líneas de producto (no en el flete ni en los bidones). Excepción puntual: el resto
+    de la zona sigue sin 20%."""
+    SaleOrder = env['sale.order'].sudo()
+    freight = SaleOrder._cristal_freight_product(config)
+    skip = freight | (config.bidon_product_id or env['product.product'])
+    for name in RESTORE_DISCOUNT_ORDERS:
+        order = SaleOrder.search([('name', '=', name)], limit=1)
+        if not order or order.state not in ('draft', 'sent'):
+            _logger.warning("⚠️ MIGRATION 1.37.0: %s no existe o ya no está en borrador", name)
+            continue
+        before = order.amount_untaxed
+        lines = order.order_line.filtered(
+            lambda l: l.product_id not in skip and not l.discount and l.product_uom_qty)
+        lines.write({'discount': 20.0})
+        dep = order.route_departure_id
+        free_from = (dep.rescue_free_shipping_from if dep and dep.state == 'rescate'
+                     else config.route_free_shipping_from)
+        freight_amount, _base = order._cristal_apply_route_freight(config, free_from)
+        order.message_post(body=(
+            f"v1.37 — Se devolvió el 20% que el cliente ya había aceptado ({len(lines)} "
+            f"líneas; la 1.36 lo había sacado). Excepción acordada por Joaco. Total s/IVA: "
+            f"{_money(before)} → {_money(order.amount_untaxed)}"
+            + (f" (incluye flete {_money(freight_amount)})." if freight_amount else ".")),
+            message_type='comment', subtype_xmlid='mail.mt_note')
+        _logger.info("✅ MIGRATION 1.37.0: %s — 20%% devuelto en %s líneas: %s → %s",
+                     name, len(lines), before, order.amount_untaxed)
+
+
 def _reload_prompt(config):
     path = os.path.join(
         os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
@@ -138,4 +171,5 @@ def migrate(cr, version):
     _archive_kb(env)
     _grant_free_shipping(env)
     _fix_olver(env, config)
+    _restore_accepted_discount(env, config)
     _reload_prompt(config)

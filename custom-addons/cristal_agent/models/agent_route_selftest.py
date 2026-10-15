@@ -737,23 +737,23 @@ class CristalAgentRouteSelftest(models.TransientModel):
             r = quote(pb, free_from)
             o = SaleOrder.browse(r['order_id'])
             assert r.get('ok') and not freight_lines(o), f"${free_from:,.0f} no lleva flete"
-            # Base: los bidones cuentan, el flete no.
+            # Base: solo productos — ni el flete ni los bidones nuevos suman.
             bidon = config.bidon_product_id
             assert bidon, "falta el producto bidón en la config"
             o.write({'order_line': [(0, 0, {'product_id': bidon.id, 'product_uom_qty': 2,
                                             'price_unit': 3500.0})]})
             base = o._cristal_shipping_base(config)
-            assert base == free_from + 7000, f"base {base} (esperado {free_from + 7000})"
+            assert base == free_from, f"base {base} (esperado {free_from}: sin bidones)"
             pc = mk_partner('Umbral C', 'Sampacho')
             r = quote(pc, free_from - 5000)
             o = SaleOrder.browse(r['order_id'])
             o.write({'order_line': [(0, 0, {'product_id': bidon.id, 'product_uom_qty': 2,
                                             'price_unit': 3500.0})]})
             freight, base = o._cristal_apply_route_freight(config, free_from)
-            assert not freight and not freight_lines(o), (
-                f"con 2 bidones llega a {base:,.0f}: no debía llevar flete")
+            assert freight and len(freight_lines(o)) == 1, (
+                f"${free_from - 5000:,.0f} + 2 bidones: los bidones no suman, debía llevar flete")
             return (f"${free_from - 1:,.0f} → flete ${config.route_freight_amount:,.0f} · "
-                    f"${free_from:,.0f} → sin flete · los bidones suman a la base, el flete no")
+                    f"${free_from:,.0f} → sin flete · los bidones no suman (como el mínimo)")
         self._case(results, "28. Envío sin cargo desde la config", c_umbral_envio)
 
         # 29) Envío sin cargo acordado: nunca flete, ni al re-cotizar; Claudio no lo toca.
