@@ -7,6 +7,27 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.37.0] — 2026-10-15
+
+### Changed — Envío sin cargo de la ruta desde la configuración ($150.000)
+
+- Nada fijo: cotizador, get_route_info y prompt leen `route_free_shipping_from` (el
+  default del campo pasa a 150.000; se sacó el 99.000 de get_route_info, de la
+  migración 1.35 y del prompt v6).
+- Base del envío sin cargo: subtotal sin IVA de TODAS las líneas excepto el flete (los
+  bidones cuentan). El mínimo de ruta sigue midiéndose solo sobre productos.
+  Lógica única en `sale.order._cristal_apply_route_freight`.
+- `sale.order.route_free_shipping_granted` ("Envío sin cargo acordado"): con True nunca
+  se agrega flete (tampoco al re-cotizar); lo marca un vendedor; Claudio no puede.
+- Upsell: entre el mínimo y el umbral, `free_shipping_upsell` dice cuánto falta y lista
+  las promos vigentes (sin las de consumidor final) para sugerir UNA opción.
+- Migración: KB #102 (base del umbral), KB #58 y #64 archivadas (20% a todos), envío
+  acordado en S06319 y S06381, S06344 a la salida Sur-Oeste del 21/10 con flete si
+  corresponde, prompt v7 recargado.
+- Autotest: casos 28-30.
+
+---
+
 ## [18.0.1.36.1] — 2026-10-14
 
 ### Changed — Claudio pasa a Claude Sonnet 5.5

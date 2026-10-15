@@ -40,7 +40,7 @@ KB_ROUTE_CONTENT = """RUTA DEL CAMIÓN MAYORISTA (desde el miércoles 14/10/2026
  • Sur-Este: San Basilio, Adelia María, Monte de los Gauchos.
 - FECHA Y CIERRE: los da SIEMPRE get_route_info, textual. La salida es el MIÉRCOLES; la preventa cierra el LUNES previo a las 18 h. Si la salida está en RESCATE (Plan B), el aviso de rescate sale el lunes y se puede confirmar hasta el MARTES a las 12 h. NUNCA prometer otra fecha.
 - PRECIO: Lista Mayorista de siempre, sin recargo por zona. No se menciona el IVA.
-- MÍNIMO EN RUTA: $75.000 en productos (el flete y los bidones NO cuentan). FLETE: $9.000 si los productos no llegan a $99.000; desde $99.000 el envío es sin cargo. RESCATE (Plan B): envío sin cargo desde $75.000 + un producto de cortesía.
+- MÍNIMO EN RUTA: $75.000 en productos (el flete y los bidones NO cuentan). FLETE: $9.000 si el pedido no llega a {free_from}; desde {free_from} el envío es sin cargo. RESCATE (Plan B): envío sin cargo desde $75.000 + un producto de cortesía.
 - RECAMBIO DE BIDONES: el granel va en bidones de 20 L; por cada bidón lleno el cliente entrega un bidón vacío de 20 L con tapa. Si se lo enviamos, los vacíos los entrega en el momento de la entrega (no tiene que traer nada); si retira en planta, los lleva al retirar. Si no tiene vacíos para canjear, cada bidón nuevo sale $3.500. Decirlo SIEMPRE.
 - COBRO: transferencia anticipada o efectivo contra entrega. Sin cuenta corriente.
 - RÍO CUARTO (y Las Higueras, Banda Norte, Alberdi): reparto normal, de lunes a viernes SOLO por la mañana y NUNCA los MIÉRCOLES (ese día sale el camión de la ruta). El RETIRO en planta el miércoles SÍ se puede, en el horario oficial. Pedidos grandes o especiales: consultar a Joaco antes de comprometer la entrega.
@@ -121,7 +121,10 @@ def _update_knowledge(env):
     Knowledge = env['cristal.agent.knowledge'].sudo().with_context(active_test=False)
     kb = Knowledge.browse(KB_ROUTE_ID)
     if kb.exists() and 'jueves' in (kb.name or '').lower():
-        kb.write({'name': KB_ROUTE_NAME, 'content': KB_ROUTE_CONTENT})
+        config = env['cristal.agent.config'].search([('active', '=', True)], limit=1)
+        free_from = '$' + '{:,.0f}'.format(config.route_free_shipping_from or 0).replace(',', '.')
+        kb.write({'name': KB_ROUTE_NAME,
+                  'content': KB_ROUTE_CONTENT.replace('{free_from}', free_from)})
         _logger.info("✅ MIGRATION 1.35.0: KB #%s → %s", KB_ROUTE_ID, KB_ROUTE_NAME)
     elif kb.exists():
         # Joaco ya la pasó a miércoles a mano (con su texto y su umbral de envío

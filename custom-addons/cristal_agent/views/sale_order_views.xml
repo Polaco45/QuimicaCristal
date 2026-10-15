@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  v1.37 — Ruta del camión en la cotización: salida asignada y "Envío sin cargo
+  acordado" (lo marca el equipo; con esto en True el sistema nunca agrega el flete).
+-->
+<odoo>
+    <record id="view_order_form_cristal_route" model="ir.ui.view">
+        <field name="name">sale.order.form.cristal.route</field>
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="sale.view_order_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='payment_term_id']" position="after">
+                <field name="route_departure_id" readonly="1"
+                       invisible="not route_departure_id"/>
+                <field name="route_free_shipping_granted"
+                       groups="sales_team.group_sale_salesman"/>
+            </xpath>
+        </field>
+    </record>
+</odoo>

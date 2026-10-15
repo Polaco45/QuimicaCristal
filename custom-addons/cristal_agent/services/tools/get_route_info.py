@@ -123,9 +123,16 @@ class GetRouteInfo(AgentTool):
 
         # ── Es de un circuito: próxima salida real (registro en preventa) ──
         departure = circuit.get_next_departure()
-        min_order = config.route_min_order if config else 75000.0
-        freight = config.route_freight_amount if config else 9000.0
-        free_from = config.route_free_shipping_from if config else 99000.0
+        if not config:
+            return {"ok": False, "escalate": True,
+                    "message_for_bot": "No hay configuración activa de la ruta: no "
+                                       "prometas condiciones; escalá a Joaco."}
+        # v1.37: nada fijo en el código: mínimo, flete y envío sin cargo salen de la
+        # configuración (route_*). La base del envío sin cargo son todas las líneas
+        # sin IVA excepto el flete (los bidones cuentan): ver sale.order.
+        min_order = config.route_min_order
+        freight = config.route_freight_amount
+        free_from = config.route_free_shipping_from
         town = info.get('canonical') if info.get('kind') == 'circuit' else (city_text or '')
 
         if not departure:

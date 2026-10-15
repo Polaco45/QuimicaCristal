@@ -38,8 +38,71 @@ class SaleOrder(models.Model):
         string="Bidones consultados", copy=False,
         help="El cliente ya dijo cuántos bidones vacíos tiene para el recambio.")
 
+    # Envío sin cargo acordado (v1.37): Joaco/el equipo le prometió el envío sin
+    # cargo a este cliente. Con esto en True, NINGÚN cálculo agrega la línea de
+    # flete de la ruta, aunque el pedido quede por debajo del umbral. Solo lo marca
+    # un usuario interno (vendedores); Claudio no puede tocarlo.
+    route_free_shipping_granted = fields.Boolean(
+        string="Envío sin cargo acordado", copy=False, tracking=True,
+        groups='sales_team.group_sale_salesman',
+        help="Marcalo si se le prometió el envío sin cargo a este cliente: la "
+             "cotización no lleva flete de ruta aunque no llegue al monto de envío "
+             "sin cargo. Claudio nunca lo marca.")
+
+    # ───────────────────── Flete de la ruta (v1.37) ─────────────────────
+    def _cristal_freight_product(self, config):
+        if config and config.route_freight_product_id:
+            return config.route_freight_product_id
+        return self.env['product.product'].sudo().search(
+            [('default_code', '=', 'FLETE-ZONA')], limit=1)
+
+    def _cristal_shipping_base(self, config):
+        """Base del umbral de ENVÍO SIN CARGO: subtotal sin IVA de TODAS las líneas
+        de la orden EXCEPTO la de flete (los bidones nuevos SÍ cuentan).
+        Regla de Joaco (15/10/2026). El MÍNIMO de la ruta se sigue midiendo solo
+        sobre productos (sin flete ni bidones)."""
+        self.ensure_one()
+        freight = self._cristal_freight_product(config)
+        return sum(self.order_line.filtered(
+            lambda l: l.product_id != freight).mapped('price_subtotal'))
+
+    def _cristal_apply_route_freight(self, config, free_from):
+        """Saca el flete anterior y lo vuelve a poner SOLO si corresponde:
+        sin 'envío sin cargo acordado' y con la base por debajo de free_from
+        (config.route_free_shipping_from, o el umbral de rescate). Devuelve
+        (flete, base)."""
+        self.ensure_one()
+        freight_product = self._cristal_freight_product(config)
+        if freight_product:
+            self.order_line.filtered(lambda l: l.product_id == freight_product).unlink()
+        base = self._cristal_shipping_base(config)
+        freight = 0.0
+        if freight_product and not self.sudo().route_free_shipping_granted \
+                and base < (free_from or 0.0):
+            freight = config.route_freight_amount
+            self.write({'order_line': [(0, 0, {
+                'product_id': freight_product.id, 'product_uom_qty': 1,
+                'price_unit': freight, 'discount': 0.0})]})
+            # Última palabra sobre el precio: la Lista Mayorista tiene una regla
+            # global de -20% que Odoo podría aplicar al flete.
+            self.order_line.filtered(lambda l: l.product_id == freight_product).write(
+                {'price_unit': freight, 'discount': 0.0})
+        return freight, base
+
     def write(self, vals):
+        # Claudio (contexto from_cristal_agent) nunca marca el envío sin cargo.
+        if self.env.context.get('from_cristal_agent') \
+                and 'route_free_shipping_granted' in vals:
+            vals = dict(vals)
+            vals.pop('route_free_shipping_granted')
         res = super().write(vals)
+        # Si se acordó el envío sin cargo, se saca el flete de las cotizaciones.
+        if vals.get('route_free_shipping_granted'):
+            config = self.env['cristal.agent.config'].sudo().get_active()
+            for order in self.filtered(lambda o: o.state in ('draft', 'sent')):
+                freight = order._cristal_freight_product(config)
+                if freight:
+                    order.order_line.filtered(lambda l: l.product_id == freight).unlink()
         if vals.get('state') in ('sale', 'done'):
             for order in self:
                 try:
