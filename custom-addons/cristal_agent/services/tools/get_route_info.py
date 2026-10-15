@@ -197,8 +197,10 @@ class GetRouteInfo(AgentTool):
             "courtesy_product": courtesy,
             "suggested_phrase": phrase,
             "message_for_bot": (
-                "Usá ESTA fecha y ESTE cierre (no inventes otros). Mínimo y envío gratis "
-                "se miden sobre el total de productos, sin contar el flete. NUNCA menciones el IVA. Es cliente de "
+                "Usá ESTA fecha y ESTE cierre (no inventes otros). El MÍNIMO se mide sobre "
+                "los productos (sin flete ni bidones); el ENVÍO SIN CARGO, sobre todo el "
+                "pedido sin IVA, bidones incluidos, sin contar el flete. NUNCA menciones el "
+                "IVA. Es cliente de "
                 "pueblo: si es nuevo, tratalo de USTED (le / su / ¿cómo está?), nunca de "
                 "vos, salvo que él te tutee. "
                 + ("Salida en RESCATE: envío gratis desde $75.000 y ofrecé el producto de "
