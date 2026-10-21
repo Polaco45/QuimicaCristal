@@ -456,11 +456,16 @@ class CristalAgentRouteSelftest(models.TransientModel):
             deps = Dep.search([('circuit_id', 'in', real.ids),
                                ('date', '>=', date.today()),
                                ('state', 'in', ('preventa', 'rescate'))])
-            bad = deps.filtered(lambda d: d.date.weekday() != 2)
+            # Una salida que el equipo movió a mano (ej. Sur-Oeste al viernes 23/10)
+            # es válida: solo se exige miércoles a las que generó el sistema.
+            moved = deps.filtered(lambda d: d.date.weekday() != 2 and d.write_uid.id != 1)
+            bad = deps.filtered(lambda d: d.date.weekday() != 2) - moved
             assert deps and not bad, f"salidas que no caen miércoles: {bad.mapped('name')}"
             assert rc_no_delivery_day(env) == 'miércoles', rc_no_delivery_day(env)
             assert route_weekday(env) == 'miércoles', route_weekday(env)
-            return f"{len(deps)} salidas abiertas, todas miércoles; RC sin reparto el miércoles"
+            extra = f" (movidas a mano: {', '.join(moved.mapped('name'))})" if moved else ""
+            return (f"{len(deps)} salidas abiertas, las generadas caen miércoles{extra}; "
+                    f"RC sin reparto el miércoles")
         self._case(results, "17. Ruta de los miércoles", c_miercoles)
         # ───────────────────── Sin muestras gratis (v1.34.1) ─────────────────────
         # 18) Joaco sacó la promo de 3 muestras gratis con compras de +$60.000: la
