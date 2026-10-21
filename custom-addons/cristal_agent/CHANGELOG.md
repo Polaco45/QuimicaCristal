@@ -7,6 +7,24 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.40.0] — 2026-10-21
+
+### Fixed — Envío de los lunes (oferta semanal a mayoristas)
+
+El cron #94 estaba apagado desde el 14/09. Prendido, mandaba la oferta vigente de mayor
+prioridad (el 19/10 habría sido la promo de cierre de Sur-Oeste a 604 mayoristas) y le
+ponía al cliente los primeros 300 caracteres de la descripción interna para Claudio.
+
+- Ofertas: "Va en el envío de los lunes", "Texto para el cliente" (obligatorio, hasta 300
+  caracteres) y "No mandar a los circuitos". Solo sale la oferta vigente marcada.
+- Destinatarios: Mayoristas con teléfono, sin "Fuera de zona", fuera de los circuitos
+  excluidos, sin takeover, sin plantilla recibida en las últimas 24 h y sin números
+  repetidos. Envía con `from_cristal_agent` y respeta el flag de plantillas.
+- Si no hay oferta marcada, avisa en el canal interno. Al terminar, deja el resumen ahí.
+- Oferta #22 (pack de regalo) marcada, sin Sur-Oeste. Autotest: caso 33.
+
+---
+
 ## [18.0.1.39.0] — 2026-10-21
 
 ### Fixed — Seguimientos con la ventana de 24 h cerrada salen por plantilla

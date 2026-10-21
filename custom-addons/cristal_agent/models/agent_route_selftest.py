@@ -893,3 +893,58 @@ class CristalAgentRouteSelftest(models.TransientModel):
                     "from_cristal_agent · plantilla sin contestar → TEMPLATE_PENDING (no "
                     "manda otra) · texto largo → not_sent")
         self._case(results, "32. Ventana cerrada sale por plantilla", c_ventana_plantilla)
+
+        # ═════════════════ Envío de los lunes (v1.40) ═════════════════
+        # 33) Solo sale la oferta marcada para el envío, con su texto para el cliente, y
+        # no le llega a los circuitos excluidos, a "Fuera de zona", a números repetidos
+        # ni a quien recibió una plantilla en las últimas 24 h.
+        def c_envio_lunes():
+            from odoo.exceptions import ValidationError
+            Offer = env['cristal.agent.offer'].sudo()
+            Cat = env['res.partner.category'].sudo()
+            may = Cat.search([('name', '=', 'Mayorista')], limit=1)
+            fz = Cat.search([('name', '=', 'Fuera de zona')], limit=1)
+            so = env['cristal.agent.circuit'].sudo().search([('name', '=', 'Sur-Oeste')], limit=1)
+            assert may and fz and so, "faltan la etiqueta Mayorista/Fuera de zona o Sur-Oeste"
+            today = fields.Date.context_today(Offer)
+            Offer.create({'name': 'ZZ Autotest zona', 'description': 'interna',
+                          'offer_type': 'other', 'valid_from': today,
+                          'valid_until': today, 'priority': 98})
+            off = Offer.create({'name': 'ZZ Autotest lunes', 'description': 'instrucción interna',
+                                'offer_type': 'bonus', 'valid_from': today,
+                                'valid_until': today, 'priority': 99,
+                                'weekly_broadcast': True, 'broadcast_text': 'pack de regalo',
+                                'excluded_circuit_ids': [(6, 0, so.ids)]})
+            assert Offer.get_weekly_broadcast_offer() == off, "elige una oferta no marcada"
+            try:
+                with env.cr.savepoint():
+                    Offer.create({'name': 'ZZ sin texto', 'description': 'x',
+                                  'offer_type': 'other', 'valid_from': today,
+                                  'valid_until': today, 'weekly_broadcast': True})
+                raise AssertionError("dejó marcar el envío sin texto para el cliente")
+            except ValidationError:
+                pass
+
+            def mk(name, number, cats, circuit=None):
+                p = Partner.create({'name': f'ZZ Autotest {name}', 'mobile': number,
+                                    'category_id': [(6, 0, cats.ids)]})
+                if circuit:
+                    p.truck_circuit_id = circuit.id
+                return p
+            ok = mk('Lunes RC', '+5493589330001', may)
+            dup = mk('Lunes repetido', '+54 9 358 933-0001', may)
+            sur = mk('Lunes Sur-Oeste', '+5493589330002', may, so)
+            fuera = mk('Lunes fuera', '+5493589330003', may | fz)
+            reciente = mk('Lunes reciente', '+5493589330004', may)
+            tpl = env['whatsapp.template'].sudo().search([('status', '=', 'approved')], limit=1)
+            env['whatsapp.message'].sudo().create({
+                'mobile_number': '+5493589330004', 'wa_account_id': tpl.wa_account_id.id,
+                'wa_template_id': tpl.id, 'message_type': 'outbound', 'state': 'sent'})
+            got = env['cristal.agent.run']._weekly_broadcast_partners(off)
+            assert len(got & (ok | dup)) == 1, "el mismo número tiene que salir una sola vez"
+            assert sur not in got, "manda al circuito excluido"
+            assert fuera not in got, "manda a Fuera de zona"
+            assert reciente not in got, "manda a quien recibió una plantilla hoy"
+            return ("solo la oferta marcada · sin texto no se puede marcar · excluye Sur-Oeste, "
+                    "Fuera de zona, números repetidos y plantilla en 24 h")
+        self._case(results, "33. Envío de los lunes", c_envio_lunes)

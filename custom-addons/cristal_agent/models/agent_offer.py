@@ -113,6 +113,44 @@ class CristalAgentOffer(models.Model):
 
     notes = fields.Text(string="Notas internas (no se comunican al cliente)")
 
+    # ─────────── Envío de los lunes (v1.40) ───────────
+    # Antes el cron mandaba la oferta vigente de mayor prioridad (aunque fuera de una
+    # zona) y le ponía al cliente los primeros 300 caracteres de la descripción, que
+    # es la instrucción interna para Claudio. Ahora solo sale la que se marca acá.
+    weekly_broadcast = fields.Boolean(
+        string="Va en el envío de los lunes",
+        help="Si está vigente, es la oferta que el envío automático de los lunes (14 h) "
+             "les manda a todos los mayoristas por la plantilla oferta_semanal_general.")
+    broadcast_text = fields.Char(
+        string="Texto para el cliente (envío de los lunes)",
+        help="Lo que lee el cliente después de 'Oferta de la semana:'. Corto (hasta 300 "
+             "caracteres), sin saltos de línea.")
+    excluded_circuit_ids = fields.Many2many(
+        'cristal.agent.circuit', 'cristal_agent_offer_excluded_circuit_rel',
+        'offer_id', 'circuit_id', string="No mandar a los circuitos",
+        help="Los clientes de estos circuitos de la ruta no reciben el envío de los lunes.")
+
+    @api.constrains('weekly_broadcast', 'broadcast_text')
+    def _check_broadcast_text(self):
+        from odoo.exceptions import ValidationError
+        for rec in self.filtered('weekly_broadcast'):
+            text = (rec.broadcast_text or '').strip()
+            if not text:
+                raise ValidationError(
+                    "Para mandarla en el envío de los lunes falta el texto para el cliente.")
+            if len(text) > 300:
+                raise ValidationError(
+                    "El texto para el cliente tiene %s caracteres (máximo 300)." % len(text))
+
+    @api.model
+    def get_weekly_broadcast_offer(self, today=None):
+        """La oferta vigente marcada para el envío de los lunes (o vacío)."""
+        today = today or fields.Date.context_today(self)
+        return self.sudo().search([
+            ('active', '=', True), ('weekly_broadcast', '=', True),
+            ('valid_from', '<=', today), ('valid_until', '>=', today),
+        ], limit=1, order='priority desc, write_date desc')
+
     # ─────────── Métodos ───────────
     @api.model
     def search_for_agent(self, level=None, only_proactive=False, limit=10):
