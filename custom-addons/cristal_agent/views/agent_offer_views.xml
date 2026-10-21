@@ -38,6 +38,15 @@
                     <separator string="Descripción para el bot (lo que el cliente ve)"/>
                     <field name="description"/>
 
+                    <group string="Envío de los lunes (14 h, a todos los mayoristas)">
+                        <field name="weekly_broadcast"/>
+                        <field name="broadcast_text" invisible="not weekly_broadcast"
+                               required="weekly_broadcast"
+                               placeholder="Ej: llevando $150.000 en líquidos te regalamos un pack de 10 artículos..."/>
+                        <field name="excluded_circuit_ids" widget="many2many_tags"
+                               invisible="not weekly_broadcast"/>
+                    </group>
+
                     <notebook>
                         <page string="Productos">
                             <field name="product_ids" widget="many2many_tags"/>
@@ -65,6 +74,7 @@
                 <field name="valid_from"/>
                 <field name="valid_until"/>
                 <field name="is_proactive" widget="boolean_toggle"/>
+                <field name="weekly_broadcast" widget="boolean_toggle"/>
                 <field name="times_communicated"/>
                 <field name="active" widget="boolean_toggle"/>
             </list>

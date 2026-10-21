@@ -801,23 +801,21 @@ class CristalAgentRun(models.Model):
         """
         Cron de broadcast semanal de oferta — corre los LUNES a las 14hs.
 
-        Manda la oferta vigente a TODOS los Mayoristas (etiqueta id 16) que:
-        - NO tienen etiqueta "Fuera de zona"
-        - NO tienen takeover humano activo
-        - Tienen mobile o phone configurado
+        Manda la oferta vigente marcada "Va en el envío de los lunes" a los Mayoristas
+        (ver _weekly_broadcast_partners). Usa el template de
+        agent_config.weekly_offer_template_id: {{1}} = nombre cliente (automático),
+        {{2}} = offer.broadcast_text.
 
-        Usa el template configurado en agent_config.weekly_offer_template_id.
-        Variables del template: {{1}} = nombre cliente, {{2}} = descripción de oferta.
-
-        Si no hay oferta vigente o el template no está configurado, salta.
+        Si no hay oferta marcada, avisa en el canal interno y no manda nada.
         """
         from datetime import datetime, date
         config = self.env['cristal.agent.config'].sudo().get_active()
         if not config or not config.enabled:
             return
 
-        if not getattr(config, 'enable_weekly_offer_broadcast', False):
-            _logger.info("cron_weekly_offer_broadcast: SKIP (broadcast deshabilitado)")
+        if not getattr(config, 'enable_weekly_offer_broadcast', False) \
+                or not config.enable_send_whatsapp_templates:
+            _logger.info("cron_weekly_offer_broadcast: SKIP (broadcast o templates deshabilitados)")
             return
 
         template = config.weekly_offer_template_id
@@ -837,46 +835,19 @@ class CristalAgentRun(models.Model):
             )
             return
 
-        # Buscar oferta vigente (mayor prioridad activa)
-        Offer = self.env['cristal.agent.offer'].sudo()
-        today = date.today()
-        offer = Offer.search([
-            ('active', '=', True),
-            '|', ('valid_from', '=', False), ('valid_from', '<=', today),
-            '|', ('valid_until', '=', False), ('valid_until', '>=', today),
-        ], limit=1, order='priority desc, write_date desc')
-
+        # v1.40: SOLO la oferta marcada "Va en el envío de los lunes", con su texto para
+        # el cliente. Antes tomaba la de mayor prioridad (el 19/10 hubiera sido la promo
+        # de cierre de Sur-Oeste a 604 mayoristas) y mandaba la descripción interna.
+        offer = self.env['cristal.agent.offer'].get_weekly_broadcast_offer()
         if not offer:
-            _logger.warning(
-                "cron_weekly_offer_broadcast: SKIP — no hay oferta vigente"
-            )
+            _logger.warning("cron_weekly_offer_broadcast: SKIP — no hay oferta marcada "
+                            "para el envío de los lunes")
+            self._post_internal(
+                "📣 Hoy no salió la oferta semanal de los lunes: no hay ninguna oferta "
+                "vigente marcada 'Va en el envío de los lunes' (Claudio → Ofertas).")
             return
 
-        # Buscar etiqueta Mayorista
-        mayorista_tag = self.env['res.partner.category'].sudo().search(
-            [('name', '=', 'Mayorista')], limit=1
-        )
-        fuera_zona_tag = self.env['res.partner.category'].sudo().search(
-            [('name', '=', 'Fuera de zona')], limit=1
-        )
-        if not mayorista_tag:
-            _logger.warning("cron_weekly_offer_broadcast: SKIP — etiqueta 'Mayorista' no existe")
-            return
-
-        # Buscar mayoristas elegibles
-        domain = [
-            ('category_id', 'in', [mayorista_tag.id]),
-            ('active', '=', True),
-            '|', ('mobile', '!=', False), ('phone', '!=', False),
-        ]
-        if fuera_zona_tag:
-            domain.append(('category_id', 'not in', [fuera_zona_tag.id]))
-        # Nunca al partner operador (WhatsApp de Joaco): no es cliente.
-        _cfg = self.env['cristal.agent.config'].sudo().get_active()
-        if _cfg.owner_whatsapp_partner_id:
-            domain.append(('id', '!=', _cfg.owner_whatsapp_partner_id.id))
-        partners = self.env['res.partner'].sudo().search(domain)
-
+        partners = self._weekly_broadcast_partners(offer)
         if not partners:
             _logger.info("cron_weekly_offer_broadcast: no hay mayoristas elegibles")
             return
@@ -887,62 +858,86 @@ class CristalAgentRun(models.Model):
             len(partners), offer.name, template.name
         )
 
-        # Armar descripción de oferta (variable {{2}})
-        offer_description = offer.description or offer.name or 'oferta especial esta semana'
-        # Truncar para no romper templates de WA (Meta tiene límite ~512 chars/var)
-        offer_description = offer_description[:300]
-
-        Memory = self.env['cristal.agent.memory']
-        sent = 0
-        skipped_takeover = 0
-        errors = 0
-
-        # Importar tool de send_whatsapp_template para usarla directo
         from ..services.tools.send_whatsapp_template import SendWhatsappTemplate
         sender = SendWhatsappTemplate()
-
+        env = self.env(context=dict(self.env.context, from_cristal_agent=True))
+        text = ' '.join((offer.broadcast_text or '').split())
+        sent = errors = 0
         for partner in partners:
             try:
-                # Saltar si takeover activo
-                memory = Memory.get_or_create(partner)
-                if memory.is_takeover_active():
-                    skipped_takeover += 1
-                    continue
-
-                # Armar variables del template.
-                # El template tiene {{1}} = nombre (campo AUTOMÁTICO del partner) y
-                # {{2}} = UN solo texto libre. Por eso se pasa UNA sola variable (la
-                # descripción de la oferta). Pasar dos hacía que el nombre cayera en
-                # {{2}} y la oferta se perdiera → salía "Oferta de la semana: <nombre>".
-                variables = [offer_description]
-
-                # Determinar wa_account
-                wa_account_id = template.wa_account_id.id if template.wa_account_id else None
-
+                # {{1}} = nombre (automático); {{2}} = el texto de la oferta.
                 result = sender._execute(
-                    env=self.env,
-                    partner_id=partner.id,
-                    template_name=template.name,
-                    variables=variables,
-                    wa_account_id=wa_account_id,
-                )
-
+                    env=env, partner_id=partner.id, template_name=template.name,
+                    variables=[text],
+                    wa_account_id=template.wa_account_id.id if template.wa_account_id else None)
                 if result and result.get('ok'):
                     sent += 1
+                    # Cada envío queda confirmado: si el cron se corta, lo enviado no se pierde.
+                    self.env.cr.commit()
                 else:
                     errors += 1
-                    _logger.warning(
-                        "Broadcast falló para %s: %s",
-                        partner.name, result.get('error', '-') if result else 'sin resultado'
-                    )
+                    _logger.warning("Broadcast falló para %s: %s", partner.name,
+                                    (result or {}).get('error', '-'))
             except Exception as e:
                 errors += 1
-                _logger.exception(
-                    "Error broadcast para %s: %s", partner.name, e
-                )
+                _logger.exception("Error broadcast para %s: %s", partner.name, e)
 
-        _logger.info(
-            "📣 cron_weekly_offer_broadcast COMPLETADO: "
-            "enviados=%s, skip takeover=%s, errors=%s, total elegibles=%s",
-            sent, skipped_takeover, errors, len(partners)
-        )
+        offer.increment_communicated()
+        self._post_internal(
+            f"📣 Oferta semanal enviada: «{offer.name}». Salió a {sent} mayoristas"
+            + (f" ({errors} con error)" if errors else "") + ".")
+        _logger.info("📣 cron_weekly_offer_broadcast COMPLETADO: enviados=%s, errors=%s, "
+                     "elegibles=%s", sent, errors, len(partners))
+
+    @api.model
+    def _weekly_broadcast_partners(self, offer):
+        """Mayoristas que reciben el envío de los lunes: con teléfono, sin 'Fuera de
+        zona', fuera de los circuitos excluidos por la oferta, sin takeover humano, sin
+        una plantilla recibida en las últimas 24 h y sin números repetidos."""
+        from datetime import datetime, timedelta
+        import re
+        Category = self.env['res.partner.category'].sudo()
+        mayorista = Category.search([('name', '=', 'Mayorista')], limit=1)
+        if not mayorista:
+            return self.env['res.partner']
+        fuera_zona = Category.search([('name', '=', 'Fuera de zona')], limit=1)
+        config = self.env['cristal.agent.config'].sudo().get_active()
+        domain = [('category_id', 'in', [mayorista.id]), ('active', '=', True),
+                  '|', ('mobile', '!=', False), ('phone', '!=', False)]
+        if fuera_zona:
+            domain.append(('category_id', 'not in', [fuera_zona.id]))
+        if config and config.owner_whatsapp_partner_id:
+            domain.append(('id', '!=', config.owner_whatsapp_partner_id.id))
+        if offer.excluded_circuit_ids:
+            domain += ['|', ('truck_circuit_id', '=', False),
+                       ('truck_circuit_id', 'not in', offer.excluded_circuit_ids.ids)]
+        partners = self.env['res.partner'].sudo().search(domain)
+
+        Memory = self.env['cristal.agent.memory'].sudo()
+        takeover = set(Memory.search([('partner_id', 'in', partners.ids),
+                                      ('human_takeover', '=', True)]).mapped('partner_id').ids)
+        recent = self.env['whatsapp.message'].sudo().search([
+            ('message_type', '=', 'outbound'), ('wa_template_id', '!=', False),
+            ('create_date', '>=', datetime.now() - timedelta(hours=24))])
+        recent_digits = {re.sub(r'\D', '', m.mobile_number or '')[-8:] for m in recent}
+        seen = set()
+        result = self.env['res.partner']
+        for p in partners:
+            digits = re.sub(r'\D', '', p.mobile or p.phone or '')[-8:]
+            if len(digits) < 8 or digits in seen or digits in recent_digits \
+                    or p.id in takeover:
+                continue
+            mem = Memory.search([('partner_id', '=', p.id)], limit=1)
+            if mem and mem.is_takeover_active():
+                continue
+            seen.add(digits)
+            result |= p
+        return result
+
+    @api.model
+    def _post_internal(self, body):
+        config = self.env['cristal.agent.config'].sudo().get_active()
+        channel = config.internal_channel_id if config else False
+        if channel:
+            channel.sudo().with_context(from_cristal_agent=True).message_post(
+                body=body, message_type='comment', subtype_xmlid='mail.mt_comment')
