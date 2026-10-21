@@ -123,6 +123,82 @@ def hours_since_last_inbound(env, partner, wa_account_id=None):
     return delta.total_seconds() / 3600
 
 
+# ─────────────────── Ventana cerrada → plantilla (v1.39) ───────────────────
+# Joaco (21/10/2026): "está queriendo hacer los seguimientos a ventanas cerradas y
+# no con la plantilla". Caso real: Margarita (run 11768) — send_whatsapp devolvió
+# WINDOW_CLOSED, Claudio dijo "no tengo template", escaló, y encima anotó que le
+# había escrito. Ahora send_whatsapp manda el mismo texto dentro de la plantilla
+# genérica aprobada de la cuenta ("Hola {{1}}. Como estas? {{2}}").
+CLOSED_WINDOW_TEMPLATE_NAMES = (
+    'hola_mayorista_crm',              # Cristal Mayorista (Crilimp)
+    'hola_como_estas_crm_ventas',      # Quimica Cristal Ventas
+    'crm_hola_como_estas_copy_copy',   # Quimica Cristal adm
+    'crm_hola_como_estas_copy',        # Quimica Cristal Info
+)
+TEMPLATE_TEXT_MAX = 900        # Meta corta las variables largas; un seguimiento es corto
+TEMPLATE_REPEAT_HOURS = 48     # no mandar otra plantilla a quien no contestó la anterior
+
+_RE_HTML_BREAK = re.compile(r'(?i)<br\s*/?>|</p>\s*<p[^>]*>|</li>')
+_RE_TAGS = re.compile(r'<[^>]+>')
+# Saludo inicial con nombre de hasta 3 palabras y puntuación: "Hola Margarita," /
+# "Buenas tardes!" / "Hola!". Sin puntuación no se toca (podría ser contenido).
+_RE_LEADING_GREETING = re.compile(
+    r'^\s*(?:hola|buen(?:as|os)(?:\s+(?:d[ií]as|tardes|noches))?)'
+    r'(?:\s+[^\s.,!?¿]+){0,3}\s*[,.!]+\s*', re.I)
+_RE_LEADING_HOWRU = re.compile(
+    r'^\s*¿?\s*c[oó]mo\s+(?:est[aá]s|est[aá]|and[aá]s|va|le\s+va|te\s+va)\b[^?!.]{0,20}[?!.]+\s*',
+    re.I)
+
+
+def closed_window_template(env, wa_account_id):
+    """Plantilla aprobada de la cuenta para escribirle al cliente con la ventana
+    cerrada (crm.lead, nombre automático + UNA variable de texto libre)."""
+    Template = env['whatsapp.template'].sudo()
+    domain = [('status', '=', 'approved'),
+              ('template_name', 'in', list(CLOSED_WINDOW_TEMPLATE_NAMES))]
+    if wa_account_id:
+        domain.append(('wa_account_id', '=', int(wa_account_id)))
+    templates = Template.search(domain)
+    for name in CLOSED_WINDOW_TEMPLATE_NAMES:
+        found = templates.filtered(lambda t: t.template_name == name)
+        if found:
+            return found[0]
+    return Template
+
+
+def template_text_from_html(body_html):
+    """Texto plano de una sola línea para la variable libre de la plantilla, sin el
+    saludo inicial: la plantilla ya dice "Hola <nombre>. Como estas?"."""
+    import html as _html
+    txt = _RE_HTML_BREAK.sub(' ', body_html or '')
+    txt = _html.unescape(_RE_TAGS.sub('', txt))
+    txt = re.sub(r'\s+', ' ', txt).strip()
+    txt = _RE_LEADING_GREETING.sub('', txt, count=1)
+    txt = _RE_LEADING_HOWRU.sub('', txt, count=1)
+    return re.sub(r'^([¿¡"]*)(\w)', lambda m: m.group(1) + m.group(2).upper(), txt)
+
+
+def recent_unanswered_template(env, partner, hours=TEMPLATE_REPEAT_HOURS):
+    """Plantilla que le mandamos al cliente en las últimas `hours` horas y que
+    todavía no contestó (whatsapp.message), o un recordset vacío."""
+    WA = env['whatsapp.message'].sudo()
+    digits = re.sub(r'\D', '', (partner and (partner.mobile or partner.phone)) or '')[-8:]
+    if len(digits) < 8:
+        return WA
+    numbers = ['|', ('mobile_number', 'in', [partner.mobile or '', partner.phone or '']),
+               ('mobile_number', 'ilike', digits)]
+    last = WA.search(numbers + [
+        ('message_type', '=', 'outbound'), ('wa_template_id', '!=', False),
+        ('create_date', '>=', datetime.now() - timedelta(hours=hours)),
+        ('state', 'not in', ('error', 'bounced', 'cancel')),
+    ], order='create_date desc', limit=1)
+    if not last:
+        return WA
+    answered = WA.search_count(numbers + [
+        ('message_type', '=', 'inbound'), ('create_date', '>', last.create_date)])
+    return WA if answered else last
+
+
 # ─────────────────────── Fecha y hora de ARGENTINA (v1.33) ───────────────────────
 # El servidor de Odoo.sh corre en UTC (3 h adelante). Todo lo que Claudio le dice
 # al cliente ("hoy", "mañana", "martes") tiene que salir de la hora de Argentina,

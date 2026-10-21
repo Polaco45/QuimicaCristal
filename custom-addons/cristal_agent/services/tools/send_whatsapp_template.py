@@ -31,9 +31,10 @@ _logger = logging.getLogger(__name__)
 class SendWhatsappTemplate(AgentTool):
     name = "send_whatsapp_template"
     description = (
-        "Manda un TEMPLATE aprobado de WhatsApp al cliente. Usalo cuando la "
-        "ventana de 24hs del cliente está cerrada (es decir, el cliente no "
-        "te escribió hace más de un día). "
+        "Manda un TEMPLATE aprobado de WhatsApp al cliente. Para un seguimiento o "
+        "cualquier mensaje con la ventana de 24 h cerrada NO hace falta: send_whatsapp "
+        "ya lo manda solo por la plantilla genérica. Usá esta tool solo cuando Joaco "
+        "te pide una plantilla puntual (ej: oferta_semanal_general). "
         "Solo pasás las variables de texto libre del template — las variables "
         "automáticas (como el nombre del cliente) se completan solas desde "
         "el partner. "
@@ -132,7 +133,8 @@ class SendWhatsappTemplate(AgentTool):
 
         # ─── 5. Crear composer y enviar ───
         try:
-            Composer = env['whatsapp.composer'].sudo()
+            # v1.39: from_cristal_agent → el mensaje del bot no activa el takeover humano.
+            Composer = env['whatsapp.composer'].sudo().with_context(from_cristal_agent=True)
 
             composer_vals = {
                 'res_model': composer_res_model,

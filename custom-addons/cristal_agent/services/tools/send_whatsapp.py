@@ -27,6 +27,10 @@ class SendWhatsApp(AgentTool):
     description = (
         "Envía un mensaje WhatsApp al cliente al toque, O postea en el canal interno con Joaco. "
         "Lo recibe casi instantáneamente. "
+        "VENTANA DE 24 H CERRADA: no hace falta hacer nada distinto, el mensaje sale solo "
+        "por la plantilla aprobada ('Hola <nombre>. Como estas? <tu texto>'): escribilo sin "
+        "saludo, corto y sin adjuntos. Nunca escales a Joaco porque la ventana esté cerrada. "
+        "Si la respuesta trae not_sent, el mensaje NO salió: no anotes que le escribiste. "
         "El body acepta HTML (<p>, <b>, <i>, <br>, listas). "
         "PUEDE adjuntar archivos: pasale attachment_ids (lista de IDs de ir.attachment). "
         "Para mandar PDF de cotización: primero llamá a generate_quote_pdf que devuelve attachment_id, "
@@ -105,6 +109,7 @@ class SendWhatsApp(AgentTool):
         # Saltamos el check solo en ese caso; los envíos proactivos del cron
         # (otros triggers) lo siguen respetando.
         skip_window_check = bool(run and getattr(run, 'trigger', None) == 'whatsapp_message')
+        closed_window_partner = None  # v1.39: ventana cerrada → va por plantilla
         if not is_internal_channel and not skip_window_check:
             from ..helpers import is_24h_window_open, hours_since_last_inbound
             # v1.10.1 FIX: el partner para el chequeo de ventana es el que
@@ -132,6 +137,14 @@ class SendWhatsApp(AgentTool):
                             partner_check = others[0]
                 except Exception:
                     pass
+            # v1.39: si el canal no dice quién es, se busca por el número.
+            if not partner_check:
+                import re as _re
+                digits = _re.sub(r'\D', '', mobile_number or '')[-8:]
+                if len(digits) == 8:
+                    partner_check = env['res.partner'].sudo().search(
+                        ['|', ('mobile', 'ilike', digits), ('phone', 'ilike', digits)],
+                        limit=1)
 
             if partner_check:
                 is_open, last_inbound = is_24h_window_open(
@@ -139,25 +152,10 @@ class SendWhatsApp(AgentTool):
                 )
                 if not is_open:
                     hours = hours_since_last_inbound(env, partner_check, wa_account_id) or 999
-                    _logger.warning(
-                        "Ventana 24hs CERRADA para %s (último inbound: %s, %s hs atrás)",
-                        partner_check.name, last_inbound, int(hours)
-                    )
-                    return {
-                        "error": "WINDOW_CLOSED",
-                        "message": (
-                            f"La ventana de 24hs de WhatsApp está CERRADA para {partner_check.name}. "
-                            f"El cliente no escribió en las últimas 24hs "
-                            f"(último inbound: {int(hours)}hs atrás). "
-                            f"NO PUEDO mandar texto libre. "
-                            f"Usá `send_whatsapp_template` con un template aprobado, "
-                            f"o si no hay template apropiado, escalá a Joaco."
-                        ),
-                        "partner_id": partner_check.id,
-                        "partner_name": partner_check.name,
-                        "hours_since_last_inbound": int(hours),
-                        "suggestion": "send_whatsapp_template",
-                    }
+                    _logger.info(
+                        "Ventana 24hs CERRADA para %s (último inbound: %s, %s hs atrás): "
+                        "va por plantilla", partner_check.name, last_inbound, int(hours))
+                    closed_window_partner = partner_check
         # ════════════════════════════════════════════════════════════════════
 
         # Asegurar HTML básico
@@ -223,6 +221,11 @@ class SendWhatsApp(AgentTool):
                         "con escalate_to_joaco qué precios no pudiste confirmar.")
                 return {"error": instruction, "price_guard": True,
                         "unverified_lines": unverified}
+
+        # v1.39: ventana cerrada → el mismo texto (ya controlado) sale por plantilla.
+        if closed_window_partner:
+            return self._send_by_template(env, run, closed_window_partner, body_html,
+                                          wa_account_id, attachment_ids)
 
         # Resolver subtype
         try:
@@ -335,3 +338,65 @@ class SendWhatsApp(AgentTool):
             "sent_immediately": sent_immediately,
             "summary": f"Mensaje enviado a {mobile_number} ({'al toque' if sent_immediately else 'en cola'})",
         }
+
+    def _send_by_template(self, env, run, partner, body_html, wa_account_id, attachment_ids):
+        """v1.39 — Ventana de 24 h cerrada: manda el texto dentro de la plantilla
+        genérica aprobada de la cuenta ("Hola {{1}}. Como estas? {{2}}"), sin que
+        Claudio tenga que elegirla ni escalar. Si no sale, lo dice claro para que
+        no anote que le escribió (caso Margarita, run 11768)."""
+        from ..helpers import (closed_window_template, template_text_from_html,
+                               recent_unanswered_template, to_ar, TEMPLATE_TEXT_MAX)
+        not_sent = ("NO SE ENVIÓ NADA: no anotes en observaciones ni en la actividad que le "
+                    "escribiste.")
+        pending = recent_unanswered_template(env, partner)
+        if pending:
+            when = to_ar(env, pending.create_date)
+            return {
+                "error": "TEMPLATE_PENDING", "not_sent": True,
+                "message": (
+                    f"{partner.name} no escribe hace más de 24 h y ya le mandamos una "
+                    f"plantilla el {when:%d/%m a las %H:%M} que todavía no contestó. No le "
+                    f"mandes otra: agendá el próximo seguimiento con schedule_activity para "
+                    f"dentro de unos días. NO escales a Joaco por esto. " + not_sent),
+            }
+        template = closed_window_template(env, wa_account_id)
+        if not template:
+            return {
+                "error": "WINDOW_CLOSED_NO_TEMPLATE", "not_sent": True,
+                "message": (
+                    f"La ventana de 24 h de {partner.name} está cerrada y la cuenta de "
+                    f"WhatsApp {wa_account_id} no tiene la plantilla genérica aprobada. "
+                    f"Avisale a Joaco con escalate_to_joaco. " + not_sent),
+            }
+        text = template_text_from_html(body_html)
+        if len(text) > TEMPLATE_TEXT_MAX:
+            return {
+                "error": "TEMPLATE_TEXT_TOO_LONG", "not_sent": True,
+                "message": (
+                    f"La ventana de {partner.name} está cerrada, así que el mensaje sale por "
+                    f"plantilla, que admite hasta {TEMPLATE_TEXT_MAX} caracteres (el tuyo "
+                    f"tiene {len(text)}). Mandá un seguimiento corto (2 o 3 líneas) y el "
+                    f"detalle cuando conteste. " + not_sent),
+            }
+        tool = ToolRegistry.get('send_whatsapp_template')
+        result = tool.execute(
+            env=env(context=dict(env.context, from_cristal_agent=True)), run=run,
+            partner_id=partner.id, template_name=template.template_name,
+            variables=[text], wa_account_id=template.wa_account_id.id) if tool else None
+        if not (result or {}).get('ok'):
+            err = (result or {}).get('error') or 'sin detalle'
+            return {"error": f"WINDOW_CLOSED: la plantilla no salió ({err}).",
+                    "not_sent": True, "message": not_sent}
+        _logger.info("📨 Ventana cerrada con %s: salió por la plantilla %s",
+                     partner.name, template.template_name)
+        summary = (f"La ventana de 24 h estaba cerrada: el mensaje salió por la plantilla "
+                   f"aprobada '{template.template_name}'. El cliente lo recibe así: "
+                   f"\"Hola {partner.name}. Como estas? {text}\".")
+        out = {"ok": True, "sent_via_template": template.template_name,
+               "window_closed": True, "wa_message_id": result.get('wa_message_id'),
+               "summary": summary}
+        if attachment_ids:
+            out["attachments_pending"] = list(attachment_ids)
+            out["summary"] += (" Los adjuntos NO viajan con la plantilla: mandalos cuando "
+                               "el cliente conteste.")
+        return out

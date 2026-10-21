@@ -7,6 +7,29 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.39.0] — 2026-10-21
+
+### Fixed — Seguimientos con la ventana de 24 h cerrada salen por plantilla
+
+Caso real: Margarita (run 11768). `send_whatsapp` devolvía `WINDOW_CLOSED`; Claudio decía
+"no tengo template apropiado", escalaba a Joaco, y además anotaba en la ficha y en la
+actividad que le había escrito.
+
+- `send_whatsapp`: con la ventana cerrada manda solo el mismo texto (ya pasado por los
+  controles de tono, promesas y precios) dentro de la plantilla genérica aprobada de la
+  cuenta (`hola_mayorista_crm` en Cristal Mayorista: "Hola {{1}}. Como estas? {{2}}"),
+  sin el saludo del texto. Sale con `from_cristal_agent` (no activa el takeover).
+- No manda otra plantilla si la anterior (últimas 48 h) no se contestó
+  (`TEMPLATE_PENDING`), ni textos de más de 900 caracteres. Cuando no sale, la respuesta
+  trae `not_sent` para que Claudio no anote que le escribió.
+- Si el canal no dice quién es el cliente, se busca por el número.
+- `send_whatsapp_template` también manda con `from_cristal_agent`.
+- Instrucciones de las actividades, de la cadencia de cotizaciones, prompt v7 y KB 30:
+  nunca escalar por ventana cerrada; observación y cierre de actividad fieles a lo que pasó.
+- Autotest: caso 32.
+
+---
+
 ## [18.0.1.38.0] — 2026-10-15
 
 ### Fixed — Retiro en planta SIN compra mínima
