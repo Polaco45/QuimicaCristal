@@ -825,3 +825,71 @@ class CristalAgentRouteSelftest(models.TransientModel):
                     "retiro · Sampacho $30.000 retirando → sin mínimo, flete ni salida · "
                     "sin localidad retirando → OK")
         self._case(results, "31. Retiro en planta sin mínimo", c_retiro_sin_minimo)
+
+        # ═════════════════ Ventana cerrada → plantilla (v1.39) ═════════════════
+        # 32) Caso Margarita: seguimiento con la ventana cerrada sale solo por la
+        # plantilla genérica; no se repite si la anterior no se contestó; si no
+        # sale, la tool lo dice (not_sent) para que no se anote como enviado.
+        def c_ventana_plantilla():
+            from unittest.mock import patch
+            from ..services.helpers import (template_text_from_html,
+                                            closed_window_template)
+            t = template_text_from_html(
+                "<p>Hola Margarita, ¿pudo ver la cotización?</p><p>Le faltan 20 L.</p>")
+            assert t == "¿Pudo ver la cotización? Le faltan 20 L.", t
+            t = template_text_from_html("<p>Hola, ¿cómo está? Le escribo por el pedido.</p>")
+            assert t == "Le escribo por el pedido.", t
+            t = template_text_from_html("<p>Mañana sale el camión.</p>")
+            assert t == "Mañana sale el camión.", t
+            tpl = env['whatsapp.template'].sudo().search(
+                [('template_name', '=', 'hola_mayorista_crm'), ('status', '=', 'approved')],
+                limit=1)
+            assert tpl, "no está la plantilla aprobada hola_mayorista_crm"
+            acc = tpl.wa_account_id.id
+            assert closed_window_template(env, acc) == tpl, "no elige hola_mayorista_crm"
+            p = mk_partner('Ventana cerrada', 'Rio Cuarto')
+            p.mobile = '+5493589990032'
+            ch = env['discuss.channel'].sudo().create({
+                'name': 'ZZ Autotest ventana', 'channel_type': 'group',
+                'channel_member_ids': [(0, 0, {'partner_id': p.id})]})
+            sw = ToolRegistry.get('send_whatsapp')
+            tool = ToolRegistry.get('send_whatsapp_template')
+            calls = []
+
+            def fake_execute(**kw):
+                calls.append(kw)
+                return {'ok': True, 'wa_message_id': False}
+            with patch.object(tool, 'execute', fake_execute):
+                body = "<p>Hola Ventana, ¿pudo ver la cotización? Si me confirma, la dejo lista.</p>"
+                r = sw._execute(env=env, run=None, channel_id=ch.id, body=body,
+                                wa_account_id=acc, mobile_number=p.mobile)
+                assert r.get('ok') and r.get('sent_via_template') == 'hola_mayorista_crm', r
+                assert calls and calls[0]['partner_id'] == p.id, calls
+                assert calls[0]['variables'] == [
+                    "¿Pudo ver la cotización? Si me confirma, la dejo lista."], calls[0]
+                assert calls[0]['env'].context.get('from_cristal_agent'), "sin from_cristal_agent"
+                # Plantilla anterior sin contestar → no se manda otra.
+                WA = env['whatsapp.message'].sudo()
+                sent = WA.create({'mobile_number': p.mobile, 'wa_account_id': acc,
+                                  'wa_template_id': tpl.id, 'message_type': 'outbound',
+                                  'state': 'sent'})
+                env.cr.execute("UPDATE whatsapp_message SET create_date = "
+                               "now() at time zone 'UTC' - interval '2 hours' WHERE id = %s",
+                               (sent.id,))
+                WA.invalidate_model(['create_date'])
+                r = sw._execute(env=env, run=None, channel_id=ch.id,
+                                body="<p>¿Lo vio? Quedo atento.</p>",
+                                wa_account_id=acc, mobile_number=p.mobile)
+                assert r.get('error') == 'TEMPLATE_PENDING' and r.get('not_sent'), r
+                assert len(calls) == 1, "mandó otra plantilla sin respuesta a la anterior"
+                # Texto largo → no sale y lo dice (sin la plantilla pendiente; un
+                # inbound abriría la ventana y el mensaje saldría de verdad).
+                sent.unlink()
+                r = sw._execute(env=env, run=None, channel_id=ch.id,
+                                body="<p>" + "Detalle del pedido. " * 60 + "</p>",
+                                wa_account_id=acc, mobile_number=p.mobile)
+                assert r.get('error') == 'TEMPLATE_TEXT_TOO_LONG' and r.get('not_sent'), r
+            return ("saludo fuera del texto · ventana cerrada → hola_mayorista_crm con "
+                    "from_cristal_agent · plantilla sin contestar → TEMPLATE_PENDING (no "
+                    "manda otra) · texto largo → not_sent")
+        self._case(results, "32. Ventana cerrada sale por plantilla", c_ventana_plantilla)
