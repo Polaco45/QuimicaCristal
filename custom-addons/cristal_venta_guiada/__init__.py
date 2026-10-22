@@ -67,6 +67,8 @@ def setup_venta_guiada(env):
     if not category:
         category = env['pos.category'].create({'name': 'Combos', 'sequence': -100})
     pricelist = env['product.pricelist'].browse(CF_PRICELIST_ID).exists()
+    # Los productos son de una empresa: el combo tiene que ser de la misma.
+    company = Product.browse(JABON_PREMIUM_5L).exists().company_id
 
     for name, price, slots in COMBOS:
         template = env['product.template'].search([('name', '=', name), ('type', '=', 'combo')], limit=1)
@@ -80,11 +82,13 @@ def setup_venta_guiada(env):
                 continue
             combo = env['product.combo'].create({
                 'name': f"{name.replace('Combo ', '')} · {slot_name}",
+                'company_id': company.id,
                 'combo_item_ids': [(0, 0, {'product_id': pid, 'extra_price': 0.0}) for pid in ids],
             })
             combo_ids.append(combo.id)
         template = env['product.template'].create({
             'name': name,
+            'company_id': company.id,
             'type': 'combo',
             'list_price': price,
             'sale_ok': True,
