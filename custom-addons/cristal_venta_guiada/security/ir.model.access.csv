@@ -1,0 +1,5 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_cristal_vg_suggestion_user,cristal.vg.suggestion user,model_cristal_vg_suggestion,point_of_sale.group_pos_user,1,0,0,0
+access_cristal_vg_suggestion_manager,cristal.vg.suggestion manager,model_cristal_vg_suggestion,point_of_sale.group_pos_manager,1,1,1,1
+access_cristal_vg_event_user,cristal.vg.event user,model_cristal_vg_event,point_of_sale.group_pos_user,1,1,1,0
+access_cristal_vg_event_manager,cristal.vg.event manager,model_cristal_vg_event,point_of_sale.group_pos_manager,1,1,1,1
