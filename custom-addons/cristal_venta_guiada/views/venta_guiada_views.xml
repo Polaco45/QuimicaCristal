@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Sugerencias -->
+    <record id="view_cristal_vg_suggestion_list" model="ir.ui.view">
+        <field name="name">cristal.vg.suggestion.list</field>
+        <field name="model">cristal.vg.suggestion</field>
+        <field name="arch" type="xml">
+            <list editable="bottom" decoration-bf="manual">
+                <field name="trigger_product_id"/>
+                <field name="product_id"/>
+                <field name="kind"/>
+                <field name="text"/>
+                <field name="reason" optional="show"/>
+                <field name="score" optional="hide"/>
+                <field name="manual"/>
+                <field name="active" column_invisible="1"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_cristal_vg_suggestion_search" model="ir.ui.view">
+        <field name="name">cristal.vg.suggestion.search</field>
+        <field name="model">cristal.vg.suggestion</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="trigger_product_id"/>
+                <field name="product_id"/>
+                <filter name="manual" string="Fijadas a mano" domain="[('manual', '=', True)]"/>
+                <separator/>
+                <filter name="size" string="Tamaño mayor" domain="[('kind', '=', 'size')]"/>
+                <filter name="complement" string="Complemento" domain="[('kind', '=', 'complement')]"/>
+                <filter name="category" string="Respaldo categoría" domain="[('kind', '=', 'category')]"/>
+                <group>
+                    <filter name="group_trigger" string="Producto cargado" context="{'group_by': 'trigger_product_id'}"/>
+                    <filter name="group_kind" string="Tipo" context="{'group_by': 'kind'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_cristal_vg_suggestion" model="ir.actions.act_window">
+        <field name="name">Sugerencias</field>
+        <field name="res_model">cristal.vg.suggestion</field>
+        <field name="view_mode">list</field>
+        <field name="help" type="html">
+            <p>Para cada producto que se carga en la caja, qué sugiere el sistema. Las que agregues
+               o marques "Fijada a mano" van primero y el recálculo de cada noche no las borra.</p>
+        </field>
+    </record>
+
+    <record id="action_server_cristal_vg_recompute" model="ir.actions.server">
+        <field name="name">Recalcular sugerencias ahora</field>
+        <field name="model_id" ref="model_cristal_vg_suggestion"/>
+        <field name="state">code</field>
+        <field name="code">action = model.action_recompute()</field>
+    </record>
+
+    <!-- Eventos -->
+    <record id="view_cristal_vg_event_list" model="ir.ui.view">
+        <field name="name">cristal.vg.event.list</field>
+        <field name="model">cristal.vg.event</field>
+        <field name="arch" type="xml">
+            <list create="0" edit="0" decoration-success="accepted">
+                <field name="date"/>
+                <field name="user_id"/>
+                <field name="config_id" optional="hide"/>
+                <field name="trigger_product_id"/>
+                <field name="product_id"/>
+                <field name="kind"/>
+                <field name="accepted"/>
+                <field name="amount" sum="Total"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_cristal_vg_event_pivot" model="ir.ui.view">
+        <field name="name">cristal.vg.event.pivot</field>
+        <field name="model">cristal.vg.event</field>
+        <field name="arch" type="xml">
+            <pivot>
+                <field name="kind" type="row"/>
+                <field name="accepted" type="col"/>
+                <field name="amount" type="measure"/>
+            </pivot>
+        </field>
+    </record>
+
+    <record id="view_cristal_vg_event_search" model="ir.ui.view">
+        <field name="name">cristal.vg.event.search</field>
+        <field name="model">cristal.vg.event</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="product_id"/>
+                <field name="trigger_product_id"/>
+                <field name="user_id"/>
+                <filter name="accepted" string="Aceptadas" domain="[('accepted', '=', True)]"/>
+                <filter name="date" string="Fecha" date="date"/>
+                <group>
+                    <filter name="group_kind" string="Tipo" context="{'group_by': 'kind'}"/>
+                    <filter name="group_product" string="Producto sugerido" context="{'group_by': 'product_id'}"/>
+                    <filter name="group_day" string="Día" context="{'group_by': 'date:day'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_cristal_vg_event" model="ir.actions.act_window">
+        <field name="name">Resultados</field>
+        <field name="res_model">cristal.vg.event</field>
+        <field name="view_mode">pivot,list</field>
+    </record>
+
+    <!-- Configuración por caja -->
+    <record id="view_pos_config_cristal_vg_form" model="ir.ui.view">
+        <field name="name">pos.config.cristal.vg.form</field>
+        <field name="model">pos.config</field>
+        <field name="priority">100</field>
+        <field name="arch" type="xml">
+            <form create="0" delete="0">
+                <sheet>
+                    <div class="oe_title"><h1><field name="name" readonly="1"/></h1></div>
+                    <group>
+                        <field name="cristal_vg_enabled"/>
+                        <field name="cristal_vg_fiscal_position_ids" widget="many2many_tags"/>
+                        <field name="cristal_vg_start_categ_id"/>
+                    </group>
+                    <separator string="Productos de caja (se ofrece el primero con stock)"/>
+                    <field name="cristal_vg_impulse_product_ids" widget="many2many" nolabel="1">
+                        <list>
+                            <field name="display_name"/>
+                            <field name="qty_available"/>
+                        </list>
+                    </field>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_pos_config_cristal_vg_list" model="ir.ui.view">
+        <field name="name">pos.config.cristal.vg.list</field>
+        <field name="model">pos.config</field>
+        <field name="priority">100</field>
+        <field name="arch" type="xml">
+            <list create="0" delete="0">
+                <field name="name"/>
+                <field name="cristal_vg_enabled"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="action_pos_config_cristal_vg" model="ir.actions.act_window">
+        <field name="name">Configuración por caja</field>
+        <field name="res_model">pos.config</field>
+        <field name="view_mode">list,form</field>
+        <field name="view_ids" eval="[(5, 0, 0),
+            (0, 0, {'view_mode': 'list', 'view_id': ref('view_pos_config_cristal_vg_list')}),
+            (0, 0, {'view_mode': 'form', 'view_id': ref('view_pos_config_cristal_vg_form')})]"/>
+    </record>
+
+    <menuitem id="menu_cristal_vg_root" name="Venta guiada" parent="point_of_sale.menu_point_root"
+              sequence="45" groups="point_of_sale.group_pos_manager"/>
+    <menuitem id="menu_cristal_vg_event" name="Resultados" parent="menu_cristal_vg_root"
+              action="action_cristal_vg_event" sequence="10"/>
+    <menuitem id="menu_cristal_vg_suggestion" name="Sugerencias" parent="menu_cristal_vg_root"
+              action="action_cristal_vg_suggestion" sequence="20"/>
+    <menuitem id="menu_cristal_vg_recompute" name="Recalcular sugerencias ahora" parent="menu_cristal_vg_root"
+              action="action_server_cristal_vg_recompute" sequence="30"/>
+    <menuitem id="menu_cristal_vg_config" name="Configuración por caja" parent="menu_cristal_vg_root"
+              action="action_pos_config_cristal_vg" sequence="40"/>
+</odoo>
