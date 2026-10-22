@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_account_position_form_cristal_journal" model="ir.ui.view">
+        <field name="name">account.fiscal.position.form.cristal.journal</field>
+        <field name="model">account.fiscal.position</field>
+        <field name="inherit_id" ref="account.view_account_position_form"/>
+        <field name="arch" type="xml">
+            <field name="auto_apply" position="before">
+                <field name="cristal_sale_journal_id" options="{'no_create': True}"/>
+            </field>
+        </field>
+    </record>
+
+    <record id="view_account_position_tree_cristal_journal" model="ir.ui.view">
+        <field name="name">account.fiscal.position.list.cristal.journal</field>
+        <field name="model">account.fiscal.position</field>
+        <field name="inherit_id" ref="account.view_account_position_tree"/>
+        <field name="arch" type="xml">
+            <field name="name" position="after">
+                <field name="cristal_sale_journal_id"/>
+            </field>
+        </field>
+    </record>
+</odoo>
