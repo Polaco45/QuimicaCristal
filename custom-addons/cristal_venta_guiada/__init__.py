@@ -66,9 +66,11 @@ def setup_venta_guiada(env):
     category = env['pos.category'].search([('name', '=', 'Combos')], limit=1)
     if not category:
         category = env['pos.category'].create({'name': 'Combos', 'sequence': -100})
-    pricelist = env['product.pricelist'].browse(CF_PRICELIST_ID).exists()
-    # Los productos son de una empresa: el combo tiene que ser de la misma.
+    # Los productos son de una empresa: el combo tiene que ser de la misma. Por eso
+    # su precio no va en L.C 1 (lista sin empresa) sino como precio de venta, en una
+    # categoría sin reglas en esa lista.
     company = Product.browse(JABON_PREMIUM_5L).exists().company_id
+    combo_categ = env['product.category'].search([('name', '=', 'Combos y Kit')], limit=1)
 
     for name, price, slots in COMBOS:
         template = env['product.template'].search([('name', '=', name), ('type', '=', 'combo')], limit=1)
@@ -91,17 +93,13 @@ def setup_venta_guiada(env):
             'company_id': company.id,
             'type': 'combo',
             'list_price': price,
+            'categ_id': combo_categ.id or env.ref('product.product_category_all').id,
             'sale_ok': True,
             'available_in_pos': True,
             'pos_categ_ids': [(6, 0, category.ids)],
             'combo_ids': [(6, 0, combo_ids)],
             'taxes_id': [(5, 0, 0)],
         })
-        if pricelist:
-            env['product.pricelist.item'].create({
-                'pricelist_id': pricelist.id, 'applied_on': '1_product',
-                'product_tmpl_id': template.id, 'compute_price': 'fixed', 'fixed_price': price,
-            })
         _logger.info("venta guiada: creado %s ($%s, %s opciones)", name, price, len(combo_ids))
 
     impulse = Product.browse(IMPULSE).exists()
