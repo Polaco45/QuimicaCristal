@@ -6,10 +6,10 @@ from . import models
 _logger = logging.getLogger(__name__)
 
 
-def post_init_hook(env):
-    """Deja configurado el caso de Química Cristal:
-    Ventas X -> diario X (pto. 1), IVA 21% -> Facturas de Venta electrónica,
-    clientes sin posición fiscal -> Ventas X, y clientes nuevos sin posición."""
+def setup_cristal_fiscal(env):
+    """Deja configurado el caso de Química Cristal (sin pisar lo ya cargado):
+    Ventas X -> diario X (pto. 1), IVA 21% -> Facturas de Venta electrónica;
+    cliente sin responsabilidad AFIP -> Ventas X, con responsabilidad -> IVA 21%."""
     FiscalPosition = env['account.fiscal.position']
     Journal = env['account.journal']
     for company in env['res.company'].search([]):
@@ -29,14 +29,13 @@ def post_init_hook(env):
             fp_ri.cristal_sale_journal_id = journal_fe
         if fp_x and not company.cristal_fallback_fiscal_position_id:
             company.cristal_fallback_fiscal_position_id = fp_x
+        if fp_ri and not company.cristal_responsible_fiscal_position_id:
+            company.cristal_responsible_fiscal_position_id = fp_ri
         _logger.info(
             "cristal_diario_fiscal: %s -> Ventas X=%s/%s, IVA 21%%=%s/%s",
             company.name, fp_x.id, journal_x.id, fp_ri.id, journal_fe.id,
         )
 
-    # Clientes nuevos sin posición fiscal: se borra el valor por defecto.
-    field = env['ir.model.fields']._get('res.partner', 'property_account_position_id')
-    defaults = env['ir.default'].sudo().search([('field_id', '=', field.id)])
-    if defaults:
-        _logger.info("cristal_diario_fiscal: borro %s valores por defecto de posición fiscal", len(defaults))
-        defaults.unlink()
+
+def post_init_hook(env):
+    setup_cristal_fiscal(env)

@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 {
     'name': 'Cristal — Diario por posición fiscal',
-    'version': '18.0.1.0.0',
+    'version': '18.0.1.1.0',
     'summary': 'Cada factura sale por el diario que corresponde a la posición fiscal '
                'del cliente (POS, órdenes de venta y facturas a mano). Si el cliente '
-               'no tiene posición fiscal se lo trata como Ventas X, y los clientes '
-               'nuevos se crean sin posición fiscal.',
+               'no tiene posición fiscal se usa la de su responsabilidad AFIP: sin '
+               'responsabilidad Ventas X, con cualquiera IVA 21%.',
     'author': 'Química Cristal',
     'category': 'Accounting/Accounting',
     'license': 'LGPL-3',

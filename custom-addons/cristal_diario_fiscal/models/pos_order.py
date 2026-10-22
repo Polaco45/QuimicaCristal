@@ -8,7 +8,7 @@ class PosOrder(models.Model):
     def _prepare_invoice_vals(self):
         # Manda la posición fiscal, no el diario elegido en la caja.
         vals = super()._prepare_invoice_vals()
-        journal = self.company_id._cristal_sale_journal(self.fiscal_position_id)
+        journal = self.company_id._cristal_sale_journal(self.fiscal_position_id, self.partner_id)
         if journal:
             vals['journal_id'] = journal.id
             if self.invoice_journal_id != journal:
