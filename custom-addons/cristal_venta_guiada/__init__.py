@@ -111,9 +111,10 @@ def setup_venta_guiada(env):
             vals['cristal_vg_fiscal_position_ids'] = [(6, 0, fp.ids)]
         if not config.cristal_vg_impulse_product_ids:
             vals['cristal_vg_impulse_product_ids'] = [(6, 0, impulse.ids)]
-        if not config.cristal_vg_start_categ_id:
-            vals['cristal_vg_start_categ_id'] = category.id
-        if config.limit_categories and category not in config.iface_available_categ_ids:
+        # Restringir categorías sin ninguna cargada muestra todo: agregar Combos ahí
+        # dejaría la caja mostrando solo combos.
+        if (config.limit_categories and config.iface_available_categ_ids
+                and category not in config.iface_available_categ_ids):
             vals['iface_available_categ_ids'] = [(4, category.id)]
         vals['cristal_vg_enabled'] = True
         # pos.config no deja tocar categorías con sesión abierta salvo con este contexto.

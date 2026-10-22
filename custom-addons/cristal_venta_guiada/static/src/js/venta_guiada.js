@@ -240,28 +240,37 @@ patch(PosStore.prototype, {
             accepted: true,
             amount: card.amount,
         });
+        // La sugerencia ya es una variante concreta: se agrega sin pedir presentación/aroma.
         // Lo agregado también es un producto cargado: puede traer su propia sugerencia.
-        await this.addLineToCurrentOrder({ product_id: product });
+        const line = await this.addLineToCurrentOrder({ product_id: product }, {}, false);
+        if (line) {
+            this.cristalVgAfterAdd(line);
+        }
     },
 
     cristalVgDismiss() {
         this.cristalVg.card = null;
     },
 
-    // Producto de caja: el primero de la lista con stock que no esté en el ticket.
+    // Producto de caja: el de la lista que más se sugiere para lo que ya lleva el
+    // ticket; si ninguno, el primero de la lista. Nunca si ya lleva uno.
     cristalVgPickImpulse(order) {
         const vg = this.cristalVgConfig();
+        const impulse = (vg.impulse || []).filter((pid) => this.models["product.product"].get(pid));
         const inCart = new Set(order.lines.map((l) => l.product_id?.id));
-        if ((vg.impulse || []).some((pid) => inCart.has(pid))) {
+        if (!impulse.length || impulse.some((pid) => inCart.has(pid))) {
             return null;
         }
-        for (const pid of vg.impulse || []) {
-            const product = this.models["product.product"].get(pid);
-            if (product) {
-                return product;
+        const votes = {};
+        for (const pid of inCart) {
+            for (const [sid] of vg.suggestions?.[pid] || []) {
+                if (impulse.includes(sid)) {
+                    votes[sid] = (votes[sid] || 0) + 1;
+                }
             }
         }
-        return null;
+        const best = impulse.reduce((a, b) => ((votes[b] || 0) > (votes[a] || 0) ? b : a), impulse[0]);
+        return this.models["product.product"].get(best);
     },
 
     async pay() {
@@ -285,7 +294,7 @@ patch(PosStore.prototype, {
                         cancelLabel: _t("No, cobrar"),
                     });
                     if (accepted) {
-                        await this.addLineToCurrentOrder({ product_id: product }, { cristalVgSkip: true });
+                        await this.addLineToCurrentOrder({ product_id: product }, {}, false);
                         this.cristalVgLog(order, {
                             product_id: product.id,
                             kind: "checkout",

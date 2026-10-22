@@ -1,0 +1,6 @@
+// En la elección del combo, las variantes (aromas, colores) se distinguen
+// recién al final del nombre: se muestra el nombre completo.
+.combo-configurator-popup .product-name {
+    -webkit-line-clamp: unset;
+    overflow-wrap: anywhere;
+}
