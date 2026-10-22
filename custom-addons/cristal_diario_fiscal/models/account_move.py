@@ -19,7 +19,8 @@ class AccountMove(models.Model):
         super()._compute_fiscal_position_id()
         for move in self:
             if move._cristal_applies() and not move.fiscal_position_id:
-                move.fiscal_position_id = move.company_id.cristal_fallback_fiscal_position_id
+                move.fiscal_position_id = move.company_id._cristal_sale_fiscal_position(
+                    move.fiscal_position_id, move.partner_id)
 
     @api.depends('fiscal_position_id')
     def _compute_journal_id(self):
@@ -27,6 +28,6 @@ class AccountMove(models.Model):
         for move in self:
             if not move._cristal_applies():
                 continue
-            journal = move.company_id._cristal_sale_journal(move.fiscal_position_id)
+            journal = move.company_id._cristal_sale_journal(move.fiscal_position_id, move.partner_id)
             if journal and move.journal_id != journal:
                 move.journal_id = journal
