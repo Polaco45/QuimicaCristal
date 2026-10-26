@@ -509,10 +509,10 @@ AR_HOLIDAYS = {
     '2027-11-20': 'Día de la Soberanía Nacional',
     '2027-12-08': 'Inmaculada Concepción', '2027-12-25': 'Navidad',
 }
-# Horario oficial de la planta (KB #89): L-V 8:30-12:30 y 15:30-19:30; sáb 9-13.
-PLANT_HOURS = {0: [(8.5, 12.5), (15.5, 19.5)], 1: [(8.5, 12.5), (15.5, 19.5)],
-               2: [(8.5, 12.5), (15.5, 19.5)], 3: [(8.5, 12.5), (15.5, 19.5)],
-               4: [(8.5, 12.5), (15.5, 19.5)], 5: [(9.0, 13.0)], 6: []}
+# Horario oficial de la planta (KB #89): L-V 8-13 y 17-20; sáb 9-13 (desde 26/10/2026).
+PLANT_HOURS = {0: [(8.0, 13.0), (17.0, 20.0)], 1: [(8.0, 13.0), (17.0, 20.0)],
+               2: [(8.0, 13.0), (17.0, 20.0)], 3: [(8.0, 13.0), (17.0, 20.0)],
+               4: [(8.0, 13.0), (17.0, 20.0)], 5: [(9.0, 13.0)], 6: []}
 
 
 def _configured_closed_dates(env):
@@ -584,7 +584,7 @@ def business_status(env, now=None):
         start = later_today if later_today is not None else None
     else:
         nb = next_business_day(env, today)
-        start = PLANT_HOURS.get(nb.weekday(), [(8.5, 12.5)])[0][0]
+        start = PLANT_HOURS.get(nb.weekday(), [(8.0, 13.0)])[0][0]
     if open_now:
         next_open_text = 'ahora (estamos en horario de atención)'
     else:
