@@ -7,6 +7,18 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.41.0] — 2026-10-26
+
+### Changed — Horario nuevo de la planta
+
+Desde el 26/10/2026 la planta atiende de lunes a viernes de 8 a 13 y de 17 a 20 hs (el
+sábado sigue de 9 a 13).
+
+- `PLANT_HOURS` (abierto ahora / próxima apertura) con el horario nuevo.
+- KB #89 (oficial), #70, #26 y #81: se reemplaza el horario viejo sin tocar el resto.
+
+---
+
 ## [18.0.1.40.0] — 2026-10-21
 
 ### Fixed — Envío de los lunes (oferta semanal a mayoristas)
