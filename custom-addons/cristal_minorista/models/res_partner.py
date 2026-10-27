@@ -31,7 +31,8 @@ BUSINESS_WORDS = re.compile(
     r'carnicer[ií]a|verduler[ií]a|kiosco|almac[eé]n|supermercado|autoservicio|estaci[oó]n|taller|'
     r'inmobiliaria|pizzer[ií]a|helader[ií]a|rotiser[ií]a|comedor|f[aá]brica|empresa|frigor[ií]fico|'
     r'geri[aá]trico|residencia|lubricentro|lavacoches|lavaautos|car ?wash|peluquer[ií]a|'
-    r'veterinaria|farmacia|bodega|distribuidora|mayorista)\b', re.I)
+    r'veterinaria|farmacia|bodega|distribuidora|mayorista|sal[oó]n|aut[oó]dromo|gremio|sindicato|'
+    r'asociaci[oó]n|fundaci[oó]n|mutual|centro|camping|country|de qu[ií]mica cristal)\b', re.I)
 
 
 def wa_key(raw):
