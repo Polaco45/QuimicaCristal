@@ -7,6 +7,42 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.43.0] — 2026-10-27
+
+### Added — Las mejoras propuestas en el informe de la 1.42
+
+- **Informe semanal** (lunes 9 h, modelo `cristal.agent.weekly.report`, menú "Informes
+  semanales"): respuestas, costo, costo por respuesta y **por pedido vendido**, % y motivos
+  del modelo avanzado, cotizaciones, pedidos confirmados, pases a Joaco, controles que
+  frenaron mensajes, nuevos "No contactar" y errores. Se publica en el canal interno.
+- **Revisión semanal:** cada informe elige 20 conversaciones de Haiku al azar
+  (`review_sample`); menú "Revisión semanal" para marcarlas Bien / Con error.
+- **Fotos y PDF:** los que manda el cliente llegan ADJUNTOS al modelo (imagen / documento),
+  también si vienen sin texto (antes se descartaban). `view_attachment` adjunta la imagen
+  de verdad (antes devolvía base64 como texto). Con foto o PDF atiende el modelo avanzado.
+  El log de la corrida no guarda los bytes.
+- **Rechazos de WhatsApp** (diario): 131050 (bloqueó marketing) o 131026 dos veces (sin
+  WhatsApp) → "No contactar". La migración revisa los últimos 120 días.
+- **Recompra** (diario, máx. 15): a quien compra seguido (3+ pedidos) y ya pasó su
+  intervalo habitual sin pedir, se le agenda un seguimiento para Claudio con los productos
+  que suele llevar.
+
+### Changed
+
+- **Claves de API** solo en `ir.config_parameter` (el conector MCP podía leerlas de
+  `cristal.agent.config`); el campo queda vacío y muestra "Guardada (…xxxx)".
+- **Espera antes de contestar:** 10 → 15 segundos.
+
+### Fixed
+
+- **"Hoy no atendemos" bloqueado:** el control de "hoy estamos abiertos" no veía el "no"
+  y frenaba justo el mensaje correcto (59 entre el 18 y el 26/10).
+- **Builds de Odoo.sh descartados:** el autotest (que Odoo.sh corre en cada build) ya no
+  depende del modelo configurado ni del gasto del día.
+- Autotest: casos 37 y 38 (38 casos).
+
+---
+
 ## [18.0.1.42.0] — 2026-10-27
 
 ### Changed — Costo por respuesta de ~US$ 0,13 a ~US$ 0,01, sin perder funciones

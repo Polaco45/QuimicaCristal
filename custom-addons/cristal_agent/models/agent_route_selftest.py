@@ -724,9 +724,9 @@ class CristalAgentRouteSelftest(models.TransientModel):
             p = Run._prices_for_model('claude-haiku-5-5')
             assert (p['in'], p['out'], p['cr']) == (0.10, 0.50, 0.01), p
             assert Run._prices_for_model('claude-haiku-4-5-20251001')['in'] == 1.0
-            assert config.anthropic_model == 'claude-haiku-5-5', config.anthropic_model
-            assert config.anthropic_model_complex == 'claude-sonnet-5-5', \
-                config.anthropic_model_complex
+            # v1.43: no se exige un modelo fijo (Odoo.sh corre este autotest en cada
+            # build y descartaba builds si alguien cambiaba el modelo en la config).
+            assert config.anthropic_model, "sin modelo base configurado"
             assert config.anthropic_effort in ('low', 'medium', 'high')
             assert config.max_tokens >= 16000, config.max_tokens
             return (f"base {config.anthropic_model} · avanzado {config.anthropic_model_complex}"
@@ -1029,6 +1029,7 @@ class CristalAgentRouteSelftest(models.TransientModel):
             assert last.get('cache_control') == {'type': 'ephemeral'}, last
             assert 'fallbacks' not in sent, "Haiku 5.5 no acepta fallbacks"
             client.strong_model = S
+            client._spend_today = lambda: 0.0  # sin depender del gasto real del día
             assert client._escalate('prueba') and client.model == S, "no pasa al avanzado"
             assert not client._escalate('otra vez'), "pasó dos veces"
             return (f"reglas de modelo OK (10 casos + grupo de control) · respuesta típica "
@@ -1117,3 +1118,96 @@ class CristalAgentRouteSelftest(models.TransientModel):
             return ("se marca con motivo y etiqueta · sin seguimientos, plantillas ni envío de "
                     "los lunes · la actividad se cierra sin corrida · se desmarca con undo")
         self._case(results, "36. No contactar", c_no_contactar)
+
+        # ═════════════════ Mejoras v1.43 ═════════════════
+        # 37) "Hoy no atendemos" ya no se bloquea; las fotos/PDF del cliente le llegan
+        # adjuntas al modelo (y no quedan en el log); las claves no quedan en la config.
+        def c_mejoras_v143():
+            import base64
+            from unittest.mock import patch
+            from ..services import send_guards as sg
+            from ..services.claude_client import (_recent_inbound_media, _media_blocks,
+                                                  _strip_media_for_log)
+            assert not sg._RE_ABIERTO_HOY.search("Hoy domingo no atendemos; el lunes seguimos")
+            assert not sg._RE_ABIERTO_HOY.search("Hoy estamos cerrados por feriado")
+            assert sg._RE_ABIERTO_HOY.search("Hoy estamos abiertos hasta las 20 h")
+            # Fotos del cliente en la ráfaga actual (corta en la última respuesta del bot).
+            p = mk_partner('Foto', 'Rio Cuarto')
+            ch = env['discuss.channel'].sudo().create({
+                'name': 'ZZ Autotest foto', 'channel_type': 'group',
+                'channel_member_ids': [(0, 0, {'partner_id': p.id})]})
+            png = base64.b64encode(
+                b'\x89PNG\r\n\x1a\n' + b'\x00' * 64).decode()
+            Att = env['ir.attachment'].sudo()
+            Msg = env['mail.message'].sudo().with_context(from_cristal_agent=True)
+            old = Att.create({'name': 'vieja.png', 'datas': png, 'mimetype': 'image/png'})
+            Msg.create({'model': 'discuss.channel', 'res_id': ch.id, 'author_id': p.id,
+                        'body': 'vieja', 'attachment_ids': [(4, old.id)]})
+            config = env['cristal.agent.config'].sudo().get_active()
+            bot = config.bot_partner_id.id if config.bot_partner_id else 2
+            Msg.create({'model': 'discuss.channel', 'res_id': ch.id, 'author_id': bot,
+                        'body': 'respuesta del bot'})
+            new = Att.create({'name': 'lista.png', 'datas': png, 'mimetype': 'image/png'})
+            Msg.create({'model': 'discuss.channel', 'res_id': ch.id, 'author_id': p.id,
+                        'body': '', 'attachment_ids': [(4, new.id)]})
+            media = _recent_inbound_media(env, ch.id, p)
+            assert [a.id for a in media] == [new.id], [a.name for a in media]
+            blocks = _media_blocks(media)
+            assert blocks and blocks[0]['type'] == 'image' \
+                and blocks[0]['source']['media_type'] == 'image/png', blocks
+            log = _strip_media_for_log([{'role': 'user', 'content': [{'type': 'text',
+                                                                       'text': 'x'}] + blocks}])
+            assert 'data' not in log[0]['content'][1]['source'], "el log guarda la imagen"
+            # Claves: van al parámetro del sistema y el campo queda vacío.
+            seen = {}
+            Param = type(env['ir.config_parameter'])
+            with patch.object(Param, 'set_param', lambda self, k, v: seen.update({k: v})):
+                vals = env['cristal.agent.config']._stash_keys(
+                    {'anthropic_api_key': ' sk-prueba ', 'debounce_seconds': 15})
+            assert seen == {'cristal_agent.anthropic_api_key': 'sk-prueba'}, seen
+            assert vals['anthropic_api_key'] is False and vals['debounce_seconds'] == 15, vals
+            return ("'hoy no atendemos' pasa · foto de la ráfaga adjunta (no la vieja) · "
+                    "log sin la imagen · claves solo en parámetros del sistema")
+        self._case(results, "37. Fotos, claves y control de horario", c_mejoras_v143)
+
+        # 38) Informe semanal, rechazos de WhatsApp y recompra.
+        def c_informe_recompra():
+            from datetime import datetime as _dt
+            Report = env['cristal.agent.weekly.report']
+            rep = Report.build_report(date(2026, 10, 20), date(2026, 10, 27))
+            assert rep and 'costo por pedido vendido' in (rep.body or ''), rep.body
+            # Rechazo 131050 (bloqueó marketing) → No contactar.
+            tpl = env['whatsapp.template'].sudo().search(
+                [('template_name', '=', 'hola_mayorista_crm')], limit=1)
+            note = 'sin plantilla hola_mayorista_crm'
+            if tpl:
+                p = mk_partner('Bloqueó WA', 'Rio Cuarto')
+                p.mobile = '+5493589380038'
+                env['whatsapp.message'].sudo().create({
+                    'mobile_number': p.mobile, 'wa_account_id': tpl.wa_account_id.id,
+                    'wa_template_id': tpl.id, 'message_type': 'outbound', 'state': 'error',
+                    'failure_reason': '131050 : Unable to deliver the message. This recipient '
+                                      'has chosen to stop receiving marketing messages'})
+                marked = Report.cron_wa_failures(days=1)
+                assert p in [m[0] for m in marked] and p.agent_opt_out, "no lo marcó"
+                note = '131050 → No contactar'
+            # Recompra: compra cada ~10 días y la última fue hace 12.
+            may = env['res.partner.category'].sudo().search([('name', '=', 'Mayorista')],
+                                                            limit=1)
+            c = mk_partner('Recompra', 'Rio Cuarto', cat=may)
+            c.mobile = '+5493589380039'
+            today = fields.Date.context_today(c)
+            for days_ago in (32, 22, 12):
+                o = SaleOrder.create({'partner_id': c.id, 'order_line': [(0, 0, {
+                    'product_id': product.id, 'product_uom_qty': 20, 'price_unit': 650})]})
+                o.action_confirm()
+                o.date_order = _dt.combine(today - timedelta(days=days_ago), time(12, 0))
+            got = {p.id: (i, s) for p, i, s, _prods in Report.reorder_candidates(
+                today, limit=10000)}
+            assert got.get(c.id) == (10, 12), got.get(c.id)
+            c.agent_reorder_reminder_date = today
+            got = [p.id for p, *_r in Report.reorder_candidates(today, limit=10000)]
+            assert c.id not in got, "repite el aviso antes de su intervalo"
+            return (f"informe con costo por pedido vendido · {note} · recompra: cada 10 días, "
+                    f"última hace 12 → aviso (y no se repite)")
+        self._case(results, "38. Informe semanal, WhatsApp y recompra", c_informe_recompra)

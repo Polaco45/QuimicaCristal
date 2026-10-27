@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ───────────── Informe semanal (v1.43) ───────────── -->
+    <record id="view_cristal_agent_weekly_report_list" model="ir.ui.view">
+        <field name="name">cristal.agent.weekly.report.list</field>
+        <field name="model">cristal.agent.weekly.report</field>
+        <field name="arch" type="xml">
+            <list string="Informes semanales" create="0">
+                <field name="week_start"/>
+                <field name="replies"/>
+                <field name="cost_usd" sum="Total"/>
+                <field name="cost_per_reply"/>
+                <field name="orders_confirmed" sum="Total"/>
+                <field name="sold_amount" sum="Total"/>
+                <field name="cost_per_order"/>
+                <field name="strong_pct"/>
+                <field name="escalations"/>
+                <field name="guard_blocks"/>
+                <field name="opt_outs"/>
+                <field name="errors"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_cristal_agent_weekly_report_form" model="ir.ui.view">
+        <field name="name">cristal.agent.weekly.report.form</field>
+        <field name="model">cristal.agent.weekly.report</field>
+        <field name="arch" type="xml">
+            <form string="Informe semanal" create="0">
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="week_start"/>
+                            <field name="week_end"/>
+                            <field name="replies"/>
+                            <field name="cost_usd"/>
+                            <field name="cost_per_reply"/>
+                        </group>
+                        <group>
+                            <field name="orders_confirmed"/>
+                            <field name="sold_amount"/>
+                            <field name="cost_per_order"/>
+                            <field name="strong_runs"/>
+                            <field name="strong_pct"/>
+                        </group>
+                    </group>
+                    <field name="body" readonly="1"/>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_cristal_agent_weekly_report_graph" model="ir.ui.view">
+        <field name="name">cristal.agent.weekly.report.graph</field>
+        <field name="model">cristal.agent.weekly.report</field>
+        <field name="arch" type="xml">
+            <graph string="Costo por pedido vendido" type="line">
+                <field name="week_start" interval="week"/>
+                <field name="cost_per_order" type="measure"/>
+                <field name="cost_usd" type="measure"/>
+            </graph>
+        </field>
+    </record>
+
+    <record id="action_cristal_agent_weekly_report" model="ir.actions.act_window">
+        <field name="name">Informes semanales</field>
+        <field name="res_model">cristal.agent.weekly.report</field>
+        <field name="view_mode">list,graph,form</field>
+    </record>
+
+    <!-- ───────────── Revisión semanal de conversaciones ───────────── -->
+    <record id="view_cristal_agent_run_review_list" model="ir.ui.view">
+        <field name="name">cristal.agent.run.review.list</field>
+        <field name="model">cristal.agent.run</field>
+        <field name="priority">90</field>
+        <field name="arch" type="xml">
+            <list string="Revisión semanal" editable="bottom" create="0">
+                <field name="create_date" readonly="1"/>
+                <field name="partner_id" readonly="1"/>
+                <field name="incoming_text" readonly="1"/>
+                <field name="final_response" readonly="1" optional="hide"/>
+                <field name="model_used" readonly="1" optional="hide"/>
+                <field name="cost_usd" readonly="1"/>
+                <field name="review_result"/>
+                <field name="review_note"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="action_cristal_agent_run_review" model="ir.actions.act_window">
+        <field name="name">Revisión semanal</field>
+        <field name="res_model">cristal.agent.run</field>
+        <field name="view_mode">list,form</field>
+        <field name="view_id" ref="view_cristal_agent_run_review_list"/>
+        <field name="domain">[('review_sample', '=', True)]</field>
+        <field name="context">{'search_default_filter_to_review': 1}</field>
+        <field name="help" type="html">
+            <p>Cada lunes el informe semanal elige 20 conversaciones del modelo base al azar.
+               Abrí cada una (el chat del cliente) y marcá si estuvo Bien o Con error.</p>
+        </field>
+    </record>
+
+</odoo>

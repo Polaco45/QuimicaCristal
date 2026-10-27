@@ -19,6 +19,17 @@
               parent="menu_cristal_agent_root"
               sequence="5"
               action="action_cristal_agent_dashboard"/>
+    <!-- v1.43 -->
+    <menuitem id="menu_cristal_agent_weekly_report"
+              name="📈 Informes semanales"
+              parent="menu_cristal_agent_root"
+              sequence="6"
+              action="action_cristal_agent_weekly_report"/>
+    <menuitem id="menu_cristal_agent_run_review"
+              name="🔍 Revisión semanal"
+              parent="menu_cristal_agent_root"
+              sequence="7"
+              action="action_cristal_agent_run_review"/>
 
     <!-- ═════════════════════════════════════════════════════ -->
     <!-- 📦 MAYORISTA — Claudio v3.1 (cuenta Crilimp id=8)      -->

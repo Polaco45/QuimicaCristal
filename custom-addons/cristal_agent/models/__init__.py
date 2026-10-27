@@ -15,3 +15,4 @@ from . import sale_order
 from . import product_template
 from . import whatsapp_message
 from . import mail_message
+from . import agent_weekly_report
