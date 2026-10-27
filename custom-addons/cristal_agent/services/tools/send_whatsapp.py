@@ -108,6 +108,17 @@ class SendWhatsApp(AgentTool):
         # respuesta. Caso real: Silvia Bazán (partner 80526), run 1269.
         # Saltamos el check solo en ese caso; los envíos proactivos del cron
         # (otros triggers) lo siguen respetando.
+        # v1.42: a quien pidió no recibir propuestas no se le escribe por iniciativa
+        # propia (cadencias, seguimientos). Si escribe él, o lo pide Joaco, sí.
+        if not is_internal_channel and run and run.partner_id \
+                and run.trigger not in ('whatsapp_message', 'joaco_command') \
+                and run.partner_id.sudo().agent_opt_out:
+            return {"error": "OPT_OUT", "not_sent": True, "message": (
+                f"{run.partner_id.name} pidió no recibir propuestas "
+                f"({run.partner_id.agent_opt_out_reason or 'no contactar'}). NO SE "
+                f"ENVIÓ NADA: cerrá la actividad sin agendar otra y no anotes que le "
+                f"escribiste.")}
+
         skip_window_check = bool(run and getattr(run, 'trigger', None) == 'whatsapp_message')
         closed_window_partner = None  # v1.39: ventana cerrada → va por plantilla
         if not is_internal_channel and not skip_window_check:

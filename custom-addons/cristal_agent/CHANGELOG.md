@@ -7,6 +7,43 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.42.0] — 2026-10-27
+
+### Changed — Costo por respuesta de ~US$ 0,13 a ~US$ 0,01, sin perder funciones
+
+Medido del 20 al 27/10 (Sonnet 5.5): US$ 0,13 por respuesta; ~90 % se iba en escribir la
+conversación de cada cliente en la caché de 1 hora (2x), que solo se reusaba segundos.
+
+- **Caché:** lo fijo (tools + instrucciones + KB) sigue en 1 h; la conversación del
+  cliente pasa a 5 min (1,25x).
+- **Modelo:** Claude Haiku 5.5 atiende el día a día (cadencias y seguimientos incluidos).
+  Claude Sonnet 5.5 entra por reglas fijas (`pick_model`): reclamo o cliente molesto, foto
+  o PDF, pedido largo, institucional, comando de Joaco; o cuando Haiku lo pide con la tool
+  nueva `ask_advanced_model`; o si Haiku se niega a responder (reintento).
+- **Tope diario** (US$ 2, configurable): al pasarlo sigue solo con Haiku y avisa una vez
+  en el canal interno. **Grupo de control** opcional (% de clientes con Sonnet).
+- **Costo exacto:** se calcula por llamada con los precios del modelo que atendió (Haiku
+  5.5 cargado; caché de 5 min y 1 h por separado; Haiku >100K tokens a 5x). La corrida
+  guarda por qué se eligió el modelo.
+
+### Added — Haiku más autónomo: contexto ya cargado
+
+- El bloque del cliente trae sus **cotizaciones abiertas** y la **conversación reciente**
+  (últimos 10 mensajes): no se contradice con lo ya dicho y ahorra la vuelta de
+  `read_message_history`. Lo que con Haiku 4.5 fallaba (20 % fuera de zona, precios,
+  promesas, feriados, bidones, duplicados) ya lo frenan los controles de envío (v1.33-1.39).
+
+### Added — No contactar
+
+- `res.partner.agent_opt_out` (+ motivo, fecha y etiqueta "No contactar"). Tool
+  `mark_opt_out`: Claudio marca a quien dice claro que no le interesa, que no vende
+  limpieza, que cerró o que no le escriban; `undo=true` si vuelve a pedir.
+- Fuera de: cadencias, seguimientos (la actividad se cierra sin corrida), plantillas por
+  iniciativa propia, envío de los lunes y avisos de la ruta. Si escribe él, se lo atiende.
+- Autotest: casos 34 (modelo y costo), 35 (contexto del cliente) y 36 (no contactar).
+
+---
+
 ## [18.0.1.41.0] — 2026-10-26
 
 ### Changed — Horario nuevo de la planta

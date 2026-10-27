@@ -75,6 +75,10 @@ from . import set_partner_level
 # Operativos
 from . import pause_bot
 
+# v1.42 — Modelo avanzado a pedido y clientes que no quieren propuestas
+from . import ask_advanced_model
+from . import mark_opt_out
+
 # Calificación institucional (v1.9.1)
 from . import update_qualification_data
 from . import complete_institutional_qualification

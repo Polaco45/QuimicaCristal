@@ -56,6 +56,11 @@
                                 <field name="debounce_seconds"/>
                                 <field name="escalate_client_msgs_to_strong" widget="boolean_toggle"/>
                             </group>
+                            <group string="Costo (v1.42)">
+                                <field name="daily_budget_usd"/>
+                                <field name="strong_share_percent"/>
+                                <field name="budget_alert_date" readonly="1"/>
+                            </group>
                             <div class="alert alert-info">
                                 <strong>Costo/calidad:</strong> el <b>debounce</b> (10s) junta los
                                 mensajes de una ráfaga en una sola respuesta — baja costo y corta el

@@ -96,6 +96,14 @@ class CristalAgentRun(models.Model):
     output_tokens = fields.Integer(string="Tokens output acumulados")
     cache_creation_input_tokens = fields.Integer(string="Tokens cache write")
     cache_read_input_tokens = fields.Integer(string="Tokens cache read")
+    # v1.42 — la caché de la conversación de cada cliente dura 5 min (1,25x) y la
+    # parte fija 1 h (2x). Lo de 5 min se guarda aparte; el resto es de 1 h.
+    cache_creation_5m_tokens = fields.Integer(string="Tokens cache write (5 min)")
+    api_cost_usd = fields.Float(
+        string="Costo calculado por llamada", digits=(10, 6),
+        help="Suma del costo de cada llamada con los precios del modelo que la "
+             "atendió (en una corrida puede pasar de Haiku a Sonnet).")
+    model_reason = fields.Char(string="Por qué este modelo")
     model_used = fields.Char(
         string="Modelo usado",
         help="Modelo de Claude con el que se corrió este run. Determina los "
@@ -143,11 +151,32 @@ class CristalAgentRun(models.Model):
         # v1.36.1 — generación 5 (precios de lista oct-2026). cw = 1h = 2x input.
         'sonnet5': {'in': 2.0, 'out': 10.0, 'cw': 4.0, 'cr': 0.20},
         'opus55': {'in': 4.0, 'out': 20.0, 'cw': 8.0, 'cr': 0.20},
+        # v1.42 — Haiku 5.5 (hasta 100K tokens de prompt; más arriba, 5x).
+        'haiku5': {'in': 0.10, 'out': 0.50, 'cw': 0.20, 'cr': 0.01},
     }
+
+    @classmethod
+    def _call_cost(cls, model_name, usage):
+        """Costo USD de UNA llamada a la API según su `usage` (separa la caché de
+        5 min, 1,25x, de la de 1 h, 2x)."""
+        p = cls._prices_for_model(model_name)
+        cc = usage.get('cache_creation') or {}
+        cw_total = usage.get('cache_creation_input_tokens', 0) or 0
+        cw_5m = cc.get('ephemeral_5m_input_tokens', 0) or 0
+        cw_1h = max(cw_total - cw_5m, 0)
+        inp = usage.get('input_tokens', 0) or 0
+        cr = usage.get('cache_read_input_tokens', 0) or 0
+        mult = 1.0
+        if (model_name or '').startswith('claude-haiku-5') and inp + cw_total + cr > 100_000:
+            mult = 5.0
+        return mult * (inp * p['in'] + (usage.get('output_tokens', 0) or 0) * p['out']
+                       + cw_5m * p['in'] * 1.25 + cw_1h * p['cw'] + cr * p['cr']) / 1_000_000
 
     @classmethod
     def _prices_for_model(cls, model_name):
         m = (model_name or '').lower()
+        if m.startswith('claude-haiku-5'):
+            return cls.MODEL_PRICES['haiku5']
         if m.startswith('claude-sonnet-5'):
             return cls.MODEL_PRICES['sonnet5']
         if m.startswith('claude-opus-5-5'):
@@ -160,17 +189,35 @@ class CristalAgentRun(models.Model):
         return cls.MODEL_PRICES['haiku']
 
     @api.depends('input_tokens', 'output_tokens', 'cache_creation_input_tokens',
-                 'cache_read_input_tokens', 'model_used')
+                 'cache_read_input_tokens', 'model_used', 'api_cost_usd',
+                 'cache_creation_5m_tokens')
     def _compute_cost(self):
         for rec in self:
+            if rec.api_cost_usd:
+                rec.cost_usd = round(rec.api_cost_usd, 6)
+                continue
             p = rec._prices_for_model(rec.model_used)
+            cw_5m = rec.cache_creation_5m_tokens or 0
+            cw_1h = max((rec.cache_creation_input_tokens or 0) - cw_5m, 0)
             cost = (
                 (rec.input_tokens / 1_000_000) * p['in']
                 + (rec.output_tokens / 1_000_000) * p['out']
-                + (rec.cache_creation_input_tokens / 1_000_000) * p['cw']
+                + (cw_5m / 1_000_000) * p['in'] * 1.25
+                + (cw_1h / 1_000_000) * p['cw']
                 + (rec.cache_read_input_tokens / 1_000_000) * p['cr']
             )
             rec.cost_usd = round(cost, 6)
+
+    @api.model
+    def today_spend_usd(self):
+        """Gasto del día en hora Argentina (suma de cost_usd de las corridas)."""
+        import pytz
+        from ..services.helpers import now_ar
+        start_local = now_ar(self.env).replace(hour=0, minute=0, second=0, microsecond=0)
+        start_utc = start_local.astimezone(pytz.utc).replace(tzinfo=None)
+        rows = self.sudo().read_group([('create_date', '>=', start_utc)],
+                                      ['cost_usd:sum'], [])
+        return (rows[0].get('cost_usd') or 0.0) if rows else 0.0
 
     # ─────────── Helpers para registrar tool calls ───────────
     def append_tool_call(self, tool_name, tool_input, tool_output, duration_ms=0, is_error=False):
@@ -903,6 +950,7 @@ class CristalAgentRun(models.Model):
         fuera_zona = Category.search([('name', '=', 'Fuera de zona')], limit=1)
         config = self.env['cristal.agent.config'].sudo().get_active()
         domain = [('category_id', 'in', [mayorista.id]), ('active', '=', True),
+                  ('agent_opt_out', '=', False),
                   '|', ('mobile', '!=', False), ('phone', '!=', False)]
         if fuera_zona:
             domain.append(('category_id', 'not in', [fuera_zona.id]))

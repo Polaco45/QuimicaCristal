@@ -221,7 +221,7 @@ SIEMPRE escalá a Joaco con `escalate_to_joaco` en estos casos:
 Si escalás, NO sigas avanzando con el cliente — pausá con `pause_bot(partner_id, duration_hours=2)`.
 
 ### 5. Eficiencia de tokens
-Lectá UNA vez el historial del canal por conversación. NO llames a `read_message_history` 2 veces seguidas. Si necesitás más datos del cliente, usá `read_partner` UNA vez.
+La conversación reciente ya viene en el contexto del cliente: `read_message_history` solo si necesitás mensajes más viejos, y UNA vez. Si necesitás más datos del cliente, usá `read_partner` UNA vez.
 
 ### 6. Cuando NO sepas
 Si no entendés qué quiere el cliente o no estás seguro de cómo responder, ESCALÁ a Joaco con un resumen breve. NO inventes. NO digas que tenés un "problema técnico". Sé honesto: "Te paso esto con Joaquín que te resuelve mejor."
@@ -292,11 +292,101 @@ def _build_partner_context(env, partner):
         lines.append(f"- última compra: {partner.agent_last_purchase_at.strftime('%Y-%m-%d')}")
         lines.append(f"- días desde última compra: {partner.agent_days_since_last_purchase}")
 
+    # v1.42 — No contactar
+    if partner.agent_opt_out:
+        lines.append(
+            f"- ⛔ NO CONTACTAR: {partner.agent_opt_out_reason or 'no quiere propuestas'}. "
+            f"NO le ofrezcas nada por iniciativa propia. Si escribe él, atendelo normal; "
+            f"si vuelve a pedir productos, llamá mark_opt_out(undo=true).")
+
     # Observaciones acumuladas
     if partner.agent_observations:
         lines.append(f"\n### Observaciones acumuladas sobre este cliente:\n{partner.agent_observations}")
 
+    # v1.42 — Lo que pasó con este cliente, a la vista (Haiku se contradecía cuando
+    # no leía el historial; además ahorra la vuelta de read_message_history).
+    lines.extend(_open_quotes_lines(env, partner))
+    lines.extend(_recent_conversation_lines(env, partner))
+
     return "\n".join(lines)
+
+
+def _money(v):
+    return '$' + f"{v:,.0f}".replace(',', '.')
+
+
+def _open_quotes_lines(env, partner, limit=3):
+    """Cotizaciones abiertas (borrador/enviada) del cliente, compactas."""
+    try:
+        orders = env['sale.order'].sudo().search([
+            ('partner_id', 'child_of', partner.commercial_partner_id.id),
+            ('state', 'in', ('draft', 'sent')),
+        ], order='id desc', limit=limit)
+    except Exception:
+        return []
+    if not orders:
+        return ["\n### Cotizaciones abiertas: ninguna."]
+    from .helpers import to_ar
+    out = ["\n### Cotizaciones abiertas (las más nuevas primero) — usá ESTOS datos, no los "
+           "recalcules de memoria:"]
+    for o in orders:
+        state = 'borrador' if o.state == 'draft' else 'enviada'
+        when = to_ar(env, o.create_date).strftime('%d/%m') if o.create_date else ''
+        extra = []
+        mode = getattr(o, 'cristal_delivery_mode', False)
+        if mode:
+            extra.append('retira en planta' if mode == 'retiro' else 'con envío')
+        dep = getattr(o, 'route_departure_id', False)
+        if dep:
+            extra.append(f'salida {dep.name}')
+        items = ', '.join(
+            f"{l.product_uom_qty:g} {l.product_id.name}" for l in o.order_line
+            if not l.display_type)[:400]
+        out.append(f"- {o.name} ({state}, {when}) {_money(o.amount_untaxed)} sin IVA"
+                   + (f" — {'; '.join(extra)}" if extra else '') + f": {items}")
+    return out
+
+
+def _recent_conversation_lines(env, partner, limit=10):
+    """Últimos mensajes del chat de WhatsApp del cliente, del más viejo al más nuevo."""
+    try:
+        Channel = env['discuss.channel'].sudo()
+        channel = Channel.search([('channel_type', '=', 'whatsapp'),
+                                  ('channel_partner_ids', 'in', [partner.id])],
+                                 order='write_date desc', limit=1)
+        if not channel:
+            return []
+        msgs = env['mail.message'].sudo().search([
+            ('model', '=', 'discuss.channel'), ('res_id', '=', channel.id),
+            ('message_type', 'in', ('whatsapp_message', 'comment')),
+        ], order='id desc', limit=limit)
+    except Exception:
+        return []
+    if not msgs:
+        return []
+    import html as _html
+    import re as _re
+    from .helpers import to_ar
+    config = env['cristal.agent.config'].sudo().get_active()
+    bot_pid = config.bot_partner_id.id if config and config.bot_partner_id else 2
+    out = [f"\n### Conversación reciente (canal {channel.id}, del más viejo al más nuevo; "
+           f"los últimos del cliente pueden ser el mensaje que estás respondiendo):"]
+    for m in reversed(msgs):
+        text = _html.unescape(_re.sub(r'<[^>]+>', ' ', m.body or ''))
+        text = _re.sub(r'\s+', ' ', text).strip()
+        if not text and m.attachment_ids:
+            text = '[adjunto]'
+        if not text:
+            continue
+        if m.author_id.id == bot_pid:
+            who = 'Claudio'
+        elif m.author_id.id == partner.id or m.author_id in partner.child_ids:
+            who = 'Cliente'
+        else:
+            who = m.author_id.name or 'Equipo'
+        when = to_ar(env, m.date).strftime('%d/%m %H:%M') if m.date else ''
+        out.append(f"- [{when}] {who}: {text[:350]}")
+    return out
 
 
 def _build_knowledge_context(env, partner=None, client_type=None):
@@ -547,7 +637,7 @@ def build_user_message_for_cron(env, partner, cron_type, extra_context=None):
                                "respondió. Hacele un seguimiento corto y cordial: recordale el "
                                "total, el 20% OFF de primera compra SOLO si la cotización lo tiene, las formas de pago "
                                "(efectivo contraentrega o transferencia) y preguntá si la cierra. "
-                               "PRIMERO leé el historial (read_message_history): si ya hubo charla "
+                               "PRIMERO mirá la conversación reciente del contexto: si ya hubo charla "
                                "reciente sobre esta cotización, NO insistas. Mandalo con "
                                "send_whatsapp: si la ventana de 24 h está cerrada sale solo por "
                                "la plantilla aprobada. Es AUTÓNOMO: NO escales a Joaco por esto.",

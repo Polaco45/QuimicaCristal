@@ -235,6 +235,7 @@ class CristalAgentRouteDeparture(models.Model):
         partners = self.env['res.partner'].sudo().search([
             ('truck_circuit_id', '=', self.circuit_id.id),
             ('active', '=', True),
+            ('agent_opt_out', '=', False),  # v1.42: no quiere propuestas
             '|', ('mobile', '!=', False), ('phone', '!=', False),
         ])
         out = self.env['res.partner']
