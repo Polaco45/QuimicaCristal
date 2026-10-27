@@ -14,6 +14,10 @@ class PosConfig(models.Model):
         'product.product', string='Promo de caja', domain=[('type', '=', 'combo')],
         help='Combo que se ofrece para cerrar el ticket (por ejemplo, 2 por $1.999): se anuncia '
              'mientras se carga y, si no se ofreció, al ir a cobrar.')
+    cristal_vg_checkout_items_text = fields.Char(
+        string='Qué entra en la promo (texto corto)',
+        help='Se muestra en la tarjeta, por ejemplo: "pino aromatizante, palillero o gatillo". '
+             'Vacío: los nombres de los productos.')
     cristal_vg_start_categ_id = fields.Many2one('pos.category', string='Categoría al abrir')
 
     def _cristal_vg_payload(self):
@@ -65,7 +69,7 @@ class PosConfig(models.Model):
                 'product_id': promo.id,
                 'name': promo.name,
                 'price': pricelist._get_product_price(promo, 1.0),
-                'items': names,
+                'items': [self.cristal_vg_checkout_items_text] if self.cristal_vg_checkout_items_text else names,
             }
         return {
             'enabled': True,
