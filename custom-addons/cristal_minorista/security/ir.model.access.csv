@@ -1,0 +1,5 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_cristal_cf_family_user,cristal.cf.family user,model_cristal_cf_family,sales_team.group_sale_salesman,1,0,0,0
+access_cristal_cf_family_manager,cristal.cf.family manager,model_cristal_cf_family,sales_team.group_sale_manager,1,1,1,1
+access_cristal_cf_cycle_user,cristal.cf.cycle user,model_cristal_cf_cycle,sales_team.group_sale_salesman,1,0,0,0
+access_cristal_cf_cycle_manager,cristal.cf.cycle manager,model_cristal_cf_cycle,sales_team.group_sale_manager,1,1,1,1

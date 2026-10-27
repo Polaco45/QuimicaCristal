@@ -1,0 +1,270 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Ficha del contacto -->
+    <record id="view_partner_form_minorista" model="ir.ui.view">
+        <field name="name">res.partner.form.minorista</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="base.view_partner_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//notebook" position="inside">
+                <page string="Minorista" name="cristal_minorista">
+                    <group>
+                        <group string="Cliente">
+                            <field name="cristal_customer_type"/>
+                            <field name="cristal_customer_type_manual"/>
+                            <field name="cristal_wa_key"/>
+                            <field name="cristal_wa_dup_count"/>
+                            <field name="cristal_first_origin"/>
+                        </group>
+                        <group string="Promociones">
+                            <field name="cristal_mkt_optin"/>
+                            <field name="cristal_mkt_optin_source"/>
+                            <field name="cristal_mkt_optin_date"/>
+                            <field name="cristal_mkt_optout"/>
+                            <field name="cristal_mkt_optout_date"/>
+                            <field name="cristal_mkt_allowed"/>
+                        </group>
+                        <group string="Compras">
+                            <field name="cristal_segment"/>
+                            <field name="cristal_first_purchase"/>
+                            <field name="cristal_last_purchase"/>
+                            <field name="cristal_recency_days"/>
+                            <field name="cristal_cycle_days"/>
+                            <field name="cristal_purchases_365"/>
+                            <field name="cristal_purchases_total"/>
+                            <field name="cristal_amount_365"/>
+                            <field name="cristal_avg_ticket"/>
+                            <field name="cristal_channels"/>
+                        </group>
+                    </group>
+                    <field name="cristal_cycle_ids" readonly="1">
+                        <list>
+                            <field name="family_id"/>
+                            <field name="purchases"/>
+                            <field name="last_date"/>
+                            <field name="cycle_days"/>
+                            <field name="cycle_source"/>
+                            <field name="next_due_date"/>
+                        </list>
+                    </field>
+                </page>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- Clientes minoristas -->
+    <record id="view_partner_list_minorista" model="ir.ui.view">
+        <field name="name">res.partner.list.minorista</field>
+        <field name="model">res.partner</field>
+        <field name="priority">100</field>
+        <field name="arch" type="xml">
+            <list create="0">
+                <field name="name"/>
+                <field name="cristal_wa_key" optional="show"/>
+                <field name="cristal_segment"/>
+                <field name="cristal_last_purchase"/>
+                <field name="cristal_recency_days"/>
+                <field name="cristal_cycle_days"/>
+                <field name="cristal_purchases_365"/>
+                <field name="cristal_amount_365" sum="Total"/>
+                <field name="cristal_avg_ticket" optional="hide"/>
+                <field name="cristal_channels" optional="show"/>
+                <field name="cristal_first_origin" optional="hide"/>
+                <field name="cristal_mkt_allowed" optional="show"/>
+                <field name="cristal_customer_type" optional="hide"/>
+                <field name="currency_id" column_invisible="1"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_partner_pivot_minorista" model="ir.ui.view">
+        <field name="name">res.partner.pivot.minorista</field>
+        <field name="model">res.partner</field>
+        <field name="priority">100</field>
+        <field name="arch" type="xml">
+            <pivot>
+                <field name="cristal_segment" type="row"/>
+                <field name="cristal_amount_365" type="measure"/>
+                <field name="cristal_purchases_365" type="measure"/>
+            </pivot>
+        </field>
+    </record>
+
+    <record id="view_partner_search_minorista" model="ir.ui.view">
+        <field name="name">res.partner.search.minorista</field>
+        <field name="model">res.partner</field>
+        <field name="priority">100</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="name"/>
+                <field name="cristal_wa_key"/>
+                <filter name="cf" string="Consumidor final" domain="[('cristal_customer_type', '=', 'cf')]"/>
+                <filter name="negocio" string="Negocio" domain="[('cristal_customer_type', '=', 'negocio')]"/>
+                <separator/>
+                <filter name="activos" string="Activos (campeón, leal, nuevo)" domain="[('cristal_segment', 'in', ('campeon', 'leal', 'nuevo'))]"/>
+                <filter name="en_riesgo" string="En riesgo" domain="[('cristal_segment', '=', 'en_riesgo')]"/>
+                <filter name="dormidos" string="Dormidos y no perder" domain="[('cristal_segment', 'in', ('dormido', 'no_perder'))]"/>
+                <separator/>
+                <filter name="mkt" string="Aceptan promociones" domain="[('cristal_mkt_allowed', '=', True)]"/>
+                <filter name="sin_wa" string="Sin WhatsApp" domain="[('cristal_wa_key', '=', False)]"/>
+                <filter name="dup" string="WhatsApp duplicado" domain="[('cristal_wa_dup_count', '>', 1)]"/>
+                <group>
+                    <filter name="g_segment" string="Segmento" context="{'group_by': 'cristal_segment'}"/>
+                    <filter name="g_origin" string="Origen" context="{'group_by': 'cristal_first_origin'}"/>
+                    <filter name="g_type" string="Tipo" context="{'group_by': 'cristal_customer_type'}"/>
+                    <filter name="g_wa" string="WhatsApp" context="{'group_by': 'cristal_wa_key'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_minorista_clientes" model="ir.actions.act_window">
+        <field name="name">Clientes minoristas</field>
+        <field name="res_model">res.partner</field>
+        <field name="view_mode">list,pivot,form</field>
+        <field name="domain">[('cristal_last_purchase', '!=', False)]</field>
+        <field name="context">{'search_default_cf': 1}</field>
+        <field name="search_view_id" ref="view_partner_search_minorista"/>
+        <field name="view_ids" eval="[(5, 0, 0),
+            (0, 0, {'view_mode': 'list', 'view_id': ref('view_partner_list_minorista')}),
+            (0, 0, {'view_mode': 'pivot', 'view_id': ref('view_partner_pivot_minorista')})]"/>
+    </record>
+
+    <record id="action_minorista_duplicados" model="ir.actions.act_window">
+        <field name="name">WhatsApp duplicados</field>
+        <field name="res_model">res.partner</field>
+        <field name="view_mode">list,form</field>
+        <field name="domain">[('cristal_wa_dup_count', '>', 1), ('parent_id', '=', False)]</field>
+        <field name="context">{'search_default_g_wa': 1}</field>
+        <field name="search_view_id" ref="view_partner_search_minorista"/>
+        <field name="view_ids" eval="[(5, 0, 0),
+            (0, 0, {'view_mode': 'list', 'view_id': ref('view_partner_list_minorista')})]"/>
+    </record>
+
+    <!-- Ciclos de reposición -->
+    <record id="view_cristal_cf_cycle_list" model="ir.ui.view">
+        <field name="name">cristal.cf.cycle.list</field>
+        <field name="model">cristal.cf.cycle</field>
+        <field name="arch" type="xml">
+            <list create="0" edit="0">
+                <field name="partner_id"/>
+                <field name="family_id"/>
+                <field name="purchases"/>
+                <field name="last_date"/>
+                <field name="last_qty" optional="hide"/>
+                <field name="cycle_days"/>
+                <field name="cycle_source"/>
+                <field name="next_due_date"/>
+                <field name="customer_type" optional="hide"/>
+                <field name="mkt_allowed" optional="show"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_cristal_cf_cycle_search" model="ir.ui.view">
+        <field name="name">cristal.cf.cycle.search</field>
+        <field name="model">cristal.cf.cycle</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="partner_id"/>
+                <field name="family_id"/>
+                <filter name="cf" string="Consumidor final" domain="[('customer_type', '=', 'cf')]"/>
+                <filter name="proximos" string="Se termina en los próximos 7 días"
+                        domain="[('next_due_date', '&gt;=', context_today().strftime('%Y-%m-%d')),
+                                 ('next_due_date', '&lt;=', (context_today() + relativedelta(days=7)).strftime('%Y-%m-%d'))]"/>
+                <filter name="vencidos" string="Ya se le terminó"
+                        domain="[('next_due_date', '&lt;', context_today().strftime('%Y-%m-%d'))]"/>
+                <group>
+                    <filter name="g_family" string="Familia" context="{'group_by': 'family_id'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_cristal_cf_cycle" model="ir.actions.act_window">
+        <field name="name">Reposición</field>
+        <field name="res_model">cristal.cf.cycle</field>
+        <field name="view_mode">list</field>
+        <field name="context">{'search_default_cf': 1, 'search_default_proximos': 1}</field>
+    </record>
+
+    <!-- Familias -->
+    <record id="view_cristal_cf_family_list" model="ir.ui.view">
+        <field name="name">cristal.cf.family.list</field>
+        <field name="model">cristal.cf.family</field>
+        <field name="arch" type="xml">
+            <list editable="bottom">
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+                <field name="match_pattern"/>
+                <field name="product_count"/>
+                <field name="population_cycle_days"/>
+                <field name="active" column_invisible="1"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="action_cristal_cf_family" model="ir.actions.act_window">
+        <field name="name">Familias de producto</field>
+        <field name="res_model">cristal.cf.family</field>
+        <field name="view_mode">list</field>
+    </record>
+
+    <record id="action_server_minorista_refresh" model="ir.actions.server">
+        <field name="name">Recalcular ahora</field>
+        <field name="model_id" ref="model_cristal_minorista_engine"/>
+        <field name="state">code</field>
+        <field name="code">model._cron_refresh()</field>
+    </record>
+
+    <!-- Origen en pedidos -->
+    <record id="view_order_tree_minorista" model="ir.ui.view">
+        <field name="name">sale.order.list.minorista</field>
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="sale.sale_order_tree"/>
+        <field name="arch" type="xml">
+            <field name="partner_id" position="after">
+                <field name="cristal_origin" optional="hide"/>
+            </field>
+        </field>
+    </record>
+
+    <record id="view_order_form_minorista" model="ir.ui.view">
+        <field name="name">sale.order.form.minorista</field>
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="sale.view_order_form"/>
+        <field name="arch" type="xml">
+            <field name="payment_term_id" position="after">
+                <field name="cristal_origin"/>
+                <field name="cristal_origin_ref" invisible="not cristal_origin_ref"/>
+            </field>
+        </field>
+    </record>
+
+    <record id="view_sale_order_search_minorista" model="ir.ui.view">
+        <field name="name">sale.order.search.minorista</field>
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="sale.view_sales_order_filter"/>
+        <field name="arch" type="xml">
+            <xpath expr="//group[@string='Group By']" position="inside">
+                <filter name="g_cristal_origin" string="Origen de la venta" context="{'group_by': 'cristal_origin'}"/>
+            </xpath>
+        </field>
+    </record>
+
+    <menuitem id="menu_minorista_root" name="Minorista" sequence="46"
+              web_icon="sale,static/description/icon.png"
+              groups="sales_team.group_sale_salesman"/>
+    <menuitem id="menu_minorista_clientes" name="Clientes" parent="menu_minorista_root"
+              action="action_minorista_clientes" sequence="10"/>
+    <menuitem id="menu_minorista_reposicion" name="Reposición" parent="menu_minorista_root"
+              action="action_cristal_cf_cycle" sequence="20"/>
+    <menuitem id="menu_minorista_duplicados" name="WhatsApp duplicados" parent="menu_minorista_root"
+              action="action_minorista_duplicados" sequence="30"/>
+    <menuitem id="menu_minorista_config" name="Configuración" parent="menu_minorista_root"
+              sequence="90" groups="sales_team.group_sale_manager"/>
+    <menuitem id="menu_minorista_familias" name="Familias de producto" parent="menu_minorista_config"
+              action="action_cristal_cf_family" sequence="10"/>
+    <menuitem id="menu_minorista_recalcular" name="Recalcular ahora" parent="menu_minorista_config"
+              action="action_server_minorista_refresh" sequence="20"/>
+</odoo>
