@@ -98,6 +98,10 @@
                         domain="[('trigger', '=', 'whatsapp_message')]"/>
                 <filter name="filter_crons" string="Crons"
                         domain="[('trigger', 'like', 'cron_')]"/>
+                <!-- v1.43 -->
+                <filter name="filter_to_review" string="Sin revisar"
+                        domain="[('review_sample', '=', True), ('review_result', '=', False)]"/>
+                <filter name="group_model" string="Modelo" context="{'group_by': 'model_used'}"/>
 
                 <group expand="0" string="Agrupar por">
                     <filter name="group_trigger" string="Trigger"

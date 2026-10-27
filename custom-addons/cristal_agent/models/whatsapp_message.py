@@ -116,6 +116,16 @@ class WhatsAppMessage(models.Model):
                         wa_message, "Transcripción de audio desactivada o sin API key")
                     return
 
+        # 2.a) v1.43 — Foto o PDF sin texto (ej. una lista escrita a mano): antes se
+        # descartaba y el cliente quedaba sin respuesta. Ahora entra como mensaje y
+        # la imagen/PDF le llega a Claudio adjunta (ver dispatch_agent_for_message).
+        if not plain_body and not audio_att and wa_message.mail_message_id:
+            mimes = [a.mimetype or '' for a in wa_message.mail_message_id.attachment_ids]
+            if any(m == 'application/pdf' for m in mimes):
+                plain_body = "[El cliente mandó un PDF, sin texto]"
+            elif any(m.startswith('image/') for m in mimes):
+                plain_body = "[El cliente mandó una foto, sin texto]"
+
         # 2.b) Sin texto ni audio → nada que procesar
         if not plain_body and not audio_att:
             return

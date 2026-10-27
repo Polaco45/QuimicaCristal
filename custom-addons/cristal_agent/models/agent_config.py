@@ -29,10 +29,26 @@ class CristalAgentConfig(models.Model):
     active = fields.Boolean(string="Activa", default=True)
 
     # ─────────── API de Anthropic ───────────
+    # v1.43 — Las claves se guardan SOLO en ir.config_parameter (que el conector MCP
+    # no expone). El campo queda siempre vacío: se usa para cargar una clave nueva.
     anthropic_api_key = fields.Char(
         string="Anthropic API Key",
-        help="API key de Anthropic. Se guarda como ir.config_parameter por seguridad.",
+        groups='base.group_system',
+        help="Pegá acá una clave nueva para reemplazarla. Se guarda en los parámetros "
+             "del sistema y este campo queda vacío.",
     )
+    anthropic_key_status = fields.Char(
+        string="Clave de Anthropic", compute='_compute_key_status')
+    openai_key_status = fields.Char(
+        string="Clave de OpenAI", compute='_compute_key_status')
+
+    def _compute_key_status(self):
+        Param = self.env['ir.config_parameter'].sudo()
+        for rec in self:
+            for field, param in (('anthropic_key_status', 'cristal_agent.anthropic_api_key'),
+                                 ('openai_key_status', 'cristal_agent.openai_api_key')):
+                value = Param.get_param(param) or ''
+                rec[field] = f"Guardada (termina en …{value[-4:]})" if value else "Sin cargar"
     anthropic_api_url = fields.Char(
         string="Anthropic API URL",
         default="https://api.anthropic.com/v1/messages",
@@ -90,8 +106,9 @@ class CristalAgentConfig(models.Model):
     )
     openai_api_key = fields.Char(
         string="OpenAI API Key (transcripción)",
+        groups='base.group_system',
         help="API key de OpenAI (platform.openai.com) usada solo para transcribir "
-             "audios. Se guarda como ir.config_parameter por seguridad.",
+             "audios. Se guarda en los parámetros del sistema y este campo queda vacío.",
     )
     transcription_model = fields.Char(
         string="Modelo de transcripción",
@@ -586,33 +603,38 @@ class CristalAgentConfig(models.Model):
 
     @api.model
     def get_api_key(self):
-        """Obtiene la API key. Prioridad: ir.config_parameter, luego campo del modelo."""
-        param_key = self.env['ir.config_parameter'].sudo().get_param('cristal_agent.anthropic_api_key')
-        if param_key:
-            return param_key
-        config = self.get_active()
-        return config.anthropic_api_key or False
+        """API key de Anthropic (solo ir.config_parameter desde v1.43)."""
+        return self.env['ir.config_parameter'].sudo().get_param(
+            'cristal_agent.anthropic_api_key') or False
 
     @api.model
     def get_openai_key(self):
-        """Obtiene la API key de OpenAI (transcripción). Prioridad:
-        ir.config_parameter, luego campo del modelo."""
-        param_key = self.env['ir.config_parameter'].sudo().get_param('cristal_agent.openai_api_key')
-        if param_key:
-            return param_key
-        config = self.get_active()
-        return config.openai_api_key or False
+        """API key de OpenAI para transcribir audios (solo ir.config_parameter)."""
+        return self.env['ir.config_parameter'].sudo().get_param(
+            'cristal_agent.openai_api_key') or False
+
+    _KEY_PARAMS = {'anthropic_api_key': 'cristal_agent.anthropic_api_key',
+                   'openai_api_key': 'cristal_agent.openai_api_key'}
+
+    @api.model
+    def _stash_keys(self, vals):
+        """v1.43 — Las claves van a ir.config_parameter y NO quedan en el registro
+        (cristal.agent.config se puede leer desde el conector MCP)."""
+        vals = dict(vals)
+        for field, param in self._KEY_PARAMS.items():
+            if vals.get(field):
+                self.env['ir.config_parameter'].sudo().set_param(param, vals[field].strip())
+            if field in vals:
+                vals[field] = False
+        return vals
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        return super().create([self._stash_keys(v) for v in vals_list])
 
     def write(self, vals):
-        """Si se escribe la API key, también la guardamos en ir.config_parameter."""
-        if 'anthropic_api_key' in vals and vals['anthropic_api_key']:
-            self.env['ir.config_parameter'].sudo().set_param(
-                'cristal_agent.anthropic_api_key', vals['anthropic_api_key']
-            )
-        if 'openai_api_key' in vals and vals['openai_api_key']:
-            self.env['ir.config_parameter'].sudo().set_param(
-                'cristal_agent.openai_api_key', vals['openai_api_key']
-            )
+        """Las claves se guardan en ir.config_parameter (ver _stash_keys)."""
+        vals = self._stash_keys(vals)
         res = super().write(vals)
         # v1.10.2 — si subieron un PDF de reporte, materializarlo como
         # ir.attachment standalone y apuntar el m2o que usa el bot.

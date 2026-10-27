@@ -41,7 +41,8 @@
                     <notebook>
                         <page string="🔑 API de Anthropic">
                             <group>
-                                <field name="anthropic_api_key" password="True"/>
+                                <field name="anthropic_key_status"/>
+                                <field name="anthropic_api_key" password="True" placeholder="pegá una clave nueva para reemplazarla"/>
                                 <field name="anthropic_api_url"/>
                                 <field name="anthropic_model"/>
                                 <field name="anthropic_model_complex" placeholder="vacío = usar modelo base para todo"/>
@@ -75,6 +76,7 @@
                             </div>
                             <group string="🎙️ Transcripción de notas de voz (OpenAI)">
                                 <field name="enable_audio_transcription" widget="boolean_toggle"/>
+                                <field name="openai_key_status"/>
                                 <field name="openai_api_key" password="True"
                                        placeholder="sk-..."/>
                                 <field name="transcription_model"/>

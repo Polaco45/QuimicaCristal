@@ -27,11 +27,9 @@ SUPPORTED_IMAGE_MIMES = {
 class ViewAttachment(AgentTool):
     name = "view_attachment"
     description = (
-        "Lee un attachment (imagen) que mandó el cliente. Te devuelve los bytes en base64 "
-        "para que la próxima vez que me hables de la imagen yo te puedo describir lo que vés. "
-        "(En la versión actual del agente, devolvemos los bytes y un summary; el análisis "
-        "visual viene en V2). "
-        "Si el attachment es PDF u otro formato no-imagen, escalá a Joaco."
+        "Muestra una foto o PDF que mandó el cliente ANTES (los de su último mensaje ya te "
+        "llegan adjuntos, no hace falta). La imagen/PDF te llega adjunta al resultado para "
+        "que la leas (ej. una lista de productos para cotizar o un comprobante)."
     )
     input_schema = {
         "type": "object",
@@ -78,20 +76,25 @@ class ViewAttachment(AgentTool):
                             "Imagen demasiado grande. Si necesitás verla, escalá a Joaco."
                         )
                     else:
-                        result['data_base64'] = att.datas if isinstance(att.datas, str) else att.datas.decode()
+                        # v1.43: ClaudeClient adjunta la imagen de verdad al resultado
+                        # (antes iba base64 como texto: el modelo no la veía y costaba
+                        # miles de tokens).
+                        result['_attach_media'] = att.id
                         result['summary'] = (
-                            f"Imagen leída ({len(raw)} bytes, {mimetype}). "
-                            f"Para análisis visual completo se requiere V2 del agente con visión."
-                        )
+                            f"La imagen ({mimetype}) va adjunta a este resultado: mirala.")
                 else:
                     result['warning'] = "El attachment no tiene datos"
             except Exception as e:
                 _logger.exception("Error leyendo attachment: %s", e)
                 result['error'] = f"Error leyendo attachment: {e}"
+        elif mimetype == 'application/pdf' and 0 < (att.file_size or 0) <= 4_500_000:
+            # v1.43: también PDF (listas de pedido, comprobantes).
+            result['_attach_media'] = att.id
+            result['summary'] = "El PDF va adjunto a este resultado: leelo."
         else:
             result['summary'] = (
-                f"Attachment no es imagen soportada (mimetype={mimetype}). "
-                f"Si es importante (comprobante, audio, PDF), escalá a Joaco."
+                f"Attachment no soportado (mimetype={mimetype}). "
+                f"Si es importante (comprobante, audio), escalá a Joaco."
             )
 
         return result
