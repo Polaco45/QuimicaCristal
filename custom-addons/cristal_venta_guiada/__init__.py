@@ -60,6 +60,7 @@ PALILLERO = [4737]
 LIMP_DESOD_900CC = [11765, 11766, 11767, 11768]
 GATILLO = [4470]
 CHECKOUT_ITEMS = PINO_AROMATIZANTE + PALILLERO + ESPONJA_ACERO + LIMP_DESOD_900CC + GATILLO
+CHECKOUT_ITEMS_TEXT = 'pino aromatizante, palillero, esponja de acero, limpiador 900cc o gatillo'
 CHECKOUT_PROMO = ('Promo caja: 2 por $1.999', 1999, [('Elegí uno', CHECKOUT_ITEMS), ('Elegí otro', CHECKOUT_ITEMS)])
 
 CF_PRICELIST_ID = 19          # L.C 1
@@ -120,6 +121,8 @@ def setup_checkout_promo(env):
     for config in env['pos.config'].search([('cristal_vg_enabled', '=', True)]):
         if not config.cristal_vg_checkout_product_id:
             config.cristal_vg_checkout_product_id = promo
+        if not config.cristal_vg_checkout_items_text:
+            config.cristal_vg_checkout_items_text = CHECKOUT_ITEMS_TEXT
 
 
 def setup_venta_guiada(env):

@@ -124,6 +124,7 @@
                         <field name="cristal_vg_fiscal_position_ids" widget="many2many_tags"/>
                         <field name="cristal_vg_start_categ_id"/>
                         <field name="cristal_vg_checkout_product_id"/>
+                        <field name="cristal_vg_checkout_items_text"/>
                     </group>
                 </sheet>
             </form>
