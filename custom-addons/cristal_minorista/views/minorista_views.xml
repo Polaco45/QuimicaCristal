@@ -246,9 +246,9 @@
         <field name="model">sale.order</field>
         <field name="inherit_id" ref="sale.view_sales_order_filter"/>
         <field name="arch" type="xml">
-            <xpath expr="//group[@string='Group By']" position="inside">
+            <filter name="customer" position="after">
                 <filter name="g_cristal_origin" string="Origen de la venta" context="{'group_by': 'cristal_origin'}"/>
-            </xpath>
+            </filter>
         </field>
     </record>
 
