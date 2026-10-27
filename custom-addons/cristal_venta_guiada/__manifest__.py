@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 {
     'name': 'Cristal — Venta guiada POS',
-    'version': '18.0.1.0.1',
+    'version': '18.0.1.1.0',
     'summary': 'En el POS, cada producto que se carga muestra una sugerencia elegida por '
                'el sistema (combo, tamaño mayor o complemento según lo que compran los '
                'clientes) y al cobrar ofrece el producto de caja. Registra lo mostrado y '

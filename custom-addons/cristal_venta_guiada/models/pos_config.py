@@ -10,10 +10,10 @@ class PosConfig(models.Model):
         'account.fiscal.position', 'cristal_vg_config_fiscal_position_rel', 'config_id', 'fiscal_position_id',
         string='Posiciones fiscales de consumidor final',
         help='La venta guiada solo se muestra en tickets con estas posiciones fiscales. Vacío: en todos.')
-    cristal_vg_impulse_product_ids = fields.Many2many(
-        'product.product', 'cristal_vg_config_impulse_rel', 'config_id', 'product_id',
-        string='Productos de caja', domain=[('available_in_pos', '=', True)],
-        help='Al ir a cobrar se ofrece el primero de esta lista que tenga stock y no esté en el ticket.')
+    cristal_vg_checkout_product_id = fields.Many2one(
+        'product.product', string='Promo de caja', domain=[('type', '=', 'combo')],
+        help='Combo que se ofrece para cerrar el ticket (por ejemplo, 2 por $1.999): se anuncia '
+             'mientras se carga y, si no se ofreció, al ir a cobrar.')
     cristal_vg_start_categ_id = fields.Many2one('pos.category', string='Categoría al abrir')
 
     def _cristal_vg_payload(self):
@@ -43,28 +43,35 @@ class PosConfig(models.Model):
         combo_products = self.env['product.product'].search([
             ('type', '=', 'combo'), ('available_in_pos', '=', True)])
         for product in combo_products:
-            slots, loose = [], 0.0
-            for combo in product.combo_ids:
-                items = combo.combo_item_ids.product_id
-                if not items:
-                    continue
-                slots.append(items.ids)
-                loose += max(pricelist._get_product_price(item, 1.0) for item in items)
+            slots = [c.combo_item_ids.product_id.ids for c in product.combo_ids if c.combo_item_ids]
             if slots:
                 combos.append({
                     'product_id': product.id,
                     'name': product.name,
                     'price': pricelist._get_product_price(product, 1.0),
-                    'loose': loose,
                     'slots': slots,
                 })
 
-        impulse = [p.id for p in self.cristal_vg_impulse_product_ids if in_stock(p)]
+        checkout = False
+        promo = self.cristal_vg_checkout_product_id
+        if promo and promo.available_in_pos:
+            names = []
+            for item in promo.combo_ids[:1].combo_item_ids.product_id:
+                # Una sola vez por producto aunque tenga varios aromas.
+                name = item.product_tmpl_id.name
+                if name not in names:
+                    names.append(name)
+            checkout = {
+                'product_id': promo.id,
+                'name': promo.name,
+                'price': pricelist._get_product_price(promo, 1.0),
+                'items': names,
+            }
         return {
             'enabled': True,
             'cf_fp_ids': self.cristal_vg_fiscal_position_ids.ids,
             'suggestions': suggestions,
             'combos': combos,
-            'impulse': impulse,
+            'checkout': checkout,
             'start_categ_id': self.cristal_vg_start_categ_id.id,
         }

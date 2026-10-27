@@ -54,63 +54,85 @@ COMBOS = [
         ('Trapo de piso', TRAPO_PISO), ('Paño absorbente', PANO_ABSORBENTE)]),
 ]
 
-# Producto de caja (chicle): limpiador 900cc, pino aromatizante, gatillo, esponja.
-IMPULSE = [11765, 11766, 11767, 11768, 5538, 5539, 5540, 5541, 5542, 5543, 4470, 4412]
+# Promo de caja: el cliente elige 2 de estos (combinables) por un precio fijo.
+PINO_AROMATIZANTE = [5538, 5539, 5540, 5541, 5542, 5543]
+PALILLERO = [4737]
+LIMP_DESOD_900CC = [11765, 11766, 11767, 11768]
+GATILLO = [4470]
+CHECKOUT_ITEMS = PINO_AROMATIZANTE + PALILLERO + ESPONJA_ACERO + LIMP_DESOD_900CC + GATILLO
+CHECKOUT_PROMO = ('Promo caja: 2 por $1.999', 1999, [('Elegí uno', CHECKOUT_ITEMS), ('Elegí otro', CHECKOUT_ITEMS)])
+
 CF_PRICELIST_ID = 19          # L.C 1
 CF_FISCAL_POSITION_NAME = 'Ventas X'
 
 
-def setup_venta_guiada(env):
-    Product = env['product.product']
-    existing = set(Product.browse([pid for _n, _p, slots in COMBOS for _s, ids in slots for pid in ids]).exists().ids)
+def _combos_category(env):
     category = env['pos.category'].search([('name', '=', 'Combos')], limit=1)
     if not category:
         category = env['pos.category'].create({'name': 'Combos', 'sequence': -100})
+    return category
+
+
+def _create_combo(env, name, price, slots, category):
+    """Crea el producto combo si no existe. Devuelve el product.product."""
+    template = env['product.template'].with_context(active_test=False).search(
+        [('name', '=', name), ('type', '=', 'combo')], limit=1)
+    if template:
+        return template.product_variant_id
+    Product = env['product.product']
+    existing = set(Product.browse([pid for _s, ids in slots for pid in ids]).exists().ids)
     # Los productos son de una empresa: el combo tiene que ser de la misma. Por eso
     # su precio no va en L.C 1 (lista sin empresa) sino como precio de venta, en una
     # categoría sin reglas en esa lista.
     company = Product.browse(JABON_PREMIUM_5L).exists().company_id
     combo_categ = env['product.category'].search([('name', '=', 'Combos y Kit')], limit=1)
-
-    for name, price, slots in COMBOS:
-        template = env['product.template'].search([('name', '=', name), ('type', '=', 'combo')], limit=1)
-        if template:
+    combo_ids = []
+    for slot_name, ids in slots:
+        ids = [pid for pid in ids if pid in existing]
+        if not ids:
+            _logger.warning("venta guiada: %s / %s sin productos, lo salteo", name, slot_name)
             continue
-        combo_ids = []
-        for slot_name, ids in slots:
-            ids = [pid for pid in ids if pid in existing]
-            if not ids:
-                _logger.warning("venta guiada: %s / %s sin productos, lo salteo", name, slot_name)
-                continue
-            combo = env['product.combo'].create({
-                'name': f"{name.replace('Combo ', '')} · {slot_name}",
-                'company_id': company.id,
-                'combo_item_ids': [(0, 0, {'product_id': pid, 'extra_price': 0.0}) for pid in ids],
-            })
-            combo_ids.append(combo.id)
-        template = env['product.template'].create({
-            'name': name,
+        combo = env['product.combo'].create({
+            'name': f"{name.replace('Combo ', '')} · {slot_name}",
             'company_id': company.id,
-            'type': 'combo',
-            'list_price': price,
-            'categ_id': combo_categ.id or env.ref('product.product_category_all').id,
-            'sale_ok': True,
-            'available_in_pos': True,
-            'pos_categ_ids': [(6, 0, category.ids)],
-            'combo_ids': [(6, 0, combo_ids)],
-            'taxes_id': [(5, 0, 0)],
+            'combo_item_ids': [(0, 0, {'product_id': pid, 'extra_price': 0.0}) for pid in ids],
         })
-        _logger.info("venta guiada: creado %s ($%s, %s opciones)", name, price, len(combo_ids))
+        combo_ids.append(combo.id)
+    template = env['product.template'].create({
+        'name': name,
+        'company_id': company.id,
+        'type': 'combo',
+        'list_price': price,
+        'categ_id': combo_categ.id or env.ref('product.product_category_all').id,
+        'sale_ok': True,
+        'available_in_pos': True,
+        'pos_categ_ids': [(6, 0, category.ids)],
+        'combo_ids': [(6, 0, combo_ids)],
+        'taxes_id': [(5, 0, 0)],
+    })
+    _logger.info("venta guiada: creado %s ($%s, %s opciones)", name, price, len(combo_ids))
+    return template.product_variant_id
 
-    impulse = Product.browse(IMPULSE).exists()
+
+def setup_checkout_promo(env):
+    category = _combos_category(env)
+    promo = _create_combo(env, *CHECKOUT_PROMO, category)
+    for config in env['pos.config'].search([('cristal_vg_enabled', '=', True)]):
+        if not config.cristal_vg_checkout_product_id:
+            config.cristal_vg_checkout_product_id = promo
+
+
+def setup_venta_guiada(env):
+    category = _combos_category(env)
+    for name, price, slots in COMBOS:
+        _create_combo(env, name, price, slots, category)
+
     for config in env['pos.config'].search([('pricelist_id', '=', CF_PRICELIST_ID)]):
         vals = {}
         if not config.cristal_vg_fiscal_position_ids:
             fp = env['account.fiscal.position'].search(
                 [('name', '=', CF_FISCAL_POSITION_NAME), ('company_id', '=', config.company_id.id)], limit=1)
             vals['cristal_vg_fiscal_position_ids'] = [(6, 0, fp.ids)]
-        if not config.cristal_vg_impulse_product_ids:
-            vals['cristal_vg_impulse_product_ids'] = [(6, 0, impulse.ids)]
         # Restringir categorías sin ninguna cargada muestra todo: agregar Combos ahí
         # dejaría la caja mostrando solo combos.
         if (config.limit_categories and config.iface_available_categ_ids
@@ -120,6 +142,7 @@ def setup_venta_guiada(env):
         # pos.config no deja tocar categorías con sesión abierta salvo con este contexto.
         config.with_context(bypass_categories_forbidden_change=True).write(vals)
 
+    setup_checkout_promo(env)
     env['cristal.vg.suggestion']._cron_recompute()
 
 
