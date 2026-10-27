@@ -19,7 +19,7 @@ class CristalVgEvent(models.Model):
         ('complement', 'Complemento'),
         ('category', 'Respaldo categoría'),
         ('manual', 'Fijada a mano'),
-        ('checkout', 'Producto de caja'),
+        ('checkout', 'Promo de caja'),
     ], string='Tipo')
     accepted = fields.Boolean(string='Aceptada')
     amount = fields.Float(string='Monto sumado')

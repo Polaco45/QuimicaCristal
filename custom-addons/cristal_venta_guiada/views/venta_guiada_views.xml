@@ -123,14 +123,8 @@
                         <field name="cristal_vg_enabled"/>
                         <field name="cristal_vg_fiscal_position_ids" widget="many2many_tags"/>
                         <field name="cristal_vg_start_categ_id"/>
+                        <field name="cristal_vg_checkout_product_id"/>
                     </group>
-                    <separator string="Productos de caja (se ofrece el primero con stock)"/>
-                    <field name="cristal_vg_impulse_product_ids" widget="many2many" nolabel="1">
-                        <list>
-                            <field name="display_name"/>
-                            <field name="qty_available"/>
-                        </list>
-                    </field>
                 </sheet>
             </form>
         </field>
