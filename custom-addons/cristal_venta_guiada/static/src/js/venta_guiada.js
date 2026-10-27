@@ -61,7 +61,8 @@ patch(PosStore.prototype, {
 
     cristalVgState(order) {
         if (!order.uiState.cristalVg) {
-            order.uiState.cristalVg = { shown: [], checkout: false };
+            // checkoutDone: la promo de caja ya se aceptó o se rechazó en este ticket.
+            order.uiState.cristalVg = { shown: [], checkoutDone: false, checkoutLogged: false };
         }
         return order.uiState.cristalVg;
     },
@@ -239,6 +240,9 @@ patch(PosStore.prototype, {
             if (!comboLine) {
                 return;
             }
+            if (card.kind === "checkout") {
+                this.cristalVgState(order).checkoutDone = true;
+            }
             for (const pid of card.matched) {
                 const l = order.lines.find((x) => x.product_id?.id === pid && isLoose(x));
                 if (!l) {
@@ -275,6 +279,11 @@ patch(PosStore.prototype, {
     },
 
     cristalVgDismiss() {
+        const card = this.cristalVg.card;
+        const order = this.get_order();
+        if (card?.kind === "checkout" && order) {
+            this.cristalVgState(order).checkoutDone = true;
+        }
         this.cristalVg.card = null;
     },
 
@@ -284,10 +293,9 @@ patch(PosStore.prototype, {
         const vg = this.cristalVgConfig();
         const promo = vg?.checkout && this.models["product.product"].get(vg.checkout.product_id);
         const state = this.cristalVgState(order);
-        if (!promo || state.checkout || order.lines.some((l) => l.product_id?.id === promo.id)) {
+        if (!promo || state.checkoutDone || order.lines.some((l) => l.product_id?.id === promo.id)) {
             return false;
         }
-        state.checkout = true;
         this.cristalVg.card = {
             kind: "checkout",
             title: KIND_TITLE.checkout,
@@ -300,7 +308,10 @@ patch(PosStore.prototype, {
             orderUuid: order.uuid,
             amount: vg.checkout.price,
         };
-        this.cristalVgLog(order, { product_id: promo.id, kind: "checkout" });
+        if (!state.checkoutLogged) {
+            state.checkoutLogged = true;
+            this.cristalVgLog(order, { product_id: promo.id, kind: "checkout" });
+        }
         return true;
     },
 
