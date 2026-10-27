@@ -711,21 +711,28 @@ class CristalAgentRouteSelftest(models.TransientModel):
             return "2 'no entiendo' o pedido de audio → bloquea textos largos y pide escalar"
         self._case(results, "26. Cliente que no entiende", c_no_entiende)
 
-        # 27) Modelo: Sonnet 5.5 sin temperature y con esfuerzo; precios correctos.
+        # 27) Modelos: Haiku 5.5 base y Sonnet 5.5 avanzado (v1.42), sin temperature y
+        # con esfuerzo; precios correctos.
         def c_modelo():
             from ..services.claude_client import _is_modern_model
             assert _is_modern_model('claude-sonnet-5-5') and _is_modern_model('claude-opus-5-5')
+            assert _is_modern_model('claude-haiku-5-5')
             assert not _is_modern_model('claude-haiku-4-5-20251001')
             Run = env['cristal.agent.run']
             p = Run._prices_for_model('claude-sonnet-5-5')
             assert (p['in'], p['out'], p['cr']) == (2.0, 10.0, 0.20), p
+            p = Run._prices_for_model('claude-haiku-5-5')
+            assert (p['in'], p['out'], p['cr']) == (0.10, 0.50, 0.01), p
             assert Run._prices_for_model('claude-haiku-4-5-20251001')['in'] == 1.0
-            assert config.anthropic_model == 'claude-sonnet-5-5', config.anthropic_model
+            assert config.anthropic_model == 'claude-haiku-5-5', config.anthropic_model
+            assert config.anthropic_model_complex == 'claude-sonnet-5-5', \
+                config.anthropic_model_complex
             assert config.anthropic_effort in ('low', 'medium', 'high')
             assert config.max_tokens >= 16000, config.max_tokens
-            return (f"modelo {config.anthropic_model} · esfuerzo {config.anthropic_effort} · "
-                    f"max_tokens {config.max_tokens} · sin temperature · precios Sonnet 5.5 OK")
-        self._case(results, "27. Modelo Sonnet 5.5", c_modelo)
+            return (f"base {config.anthropic_model} · avanzado {config.anthropic_model_complex}"
+                    f" · esfuerzo {config.anthropic_effort} · max_tokens {config.max_tokens} · "
+                    f"precios Haiku 5.5 y Sonnet 5.5 OK")
+        self._case(results, "27. Modelos Haiku 5.5 / Sonnet 5.5", c_modelo)
 
         # ═════════════════ Envío sin cargo desde config (v1.37) ═════════════════
         free_from = config.route_free_shipping_from
@@ -983,18 +990,20 @@ class CristalAgentRouteSelftest(models.TransientModel):
                 assert got == want, f"{kw} → {got} ({why}), esperaba {want}"
             cfg.strong_share_percent = 100
             assert pick_model(cfg, text='hola', partner_id=7)[0] == S, "grupo de control"
-            # Costo de una respuesta típica (medida 20-27/10: 25k cache write, 124k read).
+            # Costo de una respuesta típica (medida 20-27/10: 3 llamadas que suman 25k de
+            # cache write, 124k de cache read y 800 de salida; ~50k tokens por llamada).
             Run = env['cristal.agent.run']
-            usage = {'input_tokens': 10, 'output_tokens': 800,
-                     'cache_creation_input_tokens': 25000,
-                     'cache_creation': {'ephemeral_5m_input_tokens': 25000},
-                     'cache_read_input_tokens': 124000}
-            haiku = Run._call_cost(H, usage)
-            sonnet_old = Run._call_cost(S, dict(usage, cache_creation={}))
+            call = {'input_tokens': 3, 'output_tokens': 267,
+                    'cache_creation_input_tokens': 8333,
+                    'cache_creation': {'ephemeral_5m_input_tokens': 8333},
+                    'cache_read_input_tokens': 41333}
+            haiku = 3 * Run._call_cost(H, call)
+            sonnet_old = 3 * Run._call_cost(S, dict(call, cache_creation={}))
             assert haiku < 0.01, f"Haiku cuesta {haiku:.4f} por respuesta"
             assert sonnet_old > 0.12, f"Sonnet con caché de 1 h: {sonnet_old:.4f}"
-            big = Run._call_cost(H, dict(usage, cache_read_input_tokens=150000))
-            assert big > haiku * 4, "Haiku con más de 100K tokens de prompt cuesta 5x"
+            one = Run._call_cost(H, call)
+            big = Run._call_cost(H, dict(call, cache_read_input_tokens=150000))
+            assert big > one * 5, "Haiku con más de 100K tokens de prompt cuesta 5x"
             # Cómo se arma la llamada: modelo, caché 1 h en lo fijo y 5 min en la charla.
             client = ClaudeClient(env)
             client.model = H
