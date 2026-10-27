@@ -15,6 +15,7 @@ Función pública principal:
 """
 import json
 import logging
+import re
 import time
 
 from odoo import SUPERUSER_ID
@@ -32,6 +33,52 @@ _MODERN_MODEL_PREFIXES = (
 
 def _is_modern_model(model):
     return (model or '').startswith(_MODERN_MODEL_PREFIXES)
+
+
+# ───────────────── v1.42 — Qué modelo atiende cada corrida ─────────────────
+# Haiku 5.5 (anthropic_model) atiende el día a día; el modelo avanzado
+# (anthropic_model_complex) entra SOLO por reglas fijas o cuando Haiku lo pide con
+# la tool ask_advanced_model. Reglas en código, no "a ojo": se prueban en el autotest.
+_RE_COMPLAINT = re.compile(
+    r'\b(reclam\w*|queja\w*|estaf\w*|denunci\w*|enojad\w*|indignad\w*|verg[uü]enza|'
+    r'p[eé]sim\w*|nunca m[aá]s|devoluci[oó]n|devolver(lo|la|los|las)?|'
+    r'me cobraron|cobraron de m[aá]s|(vino|vinieron|lleg[oó]|llegaron) '
+    r'(roto|rota|rotos|rotas|mal|vac[ií]o|vac[ií]a|abierto|abierta|pinchad\w*)|'
+    r'no (me )?(lleg[oó]|llegaron|vino|vinieron)|'
+    r'falt[oó] (un |una |el |la )?(bid[oó]n|producto|caja|mercader[ií]a))\b',
+    re.IGNORECASE)
+LONG_ORDER_CHARS = 700
+LONG_ORDER_LINES = 8
+
+
+def pick_model(config, trigger=None, text='', client_type=None, partner_id=None,
+               has_media=False, complex_task=False, spend_today=0.0):
+    """Devuelve (modelo, motivo). Pura: no toca la base (se prueba en el autotest)."""
+    base = config.anthropic_model
+    strong = (getattr(config, 'anthropic_model_complex', '') or '').strip()
+    if not strong or strong == base:
+        return base, 'modelo base'
+    budget = getattr(config, 'daily_budget_usd', 0.0) or 0.0
+    if budget and spend_today >= budget:
+        return base, f'tope diario US$ {budget:g} alcanzado: solo modelo base'
+    if complex_task or trigger == 'joaco_command':
+        return strong, 'comando de Joaco'
+    share = getattr(config, 'strong_share_percent', 0) or 0
+    if share and partner_id and (int(partner_id) * 2654435761) % 100 < share:
+        return strong, f'grupo de control ({share}%)'
+    if client_type == 'institucional':
+        return strong, 'cliente institucional'
+    if has_media:
+        return strong, 'foto o archivo del cliente'
+    text = text or ''
+    if _RE_COMPLAINT.search(text):
+        return strong, 'reclamo o cliente molesto'
+    if len(text) > LONG_ORDER_CHARS or text.count('\n') >= LONG_ORDER_LINES:
+        return strong, 'pedido largo'
+    if getattr(config, 'escalate_client_msgs_to_strong', False) \
+            and client_type in ('mayorista', 'institucional'):
+        return strong, 'modelo fuerte para clientes (configuración)'
+    return base, 'modelo base'
 
 
 def dispatch_agent_for_message(env, wa_message, partner, memory, plain_text):
@@ -81,8 +128,18 @@ def dispatch_agent_for_message(env, wa_message, partner, memory, plain_text):
             env, partner=partner, client_type=client_type)
         user_message = build_user_message_for_whatsapp(env, wa_message, partner, plain_text)
 
+        # v1.42: foto o PDF del cliente → modelo avanzado (Haiku lee peor listas en imagen).
+        has_media = False
+        try:
+            atts = wa_message.mail_message_id.attachment_ids if wa_message.mail_message_id else []
+            has_media = any((a.mimetype or '').startswith('image/')
+                            or a.mimetype == 'application/pdf' for a in atts)
+        except Exception:
+            pass
+
         # Ejecutar el loop
-        client = ClaudeClient(env, run=run, client_type=client_type)
+        client = ClaudeClient(env, run=run, client_type=client_type,
+                              route_hints={'text': plain_text, 'has_media': has_media})
         result = client.run_conversation(
             stable_system=stable_system,
             dynamic_system=dynamic_system,
@@ -110,6 +167,11 @@ def dispatch_agent_for_cron(env, trigger, partner, cron_type, extra_context=None
         if partner:
             partner = partner.with_env(env)
 
+    # v1.42: quien pidió no recibir propuestas sale de las cadencias.
+    if partner and partner.sudo().agent_opt_out:
+        _logger.info("⛔ Cadencia salteada: %s pidió no recibir propuestas.", partner.name)
+        return None
+
     Run = env['cristal.agent.run'].sudo()
     run = Run.create({
         'trigger': trigger,
@@ -121,7 +183,7 @@ def dispatch_agent_for_cron(env, trigger, partner, cron_type, extra_context=None
         stable_system, dynamic_system = build_system_prompt(env, partner=partner)
         user_message = build_user_message_for_cron(env, partner, cron_type, extra_context)
 
-        client = ClaudeClient(env, run=run, complex_task=True)
+        client = ClaudeClient(env, run=run)  # v1.42: cadencias con el modelo base
         result = client.run_conversation(
             stable_system=stable_system,
             dynamic_system=dynamic_system,
@@ -161,6 +223,17 @@ def dispatch_agent_for_activity(env, partner, lead, activity):
             lead = lead.with_env(env)
         if activity:
             activity = activity.with_env(env)
+
+    # v1.42: quien pidió no recibir propuestas no recibe seguimientos; la
+    # actividad se cierra sin gastar una corrida.
+    if partner and partner.sudo().agent_opt_out:
+        _logger.info("⛔ Seguimiento salteado: %s pidió no recibir propuestas.", partner.name)
+        try:
+            activity.action_feedback(feedback="No contactar: %s" % (
+                partner.agent_opt_out_reason or 'pidió no recibir propuestas'))
+        except Exception:
+            activity.action_done()
+        return None
 
     Run = env['cristal.agent.run'].sudo()
     run = Run.create({
@@ -240,7 +313,9 @@ def dispatch_agent_for_activity(env, partner, lead, activity):
             f"Resumen: {activity.summary or '—'}\n"
             f"Nota: {activity.note or '—'}\n\n"
             "TU TAREA (en este orden):\n"
-            "1. Leé el historial reciente con `read_message_history(channel_id=" + str(wa_channel.id if wa_channel else 0) + ", limit=10)`\n"
+            "1. Leé la conversación reciente y las cotizaciones abiertas que ya están en "
+            "el bloque del cliente (no hace falta read_message_history salvo que "
+            "necesites mensajes más viejos).\n"
             "2. Decidí qué hacer SEGÚN LA FASE Y EL CONTEXTO:\n"
             "   - Fase 2 post-muestra → mandar chequeo \"¿pudiste probar?\"\n"
             "   - Fase 3 → cadencia post-compra\n"
@@ -259,7 +334,7 @@ def dispatch_agent_for_activity(env, partner, lead, activity):
             "Tono natural de vendedor. NO sobreactuar. Máximo 3 líneas."
         )
 
-        client = ClaudeClient(env, run=run, complex_task=True)
+        client = ClaudeClient(env, run=run)  # v1.42: actividades con el modelo base
         result = client.run_conversation(
             stable_system=stable_system,
             dynamic_system=dynamic_system,
@@ -431,7 +506,7 @@ class ClaudeClient:
     su run (para loguear todo).
     """
 
-    def __init__(self, env, run=None, client_type=None, complex_task=False):
+    def __init__(self, env, run=None, client_type=None, complex_task=False, route_hints=None):
         self.env = env
         self.run = run
         # v1.9.0 — Filtra tools por client_type. Si None, todas las tools.
@@ -441,6 +516,11 @@ class ClaudeClient:
         self.complex_task = complex_task
         self.config = env['cristal.agent.config'].sudo().get_active()
         self.api_key = self.env['cristal.agent.config'].sudo().get_api_key()
+        # v1.42 — modelo de esta corrida (puede pasar a avanzado a mitad de camino).
+        self.route_hints = route_hints or {}
+        self.strong_model = (getattr(self.config, 'anthropic_model_complex', '') or '').strip()
+        self.model, self.model_reason = self._pick_model()
+        self._last_call_model = self.model
 
         if not self.api_key:
             raise RuntimeError(
@@ -482,8 +562,11 @@ class ClaudeClient:
         total_output_tokens = 0
         total_cache_creation = 0
         total_cache_read = 0
+        total_cache_5m = 0
+        total_cost = 0.0
         total_tool_calls = 0
         final_text = ""
+        Run = self.env['cristal.agent.run']
 
         while iterations < self.config.max_iterations:
             iterations += 1
@@ -492,12 +575,22 @@ class ClaudeClient:
             # Llamada a Claude
             response = self._call_claude_api(stable_system, dynamic_system, messages)
 
-            # Sumar tokens
+            # Sumar tokens (y el costo con los precios del modelo que atendió).
             usage = response.get('usage', {})
             total_input_tokens += usage.get('input_tokens', 0)
             total_output_tokens += usage.get('output_tokens', 0)
             total_cache_creation += usage.get('cache_creation_input_tokens', 0)
             total_cache_read += usage.get('cache_read_input_tokens', 0)
+            total_cache_5m += (usage.get('cache_creation') or {}).get(
+                'ephemeral_5m_input_tokens', 0) or 0
+            total_cost += Run._call_cost(self._last_call_model, usage)
+
+            # v1.42: si el modelo base se niega a responder, reintenta UNA vez con
+            # el avanzado (Haiku 5.5 no tiene fallback del lado de Anthropic).
+            if response.get('stop_reason') == 'refusal' and self._escalate(
+                    'el modelo base no quiso responder'):
+                _logger.warning("🛑 Rechazo del modelo base: reintento con %s", self.model)
+                continue
 
             # Extraer texto y tool_uses de la respuesta
             content_blocks = response.get('content', [])
@@ -536,7 +629,21 @@ class ClaudeClient:
 
                 tool_start = time.time()
                 try:
-                    result = self._execute_tool(tool_name, tool_input)
+                    if tool_name == 'ask_advanced_model':
+                        # v1.42: Haiku pide ayuda → desde la próxima vuelta
+                        # contesta el modelo avanzado, con todo el contexto.
+                        reason = (tool_input or {}).get('reason') or 'lo pidió el modelo base'
+                        if self._escalate('pedido de Haiku: ' + reason):
+                            result = {"ok": True, "summary": (
+                                "Listo: desde ahora sigue el modelo avanzado con todo el "
+                                "contexto. Continuá la tarea normalmente.")}
+                        else:
+                            result = {"ok": False, "summary": (
+                                "No hay modelo avanzado disponible ahora (o ya estás "
+                                "usándolo). Resolvé vos con cuidado; si no podés "
+                                "confirmar algo, decí que lo consultás y escalá a Joaco.")}
+                    else:
+                        result = self._execute_tool(tool_name, tool_input)
                     is_error = False
                 except Exception as e:
                     _logger.exception("Tool %s falló: %s", tool_name, e)
@@ -585,11 +692,15 @@ class ClaudeClient:
                 'cache_read_input_tokens': total_cache_read,
                 'duration_seconds': round(duration, 2),
                 'final_response': final_text,
+                # v1.42: costo exacto por llamada + motivo del modelo.
+                'cache_creation_5m_tokens': total_cache_5m,
+                'api_cost_usd': round(total_cost, 6),
+                'model_reason': (self.model_reason or '')[:250],
             }
             # v1.11.0 — guardamos el modelo realmente usado para que el cálculo
             # de costo (agent_run._compute_cost) aplique los precios correctos.
             if 'model_used' in self.run._fields:
-                run_vals['model_used'] = self._resolve_model()
+                run_vals['model_used'] = self.model
             self.run.write(run_vals)
             self.run.set_full_messages(messages)
 
@@ -618,16 +729,64 @@ class ClaudeClient:
           escala SOLO esos mensajes a ese modelo (mejores "formas"). Apagado por
           default → todo Haiku, costo mínimo.
         """
-        model = self.config.anthropic_model
-        strong = getattr(self.config, 'anthropic_model_complex', None)
-        if not strong:
-            return model
-        if self.complex_task:
-            return strong
-        if (self.client_type in ('mayorista', 'institucional')
-                and getattr(self.config, 'escalate_client_msgs_to_strong', False)):
-            return strong
-        return model
+        return self.model
+
+    def _spend_today(self):
+        try:
+            return self.env['cristal.agent.run'].today_spend_usd()
+        except Exception as e:
+            _logger.warning("No pude calcular el gasto del día: %s", e)
+            return 0.0
+
+    def _pick_model(self):
+        """v1.42 — Modelo inicial de la corrida según reglas fijas (pick_model)."""
+        run = self.run
+        model, reason = pick_model(
+            self.config,
+            trigger=run.trigger if run else None,
+            text=self.route_hints.get('text') or (run.incoming_text if run else ''),
+            client_type=self.client_type,
+            partner_id=run.partner_id.id if run and run.partner_id else None,
+            has_media=bool(self.route_hints.get('has_media')),
+            complex_task=self.complex_task,
+            spend_today=self._spend_today() if self.strong_model else 0.0,
+        )
+        if reason.startswith('tope diario'):
+            self._budget_alert()
+        return model, reason
+
+    def _escalate(self, reason):
+        """Pasa el resto de la corrida al modelo avanzado. False si no se puede
+        (no hay, ya se está usando, o se llegó al tope diario)."""
+        if not self.strong_model or self.model == self.strong_model:
+            return False
+        budget = getattr(self.config, 'daily_budget_usd', 0.0) or 0.0
+        if budget and self._spend_today() >= budget:
+            self._budget_alert()
+            return False
+        self.model = self.strong_model
+        self.model_reason = f"{self.model_reason} → avanzado ({reason})"
+        _logger.info("⬆️ Paso al modelo avanzado: %s", reason)
+        return True
+
+    def _budget_alert(self):
+        """Avisa UNA vez por día en el canal interno que se llegó al tope."""
+        try:
+            from .helpers import now_ar
+            today = now_ar(self.env).date()
+            config = self.config
+            if config.budget_alert_date == today:
+                return
+            config.sudo().write({'budget_alert_date': today})
+            channel = config.internal_channel_id
+            if channel:
+                channel.sudo().with_context(from_cristal_agent=True).message_post(
+                    body=(f"💸 Claudio llegó al tope de gasto del día "
+                          f"(US$ {config.daily_budget_usd:g}). Sigue atendiendo, pero "
+                          f"solo con el modelo base hasta mañana."),
+                    message_type='comment', subtype_xmlid='mail.mt_comment')
+        except Exception as e:
+            _logger.warning("No pude avisar el tope diario: %s", e)
 
     def _call_claude_api(self, stable_system, dynamic_system, messages):
         """Hace una llamada HTTP a la API de Claude, con retry en caso de 429."""
@@ -676,12 +835,17 @@ class ClaudeClient:
         # último bloque de contenido del último mensaje con cache_control. Así,
         # en las iteraciones del loop tool_use, el historial acumulado también
         # entra al cache y no se reprocesa entero en cada vuelta.
+        # v1.42 — ...pero con caché de 5 MINUTOS (1,25x), no de 1 hora (2x): la
+        # conversación de cada cliente solo se reusa entre las vueltas de esta
+        # misma corrida (segundos). Escribirla a 1 h era ~90 % del costo (medido
+        # 20-27/10: ~31.000 tokens por respuesta). Lo fijo (tools + system) sigue
+        # en 1 h y va antes, como exige la API (TTL largos antes que cortos).
         if self.config.enable_prompt_caching and messages:
-            messages = self._mark_last_message_cacheable(messages, cache_ttl)
+            messages = self._mark_last_message_cacheable(messages, {"type": "ephemeral"})
 
-        # v1.11.0 — modelo resuelto por _resolve_model (Haiku base, escalado
-        # opcional a modelo fuerte en tareas complejas o mensajes a cliente).
+        # v1.42 — modelo de la corrida (puede haber pasado al avanzado).
         model = self._resolve_model()
+        self._last_call_model = model
 
         body = {
             "model": model,

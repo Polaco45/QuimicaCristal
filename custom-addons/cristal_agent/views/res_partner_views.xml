@@ -44,6 +44,12 @@
                         </group>
                     </group>
 
+                    <group string="⛔ No contactar">
+                        <field name="agent_opt_out" widget="boolean_toggle"/>
+                        <field name="agent_opt_out_reason" invisible="not agent_opt_out"/>
+                        <field name="agent_opt_out_date" invisible="not agent_opt_out" readonly="1"/>
+                    </group>
+
                     <separator string="📋 Observaciones acumuladas del agente"/>
                     <field name="agent_observations" readonly="1"
                            placeholder="A medida que Claudio interactúe con este cliente, va a ir registrando acá lo que aprende: preferencias, datos comerciales, episodios destacados."/>

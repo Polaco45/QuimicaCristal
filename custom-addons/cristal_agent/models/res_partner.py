@@ -114,6 +114,38 @@ class ResPartner(models.Model):
         string="Fase iniciada el",
     )
 
+    # ─────────── No contactar (v1.42) ───────────
+    # Joaco (27/10/2026): "los que dijeron que no venden insumos o que no les
+    # interesa que les sigas escribiendo, sacalos del flujo de venta". No reciben
+    # cadencias, seguimientos, envíos de los lunes ni avisos de la ruta. Si ESCRIBEN
+    # ellos, Claudio los atiende normal (y puede desmarcarlos si vuelven a comprar).
+    agent_opt_out = fields.Boolean(
+        string="No contactar (no quiere propuestas)", tracking=True, copy=False,
+        help="Pidió no recibir más mensajes, no le interesa o no vende limpieza. "
+             "Sale de todos los envíos y seguimientos automáticos.")
+    agent_opt_out_reason = fields.Char(string="Motivo de no contactar", copy=False)
+    agent_opt_out_date = fields.Datetime(string="Desde", copy=False)
+
+    OPT_OUT_TAG = 'No contactar'
+
+    def set_agent_opt_out(self, reason, active=True):
+        """Marca/desmarca 'No contactar' + etiqueta (para filtrar envíos manuales)."""
+        Tag = self.env['res.partner.category'].sudo()
+        tag = Tag.search([('name', '=', self.OPT_OUT_TAG)], limit=1)
+        if not tag and active:
+            tag = Tag.create({'name': self.OPT_OUT_TAG})
+        for p in self.sudo():
+            vals = {'agent_opt_out': active,
+                    'agent_opt_out_reason': (reason or '')[:250] if active else False,
+                    'agent_opt_out_date': fields.Datetime.now() if active else False}
+            if tag:
+                vals['category_id'] = [(4 if active else 3, tag.id)]
+            p.write(vals)
+            p.append_agent_observation(
+                ("⛔ NO CONTACTAR: " if active else "✅ Vuelve al flujo de venta: ")
+                + (reason or ''))
+        return True
+
     # ─────────── Última actividad detectada por el agente ───────────
     agent_last_inbound_at = fields.Datetime(
         string="Último mensaje recibido",

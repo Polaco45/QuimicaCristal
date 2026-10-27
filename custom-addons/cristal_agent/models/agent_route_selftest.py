@@ -953,3 +953,158 @@ class CristalAgentRouteSelftest(models.TransientModel):
             return ("solo la oferta marcada · sin texto no se puede marcar · excluye Sur-Oeste, "
                     "Fuera de zona, números repetidos y plantilla en 24 h")
         self._case(results, "33. Envío de los lunes", c_envio_lunes)
+
+        # ═════════════════ Costo: Haiku 5.5 + avanzado por reglas (v1.42) ═════════════════
+        # 34) Qué modelo atiende, cuánto cuesta una respuesta típica y cómo se marca
+        # la caché (fijo 1 h, conversación 5 min).
+        def c_modelo_y_costo():
+            from types import SimpleNamespace
+            from unittest.mock import patch
+            from ..services.claude_client import pick_model, ClaudeClient
+            cfg = SimpleNamespace(anthropic_model='claude-haiku-5-5',
+                                  anthropic_model_complex='claude-sonnet-5-5',
+                                  daily_budget_usd=2.0, strong_share_percent=0,
+                                  escalate_client_msgs_to_strong=False)
+            H, S = 'claude-haiku-5-5', 'claude-sonnet-5-5'
+            checks = [
+                (dict(text='Hola, cuánto sale la lavandina?'), H),
+                (dict(text='me faltó sumar 20 L de suavizante'), H),
+                (dict(text='no me interesa, gracias'), H),
+                (dict(text='Me vino roto el bidón y pierde'), S),
+                (dict(text='quiero hacer un reclamo'), S),
+                (dict(text='lista', has_media=True), S),
+                (dict(text='\n'.join(['20 L producto'] * 9)), S),
+                (dict(trigger='joaco_command', text='mandale a Ale'), S),
+                (dict(client_type='institucional', text='hola'), S),
+                (dict(text='me vino roto', spend_today=2.5), H),
+            ]
+            for kw, want in checks:
+                got, why = pick_model(cfg, **kw)
+                assert got == want, f"{kw} → {got} ({why}), esperaba {want}"
+            cfg.strong_share_percent = 100
+            assert pick_model(cfg, text='hola', partner_id=7)[0] == S, "grupo de control"
+            # Costo de una respuesta típica (medida 20-27/10: 25k cache write, 124k read).
+            Run = env['cristal.agent.run']
+            usage = {'input_tokens': 10, 'output_tokens': 800,
+                     'cache_creation_input_tokens': 25000,
+                     'cache_creation': {'ephemeral_5m_input_tokens': 25000},
+                     'cache_read_input_tokens': 124000}
+            haiku = Run._call_cost(H, usage)
+            sonnet_old = Run._call_cost(S, dict(usage, cache_creation={}))
+            assert haiku < 0.01, f"Haiku cuesta {haiku:.4f} por respuesta"
+            assert sonnet_old > 0.12, f"Sonnet con caché de 1 h: {sonnet_old:.4f}"
+            big = Run._call_cost(H, dict(usage, cache_read_input_tokens=150000))
+            assert big > haiku * 4, "Haiku con más de 100K tokens de prompt cuesta 5x"
+            # Cómo se arma la llamada: modelo, caché 1 h en lo fijo y 5 min en la charla.
+            client = ClaudeClient(env)
+            client.model = H
+            sent = {}
+
+            class _Resp:
+                status_code = 200
+                headers = {}
+                text = ''
+
+                def json(self):
+                    return {'content': [], 'stop_reason': 'end_turn', 'usage': {}}
+
+            def fake_post(url, headers=None, json=None, timeout=None):
+                sent.update(json)
+                return _Resp()
+            with patch.object(client._requests, 'post', fake_post):
+                client._call_claude_api('fijo', 'del cliente',
+                                        [{'role': 'user', 'content': 'hola'}])
+            assert sent['model'] == H, sent.get('model')
+            assert sent['system'][0]['cache_control'].get('ttl') == '1h', "lo fijo no es 1 h"
+            last = sent['messages'][-1]['content'][-1]
+            assert last.get('cache_control') == {'type': 'ephemeral'}, last
+            assert 'fallbacks' not in sent, "Haiku 5.5 no acepta fallbacks"
+            client.strong_model = S
+            assert client._escalate('prueba') and client.model == S, "no pasa al avanzado"
+            assert not client._escalate('otra vez'), "pasó dos veces"
+            return (f"reglas de modelo OK (10 casos + grupo de control) · respuesta típica "
+                    f"Haiku US$ {haiku:.4f} vs Sonnet con caché 1 h US$ {sonnet_old:.3f} · "
+                    f"caché 1 h fijo / 5 min charla · pase al avanzado una vez")
+        self._case(results, "34. Modelo y costo por respuesta", c_modelo_y_costo)
+
+        # 35) El contexto del cliente trae sus cotizaciones abiertas y su charla reciente.
+        def c_contexto_cliente():
+            from ..services.prompt_builder import _build_partner_context
+            p = mk_partner('Contexto', 'Rio Cuarto')
+            r = quote(p, 60000)
+            o = SaleOrder.browse(r['order_id']) if r.get('order_id') else SaleOrder
+            ctx = _build_partner_context(env, p)
+            assert o and o.name in ctx and 'Cotizaciones abiertas' in ctx, ctx[-600:]
+            note = 'charla: sin canal de WhatsApp de prueba'
+            acc = env['whatsapp.account'].sudo().search([], limit=1)
+            if acc:
+                try:
+                    with env.cr.savepoint():
+                        ch = env['discuss.channel'].sudo().create({
+                            'name': 'ZZ Autotest contexto', 'channel_type': 'whatsapp',
+                            'whatsapp_number': '+5493589990035', 'wa_account_id': acc.id,
+                            'whatsapp_partner_id': p.id,
+                            'channel_member_ids': [(0, 0, {'partner_id': p.id})]})
+                        env['mail.message'].sudo().with_context(from_cristal_agent=True).create({
+                            'model': 'discuss.channel', 'res_id': ch.id, 'author_id': p.id,
+                            'message_type': 'whatsapp_message',
+                            'body': '<p>Hola, quiero precio de lavandina</p>'})
+                        ctx = _build_partner_context(env, p)
+                        assert 'Conversación reciente' in ctx \
+                            and 'Cliente: Hola, quiero precio de lavandina' in ctx, ctx[-500:]
+                        note = 'charla reciente incluida'
+                except AssertionError:
+                    raise
+                except Exception as e:
+                    note = f'charla: no pude crear el canal de prueba ({str(e)[:60]})'
+            return f"cotización abierta {o.name} en el contexto · {note}"
+        self._case(results, "35. Contexto del cliente", c_contexto_cliente)
+
+        # 36) No contactar: se marca, sale de envíos, avisos de ruta, cadencias y
+        # seguimientos; si escribe él se lo atiende; se puede desmarcar.
+        def c_no_contactar():
+            from types import SimpleNamespace
+            from ..services.claude_client import dispatch_agent_for_activity
+            may = env['res.partner.category'].sudo().search([('name', '=', 'Mayorista')], limit=1)
+            p = mk_partner('No contactar', 'Rio Cuarto', cat=may)
+            p.mobile = '+5493589990036'
+            r = ToolRegistry.get('mark_opt_out').execute(
+                env=env, run=None, partner_id=p.id, kind='no_vende', quote='no vendo limpieza')
+            assert r.get('ok') and p.agent_opt_out, r
+            assert 'No contactar' in p.category_id.mapped('name'), "sin etiqueta No contactar"
+            assert 'no vendo limpieza' in (p.agent_opt_out_reason or ''), p.agent_opt_out_reason
+            ch = env['discuss.channel'].sudo().create({
+                'name': 'ZZ Autotest opt-out', 'channel_type': 'group',
+                'channel_member_ids': [(0, 0, {'partner_id': p.id})]})
+            fake_run = SimpleNamespace(trigger='cron_cadence', partner_id=p,
+                                       tool_calls_log='[]')
+            r = ToolRegistry.get('send_whatsapp')._execute(
+                env=env, run=fake_run, channel_id=ch.id, body='<p>¿Pudo ver la lista?</p>',
+                wa_account_id=1, mobile_number=p.mobile)
+            assert r.get('error') == 'OPT_OUT' and r.get('not_sent'), r
+            r = ToolRegistry.get('send_whatsapp_template')._execute(
+                env=env, run=None, partner_id=p.id, template_name='hola_mayorista_crm',
+                variables=['hola'])
+            assert r.get('error') == 'OPT_OUT', r
+            today = fields.Date.context_today(p)
+            off = env['cristal.agent.offer'].sudo().create({
+                'name': 'ZZ Autotest opt-out', 'description': 'x', 'offer_type': 'other',
+                'valid_from': today, 'valid_until': today, 'weekly_broadcast': True,
+                'broadcast_text': 'promo'})
+            assert p not in env['cristal.agent.run']._weekly_broadcast_partners(off), \
+                "el envío de los lunes le llega"
+            config = env['cristal.agent.config'].sudo().get_active()
+            act = p.activity_schedule('mail.mail_activity_data_todo', summary='ZZ seguimiento',
+                                      user_id=config.bot_user_id.id or env.uid)
+            runs_before = env['cristal.agent.run'].search_count([('partner_id', '=', p.id)])
+            dispatch_agent_for_activity(env, p, None, act)
+            assert not act.exists() or not act.active, "la actividad sigue abierta"
+            assert env['cristal.agent.run'].search_count([('partner_id', '=', p.id)]) \
+                == runs_before, "gastó una corrida en alguien que no quiere propuestas"
+            r = ToolRegistry.get('mark_opt_out').execute(env=env, run=None, partner_id=p.id,
+                                                          undo=True)
+            assert r.get('ok') and not p.agent_opt_out \
+                and 'No contactar' not in p.category_id.mapped('name'), r
+            return ("se marca con motivo y etiqueta · sin seguimientos, plantillas ni envío de "
+                    "los lunes · la actividad se cierra sin corrida · se desmarca con undo")
+        self._case(results, "36. No contactar", c_no_contactar)

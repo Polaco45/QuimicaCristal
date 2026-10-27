@@ -76,6 +76,12 @@ class SendWhatsappTemplate(AgentTool):
         partner = env['res.partner'].sudo().browse(int(partner_id))
         if not partner.exists():
             return {"error": f"partner_id={partner_id} no existe"}
+        # v1.42: nada de plantillas por iniciativa propia (envíos, cadencias) a
+        # quien pidió no recibir propuestas. Si escribió él o lo pide Joaco, sí.
+        if partner.agent_opt_out and not env.context.get('allow_opt_out') \
+                and not (run and run.trigger in ('whatsapp_message', 'joaco_command')):
+            return {"error": "OPT_OUT", "not_sent": True, "message": (
+                f"{partner.name} pidió no recibir propuestas: NO SE ENVIÓ la plantilla.")}
 
         # ─── 1. Mobile bien normalizado ───
         mobile_raw = partner.mobile or partner.phone or ''

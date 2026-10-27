@@ -55,6 +55,21 @@ class CristalAgentConfig(models.Model):
         help="Modelo a usar solo en tareas complejas (joaco_command / cron). "
              "Vacío = usar el modelo base para todo. Ej: claude-sonnet-4-6.",
     )
+    # v1.42 — Costo: Haiku 5.5 atiende el día a día y el modelo avanzado
+    # (anthropic_model_complex) entra solo por reglas fijas (reclamo, foto o PDF,
+    # lista larga, institucional, comando de Joaco) o cuando Haiku lo pide.
+    daily_budget_usd = fields.Float(
+        string="Tope de gasto diario (USD)",
+        default=2.0,
+        help="Si el gasto del día (hora Argentina) llega a este monto, Claudio sigue "
+             "atendiendo pero solo con el modelo base, y avisa una vez en el canal "
+             "interno. 0 = sin tope.")
+    budget_alert_date = fields.Date(string="Último aviso de tope", copy=False)
+    strong_share_percent = fields.Integer(
+        string="Grupo de control con el modelo avanzado (%)",
+        default=0,
+        help="Porcentaje de clientes (fijo por cliente) que siguen con el modelo "
+             "avanzado para comparar ventas y errores. 0 = todos con el modelo base.")
     anthropic_version = fields.Char(
         string="Versión API",
         default="2023-06-01",
