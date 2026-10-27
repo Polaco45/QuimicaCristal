@@ -824,6 +824,9 @@ class ClaudeClient:
         # tráfico (las tools van ANTES del system en la jerarquía de cache).
         # v1.9.0 — Filtramos por client_type si aplica.
         tools_param = self.tool_registry.schemas_for_anthropic(client_type=self.client_type)
+        # v1.42: ya en el modelo avanzado no tiene sentido "pedir ayuda".
+        if self.strong_model and self.model == self.strong_model:
+            tools_param = [t for t in tools_param if t.get('name') != 'ask_advanced_model']
         if self.config.enable_prompt_caching and tools_param:
             # Copiar la última tool y agregarle cache_control
             tools_param = list(tools_param)
