@@ -52,8 +52,12 @@ _RE_ENTREGA_FECHA = re.compile(
     r'\d{1,2}/\d{1,2}|a las \d{1,2})',
     re.IGNORECASE)
 # "Hoy estamos abiertos / atendemos hasta las ..." (para días cerrados).
+# v1.43: sin "no" en el medio. Antes "Hoy domingo NO atendemos" (lo correcto) se
+# bloqueaba: 59 mensajes frenados del 18 al 26/10, y al segundo intento se borraba
+# justo esa frase.
 _RE_ABIERTO_HOY = re.compile(
-    r'\b(?:hoy|ahora)\b[^.!?<]{0,35}\b(?:abiert\w*|atendemos|estamos hasta|te esperamos)',
+    r'\b(?:hoy|ahora)\b(?:(?!\b(?:no|ni|nunca|cerrad\w*)\b)[^.!?<]){0,35}'
+    r'\b(?:abiert\w*|atendemos|estamos hasta|te esperamos)',
     re.IGNORECASE)
 # Señales de que el cliente no entiende o pide otro canal.
 _RE_NO_ENTIENDE = re.compile(

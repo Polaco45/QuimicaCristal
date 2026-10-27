@@ -104,6 +104,11 @@ class CristalAgentRun(models.Model):
         help="Suma del costo de cada llamada con los precios del modelo que la "
              "atendió (en una corrida puede pasar de Haiku a Sonnet).")
     model_reason = fields.Char(string="Por qué este modelo")
+    # v1.43 — Muestra semanal para revisar a mano la calidad del modelo base.
+    review_sample = fields.Boolean(string="En la muestra semanal", index=True, copy=False)
+    review_result = fields.Selection(
+        [('ok', 'Bien'), ('error', 'Con error')], string="Revisión", copy=False)
+    review_note = fields.Char(string="Nota de la revisión", copy=False)
     model_used = fields.Char(
         string="Modelo usado",
         help="Modelo de Claude con el que se corrió este run. Determina los "

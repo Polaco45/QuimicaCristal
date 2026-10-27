@@ -125,6 +125,8 @@ class ResPartner(models.Model):
              "Sale de todos los envíos y seguimientos automáticos.")
     agent_opt_out_reason = fields.Char(string="Motivo de no contactar", copy=False)
     agent_opt_out_date = fields.Datetime(string="Desde", copy=False)
+    # v1.43 — último recordatorio de recompra agendado (no repetir antes de su intervalo).
+    agent_reorder_reminder_date = fields.Date(string="Último aviso de recompra", copy=False)
 
     OPT_OUT_TAG = 'No contactar'
 

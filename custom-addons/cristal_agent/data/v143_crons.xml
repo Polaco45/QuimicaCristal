@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v1.43 — Informe semanal, números que WhatsApp rechaza y recompra.
+     noupdate="1": si Joaco los apaga o cambia el horario, una actualización no lo pisa. -->
+<odoo>
+    <data noupdate="1">
+
+        <!-- Lunes 9:00 hora Argentina = 12:00 UTC -->
+        <record id="cron_weekly_report" model="ir.cron">
+            <field name="name">Cristal Agent: Informe semanal (lunes 9 h)</field>
+            <field name="model_id" ref="model_cristal_agent_weekly_report"/>
+            <field name="state">code</field>
+            <field name="code">model.cron_weekly_report()</field>
+            <field name="interval_number">1</field>
+            <field name="interval_type">weeks</field>
+            <field name="nextcall" eval="(DateTime.now() + relativedelta(days=1, weekday=0)).strftime('%Y-%m-%d 12:00:00')"/>
+            <field name="active" eval="True"/>
+        </record>
+
+        <!-- Todos los días 7:00 hora Argentina = 10:00 UTC -->
+        <record id="cron_wa_failures" model="ir.cron">
+            <field name="name">Cristal Agent: Números que WhatsApp rechaza → No contactar</field>
+            <field name="model_id" ref="model_cristal_agent_weekly_report"/>
+            <field name="state">code</field>
+            <field name="code">model.cron_wa_failures()</field>
+            <field name="interval_number">1</field>
+            <field name="interval_type">days</field>
+            <field name="nextcall" eval="(DateTime.now() + relativedelta(days=1)).strftime('%Y-%m-%d 10:00:00')"/>
+            <field name="active" eval="True"/>
+        </record>
+
+        <!-- Todos los días 10:00 hora Argentina = 13:00 UTC (el cron de actividades
+             las ejecuta en horario de contacto) -->
+        <record id="cron_reorder_reminders" model="ir.cron">
+            <field name="name">Cristal Agent: Recordatorio de recompra</field>
+            <field name="model_id" ref="model_cristal_agent_weekly_report"/>
+            <field name="state">code</field>
+            <field name="code">model.cron_reorder_reminders()</field>
+            <field name="interval_number">1</field>
+            <field name="interval_type">days</field>
+            <field name="nextcall" eval="(DateTime.now() + relativedelta(days=1)).strftime('%Y-%m-%d 13:00:00')"/>
+            <field name="active" eval="True"/>
+        </record>
+
+    </data>
+</odoo>

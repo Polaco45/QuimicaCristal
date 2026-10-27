@@ -81,6 +81,76 @@ def pick_model(config, trigger=None, text='', client_type=None, partner_id=None,
     return base, 'modelo base'
 
 
+# ───────────────── v1.43 — Fotos y PDF del cliente, adjuntos de verdad ─────────────────
+MEDIA_IMAGE_MIMES = {'image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'}
+MEDIA_MAX_BYTES = 4_500_000   # la API acepta hasta 5 MB por imagen
+MEDIA_MAX_FILES = 4
+
+
+def _partner_wa_channel_id(env, partner):
+    ch = env['discuss.channel'].sudo().search([
+        ('channel_type', '=', 'whatsapp'), ('channel_partner_ids', 'in', [partner.id])],
+        order='write_date desc', limit=1)
+    return ch.id or False
+
+
+def _recent_inbound_media(env, channel_id, partner):
+    """Fotos y PDF que mandó el cliente desde la última respuesta nuestra (la ráfaga
+    actual), del más viejo al más nuevo. Corta en el primer mensaje del bot o de una
+    persona del equipo."""
+    if not channel_id:
+        return []
+    config = env['cristal.agent.config'].sudo().get_active()
+    bot_pid = config.bot_partner_id.id if config and config.bot_partner_id else 2
+    msgs = env['mail.message'].sudo().search([
+        ('model', '=', 'discuss.channel'), ('res_id', '=', channel_id)],
+        order='id desc', limit=20)
+    found = []
+    for m in msgs:
+        if m.author_id.id == bot_pid or m.author_id.user_ids:
+            break
+        for a in m.attachment_ids:
+            mt = (a.mimetype or '').lower()
+            if (mt in MEDIA_IMAGE_MIMES or mt == 'application/pdf') \
+                    and 0 < (a.file_size or 0) <= MEDIA_MAX_BYTES:
+                found.append(a)
+    return list(reversed(found))[-MEDIA_MAX_FILES:]
+
+
+def _media_blocks(attachments):
+    """Bloques de imagen / documento para la API de Claude."""
+    blocks = []
+    for a in attachments:
+        data = a.datas
+        if not data:
+            continue
+        data = data.decode() if isinstance(data, bytes) else data
+        mt = (a.mimetype or '').lower()
+        if mt == 'application/pdf':
+            blocks.append({"type": "document", "source": {
+                "type": "base64", "media_type": "application/pdf", "data": data}})
+        else:
+            blocks.append({"type": "image", "source": {
+                "type": "base64", "media_type": 'image/jpeg' if mt == 'image/jpg' else mt,
+                "data": data}})
+    return blocks
+
+
+def _strip_media_for_log(messages):
+    """Copia de los mensajes sin los bytes de imágenes/PDF (para el log de la corrida)."""
+    import copy
+    out = copy.deepcopy(messages)
+    for msg in out:
+        content = msg.get('content')
+        if isinstance(content, list):
+            for block in content:
+                if isinstance(block, dict) and block.get('type') in ('image', 'document') \
+                        and isinstance(block.get('source'), dict):
+                    block['source'] = {'type': 'omitido', 'media_type':
+                                       block['source'].get('media_type')}
+    return out
+
+
 def dispatch_agent_for_message(env, wa_message, partner, memory, plain_text):
     """
     Dispara el agente para procesar un mensaje WhatsApp entrante.
@@ -128,22 +198,26 @@ def dispatch_agent_for_message(env, wa_message, partner, memory, plain_text):
             env, partner=partner, client_type=client_type)
         user_message = build_user_message_for_whatsapp(env, wa_message, partner, plain_text)
 
-        # v1.42: foto o PDF del cliente → modelo avanzado (Haiku lee peor listas en imagen).
-        has_media = False
-        try:
-            atts = wa_message.mail_message_id.attachment_ids if wa_message.mail_message_id else []
-            has_media = any((a.mimetype or '').startswith('image/')
-                            or a.mimetype == 'application/pdf' for a in atts)
-        except Exception:
-            pass
+        # v1.43: las fotos y PDF que mandó el cliente en esta ráfaga le llegan a
+        # Claudio ADJUNTOS (antes view_attachment devolvía base64 como texto y el
+        # modelo no los veía). Con foto o PDF atiende el modelo avanzado.
+        media = _recent_inbound_media(env, channel_id or _partner_wa_channel_id(env, partner),
+                                      partner)
+        content = user_message
+        if media:
+            names = ', '.join(a.name or 'archivo' for a in media)
+            content = [{"type": "text", "text": user_message + (
+                f"\n\nEl cliente mandó {len(media)} archivo(s) ({names}): están adjuntos "
+                f"abajo. Leelos antes de responder (si es una lista de productos, cotizala).")}]
+            content += _media_blocks(media)
 
         # Ejecutar el loop
         client = ClaudeClient(env, run=run, client_type=client_type,
-                              route_hints={'text': plain_text, 'has_media': has_media})
+                              route_hints={'text': plain_text, 'has_media': bool(media)})
         result = client.run_conversation(
             stable_system=stable_system,
             dynamic_system=dynamic_system,
-            user_message=user_message,
+            user_message=content,
         )
 
         # Marcar OK
@@ -661,13 +735,23 @@ class ClaudeClient:
                         is_error=is_error,
                     )
 
+                # v1.43: view_attachment pide adjuntar la imagen de verdad.
+                media_id = result.pop('_attach_media', None) if isinstance(result, dict) else None
                 # Anthropic espera el tool_result en formato específico
                 result_str = json.dumps(result, ensure_ascii=False, default=str) \
                     if not isinstance(result, str) else result
+                tool_content = result_str
+                if media_id:
+                    att = self.env['ir.attachment'].sudo().browse(int(media_id))
+                    blocks = _media_blocks(att) if att.exists() else []
+                    if blocks:
+                        tool_content = [{"type": "text", "text": result_str}] + blocks
+                        # Leer listas en fotos/PDF: mejor el modelo avanzado.
+                        self._escalate('foto o PDF del cliente')
                 tool_results_blocks.append({
                     "type": "tool_result",
                     "tool_use_id": tool_use_id,
-                    "content": result_str,
+                    "content": tool_content,
                     "is_error": is_error,
                 })
 
@@ -702,7 +786,7 @@ class ClaudeClient:
             if 'model_used' in self.run._fields:
                 run_vals['model_used'] = self.model
             self.run.write(run_vals)
-            self.run.set_full_messages(messages)
+            self.run.set_full_messages(_strip_media_for_log(messages))
 
         return {
             'final_text': final_text,
