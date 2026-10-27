@@ -22,6 +22,16 @@ OPTIN_SOURCES = [
     ('importado', 'Importado'),
 ]
 DEFAULT_AREA = '358'   # Río Cuarto: números de 7 dígitos sin característica
+# Palabras del nombre que delatan a un negocio sin responsabilidad AFIP cargada.
+BUSINESS_WORDS = re.compile(
+    r'\b(complejo|lavadero|apart|hotel|hostel|hostal|caba[ñn]as?|club|cooperativa|colegio|escuela|'
+    r'instituto|jard[ií]n de infantes|universidad|sociedad|s\.?\s?a\.?\s?s?\.?|s\.?\s?r\.?\s?l\.?|'
+    r'srl|sas|ltda|restaurant|restaurante|resto|bar|caf[eé]|cafeter[ií]a|gimnasio|gym|consorcio|'
+    r'edificio|cl[ií]nica|sanatorio|hospital|municipalidad|iglesia|parroquia|panader[ií]a|'
+    r'carnicer[ií]a|verduler[ií]a|kiosco|almac[eé]n|supermercado|autoservicio|estaci[oó]n|taller|'
+    r'inmobiliaria|pizzer[ií]a|helader[ií]a|rotiser[ií]a|comedor|f[aá]brica|empresa|frigor[ií]fico|'
+    r'geri[aá]trico|residencia|lubricentro|lavacoches|lavaautos|car ?wash|peluquer[ií]a|'
+    r'veterinaria|farmacia|bodega|distribuidora|mayorista)\b', re.I)
 
 
 def wa_key(raw):
@@ -108,6 +118,7 @@ class ResPartner(models.Model):
 
     @api.depends('cristal_customer_type_manual', 'is_company', 'vat', 'agent_level',
                  'l10n_ar_afip_responsibility_type_id', 'commercial_partner_id',
+                 'name', 'commercial_partner_id.name',
                  'commercial_partner_id.is_company', 'commercial_partner_id.vat',
                  'commercial_partner_id.agent_level',
                  'commercial_partner_id.l10n_ar_afip_responsibility_type_id',
@@ -125,6 +136,8 @@ class ResPartner(models.Model):
             elif resp and resp.code != '5':          # cualquier responsabilidad que no sea CF
                 kind = 'negocio'
             elif com.is_company and com.vat:
+                kind = 'negocio'
+            elif BUSINESS_WORDS.search(com.name or ''):
                 kind = 'negocio'
             else:
                 kind = 'cf'
