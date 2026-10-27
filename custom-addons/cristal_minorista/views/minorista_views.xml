@@ -108,6 +108,8 @@
                 <filter name="mkt" string="Aceptan promociones" domain="[('cristal_mkt_allowed', '=', True)]"/>
                 <filter name="sin_wa" string="Sin WhatsApp" domain="[('cristal_wa_key', '=', False)]"/>
                 <filter name="dup" string="WhatsApp duplicado" domain="[('cristal_wa_dup_count', '>', 1)]"/>
+                <filter name="revisar" string="Revisar: ticket alto (¿es negocio?)"
+                        domain="[('cristal_customer_type', '=', 'cf'), ('cristal_avg_ticket', '>', 60000)]"/>
                 <group>
                     <filter name="g_segment" string="Segmento" context="{'group_by': 'cristal_segment'}"/>
                     <filter name="g_origin" string="Origen" context="{'group_by': 'cristal_first_origin'}"/>
