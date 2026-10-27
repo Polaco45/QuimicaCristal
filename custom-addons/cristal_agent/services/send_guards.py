@@ -27,6 +27,11 @@ _logger = logging.getLogger(__name__)
 
 _SENT_SPLIT = re.compile(r'(?<=[.!?])\s+|<br\s*/?>|</p>\s*<p>', re.IGNORECASE)
 
+# v1.42 — Texto de relleno o vacío (nunca le llega a un cliente).
+_RE_PLACEHOLDER = re.compile(
+    r'^\W*(placeholder|lorem ipsum.*|test|prueba|todo|tbd|xxx+|\.\.\.|mensaje|texto|'
+    r'\[[^\]]*\]|\{[^}]*\}|<[^>]*>)?\W*$', re.IGNORECASE)
+
 # Promesas de envío que no podemos cumplir.
 _RE_COORDINA_ENVIO = re.compile(
     r'(joaqu[ií]n|joaco)[^.!?<]{0,40}coordin\w*|coordin\w*[^.!?<]{0,25}env[ií]o'
@@ -201,6 +206,14 @@ def apply_send_guards(env, run, channel_id, body_html, partner=None):
             return fixed_body, None
         _logger.info("🛡️ Control '%s': mensaje NO enviado, le pido al bot que corrija.", guard)
         return body_html, {"error": instruction, "guard": guard}
+
+    # 0) v1.42 — Texto de relleno: nunca sale (en una prueba Haiku mandó
+    # "placeholder" cuando le faltaba un dato). Sin segunda oportunidad.
+    if _RE_PLACEHOLDER.match(plain or ''):
+        return body_html, {"error": (
+            "NO MANDÉ EL MENSAJE: es un texto de relleno o vacío. Escribí el mensaje real "
+            "para el cliente; si te falta un dato para hacerlo, decí que lo consultás o "
+            "escalá a Joaco."), "guard": "relleno", "not_sent": True}
 
     # 1) 20% de primera compra: SOLO Río Cuarto / Las Higueras.
     if partner and mentions_first_purchase_discount(body_html):

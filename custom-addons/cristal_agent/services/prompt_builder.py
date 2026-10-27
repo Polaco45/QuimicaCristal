@@ -517,6 +517,17 @@ def build_user_message_for_whatsapp(env, wa_message, partner, plain_text):
     channel_id = None
     if wa_message.mail_message_id:
         channel_id = wa_message.mail_message_id.res_id
+    # v1.42: si no vino el mensaje de WhatsApp (ráfaga sin registro, reproceso), el
+    # canal, la cuenta y el número salen del chat de WhatsApp del cliente. Sin esto
+    # Claudio no tenía por dónde responder y (con razón) no adivinaba.
+    fb_account_id = None
+    if not channel_id:
+        fb = env['discuss.channel'].sudo().search([
+            ('channel_type', '=', 'whatsapp'),
+            ('channel_partner_ids', 'in', [partner.id])], order='write_date desc', limit=1)
+        if fb:
+            channel_id = fb.id
+            fb_account_id = fb.wa_account_id.id if 'wa_account_id' in fb._fields else None
 
     # Detectar si el mobile del wa_message coincide con OTRO partner (duplicado).
     # Si hay duplicado, el bot tiene que saberlo para no saludar con el nombre
@@ -551,10 +562,10 @@ def build_user_message_for_whatsapp(env, wa_message, partner, plain_text):
     parts.append(f"Datos técnicos del mensaje:")
     parts.append(f"- partner_id del cliente: {partner.id}")
     parts.append(f"- name: {partner.name}")
-    parts.append(f"- mobile_number: {wa_message.mobile_number}")
+    parts.append(f"- mobile_number: {wa_message.mobile_number or partner.mobile or partner.phone or 'N/A'}")
     parts.append(f"- mail_message_id: {wa_message.mail_message_id.id if wa_message.mail_message_id else 'N/A'}")
     parts.append(f"- whatsapp_message_id: {wa_message.id}")
-    parts.append(f"- wa_account_id: {wa_message.wa_account_id.id if wa_message.wa_account_id else 'N/A'}")
+    parts.append(f"- wa_account_id: {wa_message.wa_account_id.id if wa_message.wa_account_id else (fb_account_id or 'N/A')}")
     if channel_id:
         parts.append(f"- channel_id (discuss.channel): {channel_id}")
     if duplicados_info:
