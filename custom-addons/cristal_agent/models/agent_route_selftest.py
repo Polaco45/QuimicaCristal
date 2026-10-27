@@ -1029,6 +1029,7 @@ class CristalAgentRouteSelftest(models.TransientModel):
             assert last.get('cache_control') == {'type': 'ephemeral'}, last
             assert 'fallbacks' not in sent, "Haiku 5.5 no acepta fallbacks"
             client.strong_model = S
+            client._spend_today = lambda: 0.0  # sin depender del gasto real del día
             assert client._escalate('prueba') and client.model == S, "no pasa al avanzado"
             assert not client._escalate('otra vez'), "pasó dos veces"
             return (f"reglas de modelo OK (10 casos + grupo de control) · respuesta típica "
