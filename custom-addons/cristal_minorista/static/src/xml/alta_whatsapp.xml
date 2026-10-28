@@ -1,6 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <templates xml:space="preserve">
     <t t-name="cristal_minorista.AltaWhatsapp">
+        <div t-if="done" class="cristal-alta-done rounded-3 border border-success bg-success-subtle p-2 mt-2 lh-sm">
+            <span class="fw-bold">✓ Anotado: <t t-esc="done.name"/></span>
+            <t t-if="done.points !== undefined">
+                · <span class="fw-bold"><t t-esc="done.points"/> puntos</span>
+                <t t-if="done.next_reward"> · le faltan <t t-esc="done.missing"/> para: <t t-esc="done.next_reward"/></t>
+            </t>
+        </div>
         <div t-if="visible" class="cristal-alta d-flex flex-column gap-2 rounded-3 border border-2 border-success bg-success-subtle p-2 mt-2">
             <div class="lh-sm">
                 <div class="small fw-bolder text-uppercase opacity-75">WhatsApp del cliente</div>
