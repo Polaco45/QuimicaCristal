@@ -72,11 +72,11 @@ class CristalFidFlow(models.Model):
                 raise UserError(_("Falta la cuenta de WhatsApp o el texto de %s.", flow.name))
             body = flow.template_body
             n_vars = len(set(re.findall(r'\{\{(\d+)\}\}', body)))
-            variables = [(0, 0, {'name': '{{1}}', 'line_type': 'body', 'field_type': 'field',
-                                 'field_name': 'name', 'demo_value': 'Ana'})]
-            for i in range(2, n_vars + 1):
-                variables.append((0, 0, {'name': '{{%s}}' % i, 'line_type': 'body',
-                                         'field_type': 'free_text', 'demo_value': 'tu lavandina'}))
+            # Todas texto libre: {{1}} es el nombre de pila (lo arma el motor), no el
+            # nombre completo del contacto ("Hola Oscar", no "Hola Giordano, Oscar Rafael").
+            variables = [(0, 0, {'name': '{{%s}}' % i, 'line_type': 'body', 'field_type': 'free_text',
+                                 'demo_value': 'Ana' if i == 1 else 'la lavandina'})
+                         for i in range(1, n_vars + 1)]
             template = Template.create({
                 'name': flow.name,
                 'template_name': 'cristal_%s' % flow.code,
@@ -89,8 +89,8 @@ class CristalFidFlow(models.Model):
                 'button_ids': [(0, 0, {'name': b, 'button_type': 'quick_reply', 'sequence': i})
                                for i, b in enumerate(flow.buttons())],
             })
-            if not template.variable_ids:
-                template.write({'variable_ids': variables})
+            # Odoo genera variables solas desde el texto: se reemplazan por las nuestras.
+            template.write({'variable_ids': [(5, 0, 0)] + variables})
             flow.template_id = template
 
     def action_submit_template(self):
