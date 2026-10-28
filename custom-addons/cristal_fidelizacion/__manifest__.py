@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 {
     'name': 'Cristal — Fidelización automática',
-    'version': '18.0.1.1.1',
+    'version': '18.0.1.2.0',
     'summary': 'Flujos automáticos por WhatsApp para consumidor final: recordatorio de '
                'reposición, segunda compra, satisfacción y reseña, reactivación en '
                'escalera. Grupo de control, tope de frecuencia, registro de respuestas '
@@ -12,6 +12,7 @@
     'depends': ['cristal_minorista', 'whatsapp', 'loyalty', 'pos_loyalty'],
     'data': [
         'security/ir.model.access.csv',
+        'data/config.xml',
         'data/flows.xml',
         'data/family_labels.xml',
         'data/cron.xml',

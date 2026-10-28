@@ -93,6 +93,7 @@
                 <field name="state" widget="badge"/>
                 <field name="reply"/>
                 <field name="sale_order_id" optional="show"/>
+                <field name="review_requested" optional="show" string="Reseña"/>
                 <field name="converted"/>
                 <field name="converted_amount" sum="Total" optional="show"/>
                 <field name="error" optional="hide"/>

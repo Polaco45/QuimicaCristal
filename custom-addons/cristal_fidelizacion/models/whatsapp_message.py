@@ -3,20 +3,24 @@
 
 Cuando el cliente toca un botón de una plantilla nuestra, lo registramos en el
 contacto y actuamos: pedido en borrador, tarea al responsable o baja de promociones.
-No respondemos texto libre: la conversación la sigue Claudio o una persona.
+Si responde "Muy bien" a la encuesta, le pedimos la reseña de Google por el mismo chat;
+el resto de la conversación la sigue Claudio o una persona.
 """
 import logging
 import re
 import unicodedata
 from datetime import timedelta
 
-from odoo import _, api, fields, models
+from odoo import _, fields, models
 
 from odoo.addons.cristal_minorista.models.res_partner import wa_key
 
 _logger = logging.getLogger(__name__)
 
 REPLY_WINDOW_HOURS = 72
+REVIEW_GAP_DAYS = 180
+REVIEW_TEXT = ("Gracias, {name} 🙌 Si tenés 30 segundos, ¿nos dejás una reseña en Google? "
+               "Nos ayuda mucho a que más gente de Río Cuarto nos conozca: {url}")
 
 
 def _norm(text):
@@ -27,18 +31,21 @@ def _norm(text):
 class WhatsAppMessage(models.Model):
     _inherit = 'whatsapp.message'
 
-    @api.model_create_multi
-    def create(self, vals_list):
-        records = super().create(vals_list)
-        for record in records.filtered(lambda m: m.message_type == 'inbound' or m.state == 'received'):
+    def _maybe_trigger_agent(self, wa_message):
+        """Antes de que conteste Claudio: si es la respuesta a un mensaje de fidelización,
+        se registra y se actúa. Si ya le contestamos nosotros (pedido de reseña), Claudio
+        no escribe encima."""
+        if wa_message.message_type == 'inbound' or wa_message.state == 'received':
             try:
                 with self.env.cr.savepoint():
-                    record._cristal_fid_handle_reply()
+                    if wa_message._cristal_fid_handle_reply() == 'answered':
+                        return
             except Exception:  # noqa: BLE001 — nunca romper la recepción del mensaje
-                _logger.exception("fidelización: error procesando respuesta wa.msg %s", record.id)
-        return records
+                _logger.exception("fidelización: error procesando respuesta wa.msg %s", wa_message.id)
+        return super()._maybe_trigger_agent(wa_message)
 
     def _cristal_fid_handle_reply(self):
+        """Devuelve 'answered' si ya le respondimos al cliente desde acá."""
         key = wa_key(self.mobile_number)
         body = _norm(self.body)
         if not key or not body:
@@ -65,6 +72,42 @@ class WhatsAppMessage(models.Model):
             reply = 'negative'
         touch.write({'reply': reply, 'reply_text': buttons[index], 'reply_date': fields.Datetime.now()})
         touch._cristal_fid_act()
+        if touch.flow_code == 'satisfaccion' and reply == 'positive' and self._cristal_fid_send_review(touch):
+            return 'answered'
+
+    def _cristal_fid_send_review(self, touch):
+        """Le pide la reseña de Google por el mismo chat (la ventana de 24 h está abierta
+        porque el cliente acaba de responder). Una vez cada 180 días por cliente."""
+        partner = touch.partner_id
+        url = self.env['ir.config_parameter'].sudo().get_param('cristal_fidelizacion.google_review_url')
+        last = partner.cristal_review_asked_date
+        if not url or (last and last > fields.Datetime.now() - timedelta(days=REVIEW_GAP_DAYS)):
+            return False
+        mail = self.mail_message_id
+        if not mail or mail.model != 'discuss.channel':
+            return False
+        from .engine import _first_name
+        text = REVIEW_TEXT.format(name=_first_name(partner), url=url)
+        bot_partner = self.env.ref('base.partner_root')
+        reply_mail = self.env['mail.message'].sudo().with_context(from_cristal_agent=True).create({
+            'author_id': bot_partner.id,
+            'body': text,
+            'message_type': 'whatsapp_message',
+            'model': 'discuss.channel',
+            'res_id': mail.res_id,
+            'subtype_id': self.env.ref('mail.mt_comment').id,
+        })
+        wa = self.sudo().create({
+            'mail_message_id': reply_mail.id,
+            'wa_account_id': self.wa_account_id.id,
+            'mobile_number': self.mobile_number,
+            'message_type': 'outbound',
+            'state': 'outgoing',
+        })
+        wa._send_message()
+        partner.sudo().cristal_review_asked_date = fields.Datetime.now()
+        touch.review_requested = True
+        return True
 
 
 class CristalFidTouch(models.Model):

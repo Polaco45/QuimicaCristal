@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+    <!-- Ficha de Google de Química Cristal (San Martín 2350): abre directo "Escribir una opinión" -->
+    <record id="param_google_review_url" model="ir.config_parameter">
+        <field name="key">cristal_fidelizacion.google_review_url</field>
+        <field name="value">https://search.google.com/local/writereview?placeid=ChIJuTB1Qw4A0pURmqBxeX94JD4</field>
+    </record>
+</odoo>
