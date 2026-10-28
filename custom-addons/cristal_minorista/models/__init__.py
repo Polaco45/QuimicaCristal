@@ -3,3 +3,4 @@ from . import origin
 from . import res_partner
 from . import family
 from . import engine
+from . import pos

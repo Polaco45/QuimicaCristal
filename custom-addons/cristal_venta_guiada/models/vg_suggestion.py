@@ -206,7 +206,7 @@ class CristalVgSuggestion(models.Model):
                         (q for q in info.values() if q['product'].id != pid and q[key] == p[key]
                          and q['liters'] and q['liters'] > p['liters'] and sellable(q)
                          and q['price'] / q['liters'] < 0.9 * p['price'] / p['liters']),
-                        key=lambda q: (q['liters'], -q['stock']))
+                        key=lambda q: (-q['liters'], -q['stock']))   # el más grande primero
                     if bigger:
                         q = bigger[0]
                         saving = round(100 * (1 - (q['price'] / q['liters']) / (p['price'] / p['liters'])))
