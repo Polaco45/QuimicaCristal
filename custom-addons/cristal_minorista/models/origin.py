@@ -1,5 +1,9 @@
 # -*- coding: utf-8 -*-
+from datetime import timedelta
+
 from odoo import api, fields, models
+
+AD_ATTRIBUTION_DAYS = 14
 
 ORIGINS = [
     ('local', 'Local'),
@@ -46,8 +50,38 @@ class SaleOrder(models.Model):
                 continue
             if bot_ids is None:
                 bot_ids = self._cristal_bot_user_ids()
-            vals['cristal_origin'] = 'whatsapp_ia' if self.env.uid in bot_ids else 'manual'
+            if self.env.uid in bot_ids:
+                ad = self._cristal_ad_reference(vals.get('partner_id'))
+                vals['cristal_origin'] = 'anuncio' if ad else 'whatsapp_ia'
+                if ad:
+                    vals['cristal_origin_ref'] = ad
+            else:
+                vals['cristal_origin'] = 'manual'
         return super().create(vals_list)
+
+    @api.model
+    def _cristal_ad_reference(self, partner_id, days=AD_ATTRIBUTION_DAYS):
+        """Mensaje precargado del anuncio con el que el cliente abrió el chat (últimos
+        días), o False. Los mensajes van en el parámetro cristal_minorista.ad_messages,
+        separados por |."""
+        phrases = [p.strip() for p in (self.env['ir.config_parameter'].sudo().get_param(
+            'cristal_minorista.ad_messages') or '').split('|') if p.strip()]
+        partner = self.env['res.partner'].sudo().browse(partner_id).exists() if partner_id else False
+        if not (phrases and partner):
+            return False
+        since = fields.Datetime.now() - timedelta(days=days)
+        channels = self.env['discuss.channel'].sudo().search([
+            ('channel_type', '=', 'whatsapp'),
+            ('channel_partner_ids', 'in', partner.commercial_partner_id.child_ids.ids + [partner.id,
+                                                                                          partner.commercial_partner_id.id])])
+        if not channels:
+            return False
+        for phrase in phrases:
+            if self.env['mail.message'].sudo().search_count([
+                    ('model', '=', 'discuss.channel'), ('res_id', 'in', channels.ids),
+                    ('date', '>=', since), ('body', 'ilike', phrase)]):
+                return phrase[:120]
+        return False
 
 
 class PosOrder(models.Model):

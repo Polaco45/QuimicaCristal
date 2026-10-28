@@ -1240,3 +1240,34 @@ class CristalAgentRouteSelftest(models.TransientModel):
             return ("RC → L.C 1 sin mínimo ni descuento · Sampacho con envío → no (retiro o web) "
                     "· Sampacho retirando → L.C 1 sin flete")
         self._case(results, "39. Consumidor final", c_consumidor_final)
+
+        # 40) Claudio confirma solo el pedido de consumidor final (efectivo/transferencia)
+        def c_confirma_cf():
+            confirm = ToolRegistry.get('confirm_cf_order')
+
+            def q(partner, mode=None):
+                kw = {'delivery_mode': mode} if mode else {}
+                return cso.execute(env=env, run=None, partner_id=partner.id, consumidor_final=True,
+                                   lines=[{'product_id': product.id, 'qty': 1}], **kw)
+            p1 = mk_partner('CF confirma', 'Rio Cuarto')
+            o1 = q(p1)['order_id']
+            r = confirm.execute(env=env, run=None, partner_id=p1.id, order_id=o1, payment='efectivo')
+            assert r.get('not_confirmed') and 'dirección' in ' '.join(r.get('problems', [])), r
+            p1.street = 'San Martín 1000'
+            r = confirm.execute(env=env, run=None, partner_id=p1.id, order_id=o1, payment='cheque')
+            assert r.get('not_confirmed'), "confirmó con cheque"
+            r = confirm.execute(env=env, run=None, partner_id=p1.id, order_id=o1, payment='transferencia')
+            assert r.get('confirmed') and SaleOrder.browse(o1).state == 'sale', r
+            p2 = mk_partner('CF retira Sampacho', 'Sampacho')
+            o2 = q(p2, 'retiro')['order_id']
+            r = confirm.execute(env=env, run=None, partner_id=p2.id, order_id=o2, payment='efectivo')
+            assert r.get('confirmed'), r
+            p3 = mk_partner('Mayorista', 'Rio Cuarto')
+            p3.street = 'X 1'
+            o3 = cso.execute(env=env, run=None, partner_id=p3.id,
+                             lines=[{'product_id': product.id, 'qty': 1, 'price_unit': 60000}])['order_id']
+            r = confirm.execute(env=env, run=None, partner_id=p3.id, order_id=o3, payment='efectivo')
+            assert r.get('not_confirmed'), "confirmó una cotización mayorista"
+            return ("sin dirección → no · cheque → no · transferencia en RC → confirmado · "
+                    "retiro en Sampacho → confirmado · cotización mayorista → no")
+        self._case(results, "40. Claudio confirma solo al consumidor final", c_confirma_cf)

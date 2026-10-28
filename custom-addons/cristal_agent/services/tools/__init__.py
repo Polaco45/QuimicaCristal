@@ -82,6 +82,9 @@ from . import mark_opt_out
 # v1.44 — Permiso para avisos por WhatsApp (cristal_minorista)
 from . import set_promo_consent
 
+# v1.48 — Claudio confirma solo los pedidos de consumidor final
+from . import confirm_cf_order
+
 # Calificación institucional (v1.9.1)
 from . import update_qualification_data
 from . import complete_institutional_qualification
