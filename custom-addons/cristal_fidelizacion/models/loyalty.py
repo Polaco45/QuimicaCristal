@@ -25,6 +25,7 @@ class ResPartner(models.Model):
     _inherit = 'res.partner'
 
     cristal_fid_welcome_given = fields.Boolean(string='Recibió puntos de bienvenida', copy=False)
+    cristal_review_asked_date = fields.Datetime(string='Último pedido de reseña en Google', copy=False)
 
     def _cristal_loyalty_card(self, create=False):
         self.ensure_one()

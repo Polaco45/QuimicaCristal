@@ -29,6 +29,7 @@ class CristalFidTouch(models.Model):
     reply_text = fields.Char(string='Texto de la respuesta')
     reply_date = fields.Datetime(string='Fecha de la respuesta')
     sale_order_id = fields.Many2one('sale.order', string='Pedido generado')
+    review_requested = fields.Boolean(string='Se le pidió reseña en Google')
     converted = fields.Boolean(string='Compró después', index=True,
                                help='Compró en cualquier canal dentro de los 14 días siguientes.')
     converted_date = fields.Date(string='Fecha de la compra')

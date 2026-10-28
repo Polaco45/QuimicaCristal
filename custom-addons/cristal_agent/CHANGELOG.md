@@ -7,6 +7,15 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.46.0] — 2026-10-28
+
+### Added — Reseñas en Google
+
+- Prompt v7: a un cliente que dice que le llegó bien o quedó conforme, Claudio le pide UNA
+  vez una reseña con el link directo a "Escribir una opinión" de la ficha de Google.
+- Las respuestas "Muy bien" a la encuesta de fidelización las contesta cristal_fidelizacion
+  con el pedido de reseña; Claudio no escribe encima.
+
 ## [18.0.1.45.0] — 2026-10-28
 
 ### Added — Claudio le vende al consumidor final
