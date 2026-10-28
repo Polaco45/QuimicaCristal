@@ -59,6 +59,9 @@ class CristalFidEngine(models.AbstractModel):
         """[(partner, variables, family, ref_date)] — se le termina en ≤ 4 días."""
         cycles = self.env['cristal.cf.cycle'].sudo().search([
             ('customer_type', '=', 'cf'),
+            ('partner_id.cristal_wa_key', '!=', False),
+            ('partner_id.cristal_mkt_optout', '=', False),
+            ('partner_id.active', '=', True),
             ('next_due_date', '>=', today),
             ('next_due_date', '<=', today + timedelta(days=REPOSITION_LEAD_DAYS)),
         ], order='next_due_date')
