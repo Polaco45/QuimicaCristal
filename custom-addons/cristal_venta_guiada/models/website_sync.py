@@ -74,7 +74,8 @@ class CristalVgSuggestion(models.Model):
             if s.kind == 'size':
                 sizes[key].append(target.product_tmpl_id)
             else:
-                complements[key].append(target)
+                if target.product_tmpl_id.id != key:
+                    complements[key].append(target)
 
         # Primera vez: lo que ya estaba cargado a mano queda protegido
         Param = self.env['ir.config_parameter'].sudo()
@@ -92,7 +93,8 @@ class CristalVgSuggestion(models.Model):
 
         updated = 0
         for tmpl in published.filtered(lambda t: not t.cristal_web_manual and t.type != 'combo'):
-            bigger = same_company(tmpl, list(dict.fromkeys(sizes.get(tmpl.id, []))))[:1]
+            # Si el tamaño grande es otra variante del mismo producto, ya se elige en la ficha
+            bigger = same_company(tmpl, [t for t in dict.fromkeys(sizes.get(tmpl.id, [])) if t != tmpl])[:1]
             optional = same_company(tmpl, combos_of.get(tmpl.id, [])[:2] + bigger)[:MAX_OPTIONAL]
             accessory = same_company(tmpl, list(dict.fromkeys(complements.get(tmpl.id, []))))[:MAX_ACCESSORY]
             vals = {}
