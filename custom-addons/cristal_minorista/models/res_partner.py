@@ -45,7 +45,7 @@ def wa_key(raw):
         d = d[2:]
     if d.startswith('54'):
         d = d[2:]
-    if d.startswith('9') and len(d) == 11:
+    if d.startswith('9') and len(d) in (11, 13):   # 9 de celular (a veces con el 15 también)
         d = d[1:]
     if d.startswith('0'):
         d = d[1:]

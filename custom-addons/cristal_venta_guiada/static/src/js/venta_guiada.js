@@ -25,6 +25,11 @@ function cleanName(product) {
     return (product?.display_name || "").replace(/^\[[^\]]*\]\s*/, "");
 }
 
+// Nombre sin código ni tamaño/variante: "Lavandina Doble Rend Crilimp (1 lt)" → "lavandina doble rend crilimp".
+function baseName(product) {
+    return cleanName(product).replace(/\s*\([^)]*\)\s*$/, "").trim().toLowerCase();
+}
+
 function isLoose(line) {
     return !line.combo_parent_id && !line.combo_line_ids?.length;
 }
@@ -177,23 +182,40 @@ patch(PosStore.prototype, {
                 }
             }
             const key = `combo-${combo.product_id}`;
-            if (!matched.includes(product.id) || state.shown.includes(key)) {
+            if (state.shown.includes(key)) {
                 continue;
             }
+            // Sin el producto exacto, sirve el mismo producto en otro tamaño (lavandina
+            // de 1 lt → combo con la de 5 lts): al aceptar, el combo la reemplaza.
+            let upgradePrice = 0;
+            if (!matched.includes(product.id)) {
+                const base = baseName(product);
+                const idx = missing.findIndex((slot) =>
+                    slot.some((id) => baseName(this.models["product.product"].get(id)) === base)
+                );
+                if (idx < 0) {
+                    continue;
+                }
+                upgradePrice = slotPrice(missing[idx]);
+                missing.splice(idx, 1);
+                matched.push(product.id);
+            }
             const loosePrice =
-                matched.reduce((sum, pid) => sum + priceOf(pid), 0) +
+                upgradePrice +
+                matched.filter((pid, i) => !(upgradePrice && i === matched.length - 1))
+                    .reduce((sum, pid) => sum + priceOf(pid), 0) +
                 missing.reduce((sum, slot) => sum + slotPrice(slot), 0);
             if (loosePrice <= combo.price) {
                 continue;
             }
             if (!best || combo.price > best.combo.price) {
-                best = { combo, matched, missing, key, saving: loosePrice - combo.price, loosePrice };
+                best = { combo, matched, missing, key, saving: loosePrice - combo.price, loosePrice, upgrade: !!upgradePrice };
             }
         }
         if (!best) {
             return null;
         }
-        const { combo, matched, missing, key, saving, loosePrice } = best;
+        const { combo, matched, missing, key, saving, loosePrice, upgrade } = best;
         let text;
         if (!missing.length) {
             text = _t("Ya lleva todo el %(name)s. Cobralo como combo: suelto %(loose)s, combo %(price)s. Ahorra %(saving)s.", {
@@ -216,6 +238,9 @@ patch(PosStore.prototype, {
                 loose: this.cristalVgFormat(loosePrice),
                 saving: this.cristalVgFormat(saving),
             });
+        }
+        if (upgrade) {
+            text = _t("%(text)s Su %(product)s pasa a la del combo.", { text, product: cleanName(product) });
         }
         return {
             kind: "combo",
