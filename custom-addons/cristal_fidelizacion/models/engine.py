@@ -20,6 +20,17 @@ def _label(family):
     return family.wa_label or 'tu %s' % (family.name or '').lower()
 
 
+def _first_name(partner):
+    """Nombre de pila para el saludo: "Giordano, Oscar Rafael" → "Oscar"; "ana PEREZ" → "Ana"."""
+    name = (partner.name or '').strip()
+    if ',' in name:
+        name = name.split(',', 1)[1].strip()
+    word = name.split()[0] if name.split() else ''
+    if not word.isalpha() or name.lower().startswith('cliente whatsapp'):
+        return 'qué tal'   # "Hola qué tal 👋": Meta no acepta la variable vacía
+    return word[:1].upper() + word[1:].lower()
+
+
 class CristalFidEngine(models.AbstractModel):
     _name = 'cristal.fid.engine'
     _description = 'Fidelización — motor diario'
@@ -164,6 +175,7 @@ class CristalFidEngine(models.AbstractModel):
                 continue
             count = 0
             for partner, variables, family, ref_date in selector(flow, today):
+                variables = [_first_name(partner)] + variables   # {{1}} = nombre de pila
                 if count >= (flow.daily_limit or 0):
                     break
                 if self._blocked(partner, flow, recent_any, recent_mkt):
