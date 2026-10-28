@@ -7,6 +7,22 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.45.0] — 2026-10-28
+
+### Added — Claudio le vende al consumidor final
+
+- `create_sale_order(consumidor_final=true)`: lista L.C 1, sin compra mínima ni 20% de
+  primera compra; envío solo en Río Cuarto / Las Higueras (lo cobra la regla #73: $6.500,
+  gratis desde $65.000) o retiro en el local (método "Retirar en el Local"). Fuera de zona
+  devuelve `blocked_cf_zone`. Devuelve `cf_note` con la escalera de venta y, si falta para
+  el envío gratis, cuánto.
+- Prompt v7, sección 4b: atender y vender al consumidor final (escalera combo → tamaño →
+  complemento, permiso de avisos al cerrar).
+
+### Changed
+
+- KB 17, 22, 24 y 26 (derivar al consumidor final al local) quedan inactivas.
+
 ## [18.0.1.44.0] — 2026-10-28
 
 ### Added — Permiso para avisos por WhatsApp (sistema minorista)

@@ -1211,3 +1211,32 @@ class CristalAgentRouteSelftest(models.TransientModel):
             return (f"informe con costo por pedido vendido · {note} · recompra: cada 10 días, "
                     f"última hace 12 → aviso (y no se repite)")
         self._case(results, "38. Informe semanal, WhatsApp y recompra", c_informe_recompra)
+
+        # ═════════════════ Consumidor final (v1.45) ═════════════════
+        # 39) Río Cuarto: precio público, sin mínimo; ruta: no se envía; retiro sí.
+        def c_consumidor_final():
+            lc1 = env['product.pricelist'].sudo().search([('name', '=', 'L.C 1')], limit=1)
+            assert lc1, "no existe la lista L.C 1"
+
+            def q(partner, mode=None):
+                kw = {'delivery_mode': mode} if mode else {}
+                return cso.execute(env=env, run=None, partner_id=partner.id, consumidor_final=True,
+                                   lines=[{'product_id': product.id, 'qty': 1}], **kw)
+            p1 = mk_partner('CF RC', 'Rio Cuarto')
+            r = q(p1)
+            assert r.get('ok') and not r.get('blocked_min_compra'), r
+            o = SaleOrder.browse(r['order_id'])
+            assert o.pricelist_id == lc1, o.pricelist_id.name
+            assert not o.order_line.filtered(lambda l: l.discount), "aplicó descuento"
+            assert 'CONSUMIDOR FINAL' in (r.get('cf_note') or ''), r.get('cf_note')
+            p2 = mk_partner('CF Sampacho', 'Sampacho')
+            r = q(p2)
+            assert r.get('blocked_cf_zone') and not r.get('order_id'), r
+            r = q(p2, 'retiro')
+            assert r.get('ok'), r
+            o = SaleOrder.browse(r['order_id'])
+            assert o.pricelist_id == lc1 and not freight_lines(o) and not o.route_departure_id, \
+                "retiro de consumidor final con lista, flete o salida de ruta"
+            return ("RC → L.C 1 sin mínimo ni descuento · Sampacho con envío → no (retiro o web) "
+                    "· Sampacho retirando → L.C 1 sin flete")
+        self._case(results, "39. Consumidor final", c_consumidor_final)
