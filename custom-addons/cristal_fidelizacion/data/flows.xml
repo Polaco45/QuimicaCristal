@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+    <record id="flow_reposicion" model="cristal.fid.flow">
+        <field name="name">Recordatorio de reposición</field>
+        <field name="code">reposicion</field>
+        <field name="sequence">10</field>
+        <field name="category">utility</field>
+        <field name="daily_limit">40</field>
+        <field name="wa_account_id" search="[('name', '=', 'Cristal Mayorista')]"/>
+        <field name="description">Cuatro días antes de que, según su ritmo de compra, se le termine un producto, le ofrece llevárselo en la próxima vuelta. Si dice que sí, queda un pedido en borrador para confirmar.</field>
+        <field name="template_body">Hola {{1}} 👋 Por tu última compra, en estos días se te estaría terminando {{2}}. ¿Querés que te lo llevemos en la próxima vuelta de reparto? Respondé con un botón y te lo reservamos.</field>
+        <field name="button_texts">Sí, reservámelo|Ahora no|No me avisen más</field>
+    </record>
+    <record id="flow_satisfaccion" model="cristal.fid.flow">
+        <field name="name">Encuesta post-compra</field>
+        <field name="code">satisfaccion</field>
+        <field name="sequence">20</field>
+        <field name="category">utility</field>
+        <field name="daily_limit">30</field>
+        <field name="wa_account_id" search="[('name', '=', 'Cristal Mayorista')]"/>
+        <field name="description">A los 4 días de la compra (solo en sus primeras 3 compras) pregunta cómo le fue. Si responde Regular o Mal, se crea una tarea para llamarlo.</field>
+        <field name="template_body">Hola {{1}}, ¿cómo te fue con tu compra del {{2}} en Química Cristal? Contanos con un botón 👇</field>
+        <field name="button_texts">Muy bien|Regular|Mal</field>
+    </record>
+    <record id="flow_segunda_compra" model="cristal.fid.flow">
+        <field name="name">Segunda compra</field>
+        <field name="code">segunda_compra</field>
+        <field name="sequence">30</field>
+        <field name="category">marketing</field>
+        <field name="daily_limit">20</field>
+        <field name="wa_account_id" search="[('name', '=', 'Cristal Mayorista')]"/>
+        <field name="offer_text">envío gratis en tu segundo pedido</field>
+        <field name="description">A los 20 días de la primera compra, si no volvió, le ofrece un beneficio para el segundo pedido (la segunda compra es la que fideliza).</field>
+        <field name="template_body">Hola {{1}}, gracias por elegir Química Cristal 🙌 Para tu próxima compra tenés {{2}}. Escribinos por acá y te lo llevamos a tu casa.</field>
+        <field name="button_texts">Quiero pedir|No me manden promociones</field>
+    </record>
+    <record id="flow_reactivacion_1" model="cristal.fid.flow">
+        <field name="name">Reactivación 1 — te extrañamos</field>
+        <field name="code">reactivacion_1</field>
+        <field name="sequence">40</field>
+        <field name="category">marketing</field>
+        <field name="daily_limit">25</field>
+        <field name="wa_account_id" search="[('name', '=', 'Cristal Mayorista')]"/>
+        <field name="description">Una semana después de su ciclo normal sin comprar. Sin descuento: solo recuerda su producto habitual.</field>
+        <field name="template_body">Hola {{1}} 👋 Hace un tiempo que no te vemos por Química Cristal. ¿Necesitás reponer {{2}}? Te lo llevamos a tu casa en la próxima vuelta.</field>
+        <field name="button_texts">Quiero pedir|Ahora no|No me manden promociones</field>
+    </record>
+    <record id="flow_reactivacion_2" model="cristal.fid.flow">
+        <field name="name">Reactivación 2 — regalo</field>
+        <field name="code">reactivacion_2</field>
+        <field name="sequence">50</field>
+        <field name="category">marketing</field>
+        <field name="daily_limit">20</field>
+        <field name="wa_account_id" search="[('name', '=', 'Cristal Mayorista')]"/>
+        <field name="offer_text">un Limpiador Desodorante 900cc de regalo</field>
+        <field name="description">A los 2 ciclos sin comprar (y solo si recibió el paso 1). Ofrece un regalo de bajo costo con su próximo pedido.</field>
+        <field name="template_body">Hola {{1}}, te guardamos {{2}} con tu próximo pedido en Química Cristal 🎁 Escribinos y te lo llevamos.</field>
+        <field name="button_texts">Quiero pedir|Ahora no|No me manden promociones</field>
+    </record>
+    <record id="flow_reactivacion_3" model="cristal.fid.flow">
+        <field name="name">Reactivación 3 — último aviso</field>
+        <field name="code">reactivacion_3</field>
+        <field name="sequence">60</field>
+        <field name="category">marketing</field>
+        <field name="daily_limit">15</field>
+        <field name="wa_account_id" search="[('name', '=', 'Cristal Mayorista')]"/>
+        <field name="offer_text">un 10% de descuento</field>
+        <field name="description">A los 3 ciclos sin comprar (y solo si recibió el paso 2). Descuento con vencimiento a 10 días. Después de 6 ciclos no se le escribe más.</field>
+        <field name="template_body">Hola {{1}}, tenés {{2}} en tu próximo pedido de Química Cristal, válido hasta el {{3}}. ¿Te lo preparamos?</field>
+        <field name="button_texts">Quiero pedir|Ahora no|No me manden promociones</field>
+    </record>
+</odoo>
