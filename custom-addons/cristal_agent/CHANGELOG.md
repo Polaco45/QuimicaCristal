@@ -7,6 +7,16 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.48.0] — 2026-10-28
+
+### Added — Claudio confirma solo los pedidos de consumidor final
+
+- Tool `confirm_cf_order(partner_id, order_id, payment)`: confirma la cotización si es
+  L.C 1, el cliente no es negocio, hay stock, y es envío en Río Cuarto / Las Higueras con
+  dirección o retiro en el local; pago solo efectivo o transferencia. Avisa en el canal
+  interno. Si algo falla devuelve `not_confirmed` con los motivos.
+- Prompt v7: reglas de oro 2 y 5 y sección 4b. Autotest 40.
+
 ## [18.0.1.47.0] — 2026-10-28
 
 ### Added

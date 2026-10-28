@@ -78,6 +78,30 @@ class ResPartner(models.Model):
         return res
 
 
+class CristalFidEngine(models.AbstractModel):
+    _inherit = 'cristal.fid.engine'
+
+    @api.model
+    def _cron_run(self, flows=None):
+        res = super()._cron_run(flows=flows)
+        self._cristal_reset_anonymous_points()
+        return res
+
+    @api.model
+    def _cristal_reset_anonymous_points(self):
+        """El Consumidor Final Anónimo no junta puntos: si no, la caja le termina aplicando
+        premios solos (Joaco ya los puso en 0 una vez; el punto de venta los vuelve a sumar)."""
+        anon = self.env['cristal.minorista.engine']._anonymous_partner_id()
+        program = _loyalty_program(self.env)
+        if not (anon and program):
+            return
+        cards = self.env['loyalty.card'].sudo().search([
+            ('program_id', '=', program.id), ('partner_id', '=', anon), ('points', '!=', 0)])
+        if cards:
+            _logger.info("lealtad: Anónimo de nuevo en 0 (tenía %s puntos)", sum(cards.mapped('points')))
+            cards.write({'points': 0})
+
+
 class PosOrder(models.Model):
     _inherit = 'pos.order'
 

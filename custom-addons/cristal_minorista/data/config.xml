@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+    <!-- Mensajes precargados de los anuncios "clic a WhatsApp" (separados por |): la venta
+         de Claudio a quien abrió el chat con uno de estos queda con origen "Anuncio". -->
+    <record id="param_ad_messages" model="ir.config_parameter">
+        <field name="key">cristal_minorista.ad_messages</field>
+        <field name="value">Quiero el Combo Limpieza Total|Quiero el Combo Casa Limpia|Quiero la promo de Cloro</field>
+    </record>
+</odoo>
