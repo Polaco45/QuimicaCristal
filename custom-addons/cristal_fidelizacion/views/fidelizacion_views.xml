@@ -122,6 +122,17 @@
         </field>
     </record>
 
+    <record id="view_cristal_cf_family_list_fid" model="ir.ui.view">
+        <field name="name">cristal.cf.family.list.fid</field>
+        <field name="model">cristal.cf.family</field>
+        <field name="inherit_id" ref="cristal_minorista.view_cristal_cf_family_list"/>
+        <field name="arch" type="xml">
+            <field name="name" position="after">
+                <field name="wa_label"/>
+            </field>
+        </field>
+    </record>
+
     <menuitem id="menu_fidelizacion" name="Fidelización" parent="cristal_minorista.menu_minorista_root" sequence="25"/>
     <menuitem id="menu_fidelizacion_touch" name="Mensajes" parent="menu_fidelizacion"
               action="action_cristal_fid_touch" sequence="10"/>
