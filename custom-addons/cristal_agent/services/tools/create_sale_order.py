@@ -41,6 +41,8 @@ class CreateSaleOrder(AgentTool):
     GRANEL_MIN_L = 20          # mínimo a granel por producto, SIN excepción
     COMPRA_MIN = 50000.0       # compra mínima oficial (comunicar + upsell)
     COMPRA_PISO = 39990.0      # piso duro: NO cotizar/enviar por menos
+    CF_PRICELIST = 'L.C 1'     # precio público (consumidor final)
+    CF_FREE_SHIPPING = 65000.0  # regla automática #73: envío gratis desde acá
 
     description = (
         "Crea o ACTUALIZA la ÚNICA cotización (sale.order draft) del cliente. "
@@ -90,6 +92,13 @@ class CreateSaleOrder(AgentTool):
                 },
             },
             "pricelist_name": {"type": "string", "description": "Default: 'Lista Mayorista'."},
+            "consumidor_final": {
+                "type": "boolean",
+                "description": "true = compra para su casa (no revende): precio público "
+                               "(L.C 1), sin compra mínima, envío solo en Río Cuarto / Las "
+                               "Higueras ($6.500, gratis desde $65.000) o retiro en el local. "
+                               "Sin 20% de primera compra.",
+            },
             "note": {"type": "string", "description": "(Opcional) Nota interna."},
             "discount_percent": {
                 "type": "number",
@@ -494,13 +503,21 @@ class CreateSaleOrder(AgentTool):
     # ─────────────────────────────── Main ───────────────────────────────
     def _execute(self, env, run=None, partner_id=None, lines=None,
                  pricelist_name='Lista Mayorista', note=None,
-                 discount_percent=None, bidones_nuevos=None, delivery_mode=None, **kwargs):
+                 discount_percent=None, bidones_nuevos=None, delivery_mode=None,
+                 consumidor_final=False, **kwargs):
         if not (partner_id and lines):
             return {"error": "partner_id y lines son obligatorios"}
 
         partner = env['res.partner'].sudo().browse(int(partner_id))
         if not partner.exists():
             return {"error": f"partner_id={partner_id} no existe"}
+
+        # v1.45 — CONSUMIDOR FINAL: precio público, sin mínimo ni 20% de primera compra.
+        # El envío ($6.500, gratis desde $65.000) lo agrega la regla automática #73.
+        is_cf = bool(consumidor_final)
+        if is_cf:
+            pricelist_name = self.CF_PRICELIST
+            discount_percent = None
 
         # v1.38 — RETIRO EN PLANTA: sin compra mínima, sin flete ni salida de ruta
         # (Joaco: "en el local pueden ir a buscar tranquilamente sin mínimo"). Caso
@@ -540,6 +557,17 @@ class CreateSaleOrder(AgentTool):
                         f"y volvé a cotizar. NO lo trates como fuera de zona."),
                 }
 
+        if is_cf and not is_pickup and route_ctx and route_ctx['kind'] in ('circuit', 'fuera_zona'):
+            return {
+                "ok": False,
+                "blocked_cf_zone": True,
+                "message_for_bot": (
+                    f"A consumidor final solo le enviamos en Río Cuarto y Las Higueras "
+                    f"({partner.city} no). Ofrecele retirarlo en el local (San Martín 2350, "
+                    f"sin mínimo: volvé a cotizar con delivery_mode='retiro') o comprar en "
+                    f"quimicacristal.com.ar. No le ofrezcas el camión de la ruta."),
+            }
+
         # ── GUARDRAIL: el 20% es SOLO de PRIMERA compra ──
         # Bug real (caso Ariel, 3ra compra): el bot aplicó el 20% de primera compra
         # a un cliente que YA había comprado. No se puede confiar en que el LLM
@@ -576,6 +604,9 @@ class CreateSaleOrder(AgentTool):
 
         Pricelist = env['product.pricelist'].sudo()
         pricelist = Pricelist.search([('name', '=', pricelist_name)], limit=1)
+        if is_cf and not pricelist:
+            return {"error": f"No encontré la lista '{self.CF_PRICELIST}' de consumidor final. "
+                             f"Escalá a Joaco."}
         if not pricelist and pricelist_name != 'Lista Mayorista':
             pricelist = Pricelist.search([('name', '=', 'Lista Mayorista')], limit=1)
         if not pricelist:
@@ -764,6 +795,12 @@ class CreateSaleOrder(AgentTool):
                         lambda l: l.product_id == self._freight_product(env, config)).unlink()
                     order.write({'cristal_delivery_mode': 'retiro',
                                  'route_departure_id': False, 'commitment_date': False})
+                    if is_cf and 'carrier_id' in order._fields:
+                        # La regla #73 no cobra envío con el método "Retirar en el Local".
+                        pickup_carrier = env['delivery.carrier'].sudo().search(
+                            [('name', 'ilike', 'retirar')], limit=1)
+                        if pickup_carrier:
+                            order.carrier_id = pickup_carrier
                 else:
                     order.cristal_delivery_mode = 'envio'
 
@@ -820,7 +857,7 @@ class CreateSaleOrder(AgentTool):
         pickup_hint = (" Si el cliente RETIRA en la planta, NO hay compra mínima: "
                        "preguntale si lo retira y, si es así, volvé a llamar "
                        "create_sale_order con delivery_mode='retiro'.")
-        if not is_route and not is_pickup and total < self.COMPRA_PISO:
+        if not is_route and not is_pickup and not is_cf and total < self.COMPRA_PISO:
             return {
                 "ok": False,
                 "blocked_min_compra": True,
@@ -843,7 +880,16 @@ class CreateSaleOrder(AgentTool):
             }
 
         upsell = None
-        if not is_route and not is_pickup and total < self.COMPRA_MIN:
+        if is_cf and not is_pickup:
+            products_total = sum(l.price_total for l in order.order_line
+                                 if not getattr(l, 'is_delivery', False))
+            if products_total < self.CF_FREE_SHIPPING:
+                upsell = (
+                    f"Consumidor final: el envío cuesta $6.500 y es GRATIS desde "
+                    f"{_fmt_money(self.CF_FREE_SHIPPING)} (le faltan "
+                    f"{_fmt_money(self.CF_FREE_SHIPPING - products_total)}). Ofrecé UNA opción "
+                    f"concreta para llegar, empezando por un combo; si no quiere, va con envío.")
+        elif not is_route and not is_pickup and total < self.COMPRA_MIN:
             falta = self.COMPRA_MIN - total
             upsell = (
                 f"El total va {_fmt_money(total)}. La compra mínima CON ENVÍO es "
@@ -917,6 +963,11 @@ class CreateSaleOrder(AgentTool):
 
         result['delivery_mode'] = 'retiro' if is_pickup else 'envio'
         # 5) Ruta del camión: condiciones de envío + escalamiento a Joaco
+        if is_cf:
+            result['cf_note'] = (
+                "CONSUMIDOR FINAL: precio público (L.C 1). Antes de cerrar, ofrecé UNA mejora "
+                "en este orden: el combo que incluye lo que lleva → el tamaño más grande → un "
+                "complemento. Si nunca se le preguntó, pedile el permiso de avisos por WhatsApp.")
         if is_pickup:
             result['route_note'] = (
                 "RETIRO EN PLANTA (San Martín 2350, Río Cuarto): sin compra mínima y sin "
