@@ -26,6 +26,25 @@ PASTILLA_GRANDE_1KG = [6286]
 ALGUICIDA_1L = [5205]
 CLARIFICADOR_1L = [5291]
 BOYA = [4058]
+JABON_PREMIUM_1L = [5432]
+SUAVIZANTE_1L = [5581, 5584]
+LAVANDINA_1L = [11959]
+DETERGENTE_1L = [6334]
+DESENGRASANTE_1L = [5315]
+LIMP_DESOD_900CC_COMBO = [11766, 11767, 11768, 11765]
+ESPONJA_PRACTICA = [4432]
+
+# Combos de 1 lt (aprobados por Joaco el 28/10/2026): el primer escalón para quien
+# lleva productos chicos.
+COMBOS_1L = [
+    ('Combo Limpieza Diaria', 5990, [
+        ('Lavandina 1L', LAVANDINA_1L), ('Detergente 1L', DETERGENTE_1L),
+        ('Limpiador desodorante 900cc', LIMP_DESOD_900CC_COMBO), ('Desengrasante 1L', DESENGRASANTE_1L),
+        ('Esponja', ESPONJA_PRACTICA)]),
+    ('Combo Ropa', 6490, [
+        ('Jabón Premium 1L', JABON_PREMIUM_1L), ('Suavizante 1L', SUAVIZANTE_1L),
+        ('Perfume para ropa 1L', PERFUME_ROPA_1L)]),
+]
 
 COMBOS = [
     ('Combo Casa Completa', 39900, [
@@ -52,7 +71,8 @@ COMBOS = [
     ('Combo Casa Limpia', 9900, [
         ('Lavandina 5L', LAVANDINA_5L), ('Limpiador desodorante 5L', LIMP_DESOD_5L),
         ('Trapo de piso', TRAPO_PISO), ('Paño absorbente', PANO_ABSORBENTE)]),
-]
+] + COMBOS_1L
+
 
 # Promo de caja: el cliente elige 2 de estos (combinables) por un precio fijo.
 PINO_AROMATIZANTE = [5538, 5539, 5540, 5541, 5542, 5543]
