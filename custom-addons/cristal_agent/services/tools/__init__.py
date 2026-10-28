@@ -79,6 +79,9 @@ from . import pause_bot
 from . import ask_advanced_model
 from . import mark_opt_out
 
+# v1.44 — Permiso para avisos por WhatsApp (cristal_minorista)
+from . import set_promo_consent
+
 # Calificación institucional (v1.9.1)
 from . import update_qualification_data
 from . import complete_institutional_qualification

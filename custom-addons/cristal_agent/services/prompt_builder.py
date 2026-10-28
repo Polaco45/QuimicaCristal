@@ -299,6 +299,15 @@ def _build_partner_context(env, partner):
             f"NO le ofrezcas nada por iniciativa propia. Si escribe él, atendelo normal; "
             f"si vuelve a pedir productos, llamá mark_opt_out(undo=true).")
 
+    # v1.44 — Permiso para avisos por WhatsApp (campos de cristal_minorista, si está)
+    if 'cristal_mkt_optin' in partner._fields:
+        if partner.cristal_mkt_optout:
+            lines.append("- avisos por WhatsApp: NO quiere promos (no se lo preguntes).")
+        elif partner.cristal_mkt_optin:
+            lines.append("- avisos por WhatsApp: ya aceptó (no se lo preguntes).")
+        else:
+            lines.append("- avisos por WhatsApp: todavía no se le preguntó.")
+
     # Observaciones acumuladas
     if partner.agent_observations:
         lines.append(f"\n### Observaciones acumuladas sobre este cliente:\n{partner.agent_observations}")
