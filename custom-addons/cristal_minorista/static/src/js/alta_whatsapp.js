@@ -41,6 +41,12 @@ export class AltaWhatsapp extends Component {
         return !partner || (!partner.cristal_mkt_optin && !partner.cristal_mkt_optout);
     }
 
+    // Confirmación después de anotarlo (con sus puntos, si hay programa de lealtad).
+    get done() {
+        const alta = this.order?.uiState.cristalAlta;
+        return alta?.done ? alta : null;
+    }
+
     get phonePlaceholder() {
         return this.realPartner?.mobile || this.realPartner?.phone || _t("Celular, ej. 358 4123456");
     }
@@ -66,7 +72,7 @@ export class AltaWhatsapp extends Component {
             if (this.realPartner) {
                 this.realPartner.cristal_mkt_optin = true;
             }
-            this.order.uiState.cristalAlta = { done: true, name: res.name };
+            this.order.uiState.cristalAlta = { done: true, ...res };
         } catch (error) {
             this.state.error = _t("No se pudo guardar (¿sin conexión?). Seguí cobrando.");
             console.warn("Alta WhatsApp:", error);
