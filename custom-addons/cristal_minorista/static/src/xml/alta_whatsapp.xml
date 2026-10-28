@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+    <t t-name="cristal_minorista.AltaWhatsapp">
+        <div t-if="visible" class="cristal-alta d-flex flex-column gap-2 rounded-3 border border-2 border-success bg-success-subtle p-2 mt-2">
+            <div class="lh-sm">
+                <div class="small fw-bolder text-uppercase opacity-75">WhatsApp del cliente</div>
+                <div class="fw-bold">"¿Te avisamos por WhatsApp cuando se te esté por terminar algo y cuando haya promos?"</div>
+            </div>
+            <div class="d-flex gap-2">
+                <input type="tel" class="form-control form-control-lg" t-att-placeholder="phonePlaceholder"
+                       t-model="state.phone" t-on-input="() => this.state.error = ''"/>
+                <input t-if="!realPartner" type="text" class="form-control form-control-lg" placeholder="Nombre"
+                       t-model="state.name"/>
+            </div>
+            <div t-if="state.error" class="text-danger fw-bold" t-esc="state.error"/>
+            <div class="d-flex gap-2">
+                <button class="btn btn-success btn-lg flex-grow-1" t-att-disabled="state.busy" t-on-click="accept">Sí, anotar</button>
+                <button class="btn btn-light" t-on-click="skip">No quiere</button>
+            </div>
+        </div>
+    </t>
+
+    <t t-name="cristal_minorista.PaymentScreen" t-inherit="point_of_sale.PaymentScreen" t-inherit-mode="extension">
+        <xpath expr="//div[hasclass('center-content')]/t[@t-call='point_of_sale.PaymentScreenDue']" position="after">
+            <AltaWhatsapp/>
+        </xpath>
+        <xpath expr="//div[hasclass('payment-screen')]/t[@t-call='point_of_sale.PaymentScreenDue']" position="after">
+            <AltaWhatsapp/>
+        </xpath>
+    </t>
+</templates>

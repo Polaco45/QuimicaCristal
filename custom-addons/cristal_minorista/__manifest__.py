@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 {
     'name': 'Cristal — Minorista (datos base)',
-    'version': '18.0.1.0.2',
+    'version': '18.0.1.1.0',
     'summary': 'Cimientos del sistema minorista: cliente único por WhatsApp, tipo de cliente '
                '(consumidor final o negocio), origen de cada venta, consentimiento de '
                'marketing, ciclo de consumo por familia de producto y segmentos RFM, '
@@ -15,6 +15,12 @@
         'data/cron.xml',
         'views/minorista_views.xml',
     ],
+    'assets': {
+        'point_of_sale._assets_pos': [
+            'cristal_minorista/static/src/js/alta_whatsapp.js',
+            'cristal_minorista/static/src/xml/alta_whatsapp.xml',
+        ],
+    },
     'post_init_hook': 'post_init_hook',
     'application': False,
     'installable': True,

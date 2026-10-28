@@ -42,8 +42,12 @@ class CristalMinoristaEngine(models.AbstractModel):
         pos_orders = self.env['pos.order'].sudo().search_read(
             [('date_order', '>=', since), ('state', 'in', ('paid', 'done', 'invoiced')),
              ('partner_id', '!=', False), ('amount_total', '>', 0)],
-            ['partner_id', 'date_order', 'amount_total', 'cristal_origin'], load=False)
-        sale_orders = self.env['sale.order'].sudo().search_read(
+            ['partner_id', 'cristal_customer_id', 'date_order', 'amount_total', 'cristal_origin'], load=False)
+        for o in pos_orders:
+            # Ticket anónimo de un cliente que dejó su WhatsApp en la caja
+            if o['cristal_customer_id']:
+                o['partner_id'] = o['cristal_customer_id']
+        sale_orders =self.env['sale.order'].sudo().search_read(
             [('date_order', '>=', since), ('state', '=', 'sale'),
              ('partner_id', '!=', False), ('amount_total', '>', 0)],
             ['partner_id', 'date_order', 'amount_total', 'cristal_origin'], load=False)
@@ -183,8 +187,13 @@ class CristalMinoristaEngine(models.AbstractModel):
             lines = self.env[model].sudo().search_read(domain, ['product_id', qty_field, order_field], load=False)
             orders = self.env[model.replace('.line', '')].sudo().browse(
                 list({l[order_field] for l in lines}))
-            info = {o.id: (o.partner_id.commercial_partner_id.id, fields.Date.to_date(o.date_order),
-                           o.partner_id.id) for o in orders}
+            info = {}
+            for o in orders:
+                # Ticket anónimo de un cliente que dejó su WhatsApp en la caja
+                partner = o.partner_id
+                if model == 'pos.order.line' and o.cristal_customer_id:
+                    partner = o.cristal_customer_id
+                info[o.id] = (partner.commercial_partner_id.id, fields.Date.to_date(o.date_order), partner.id)
             for line in lines:
                 partner_id, date, raw_partner = info[line[order_field]]
                 if raw_partner == anon:

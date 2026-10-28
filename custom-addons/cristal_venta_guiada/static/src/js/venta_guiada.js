@@ -31,7 +31,7 @@ function isLoose(line) {
 
 patch(PosStore.prototype, {
     async setup() {
-        this.cristalVg = { card: null };
+        this.cristalVg = { card: null, queue: [] };
         return await super.setup(...arguments);
     },
 
@@ -89,19 +89,65 @@ patch(PosStore.prototype, {
         return line;
     },
 
-    // Mira el ticket y elige qué sugerir para el producto recién cargado.
+    // Escalera de mayor a menor para el producto recién cargado: primero el combo más
+    // grande que lo incluye; si dice que no, el tamaño más grande; si no, el complemento.
+    // La promo de caja (2 por $X) va al final, al cobrar, a todos.
     cristalVgAfterAdd(line) {
         const order = this.get_order();
         const product = line.product_id;
         this.cristalVg.card = null;
+        this.cristalVg.queue = [];
         if (!this.cristalVgActive(order) || !product || product.isCombo()) {
             return;
         }
-        const vg = this.cristalVgConfig();
+        const steps = [];
+        const combo = this.cristalVgComboStep(order, product);
+        if (combo) {
+            steps.push(combo);
+        }
         const state = this.cristalVgState(order);
         const inCart = new Set(order.lines.map((l) => l.product_id?.id));
+        const suggestions = (this.cristalVgConfig().suggestions?.[product.id] || []).filter(
+            ([pid]) => this.models["product.product"].get(pid) && !inCart.has(pid)
+        );
+        const size = suggestions.find(([, kind]) => kind === "size");
+        const other = suggestions.find(([, kind]) => kind !== "size");
+        for (const [pid, kind, text] of [size, other].filter(Boolean)) {
+            const key = `${product.id}-${pid}`;
+            if (state.shown.includes(key)) {
+                continue;
+            }
+            steps.push({
+                kind,
+                key,
+                title: KIND_TITLE[kind] || KIND_TITLE.manual,
+                text,
+                triggerId: product.id,
+                productId: pid,
+                orderUuid: order.uuid,
+                amount: this.models["product.product"].get(pid).get_price(order.pricelist_id, 1),
+            });
+        }
+        this.cristalVg.queue = steps;
+        this.cristalVgNext(order);
+    },
 
-        // 1) ¿Con esto ya está a mitad de camino (o completo) de un combo?
+    // Muestra el próximo escalón pendiente (si el ticket sigue siendo el mismo).
+    cristalVgNext(order) {
+        const card = this.cristalVg.queue?.shift();
+        if (!card || !order || card.orderUuid !== order.uuid) {
+            this.cristalVg.card = null;
+            return;
+        }
+        this.cristalVgState(order).shown.push(card.key);
+        this.cristalVg.card = card;
+        this.cristalVgLog(order, { trigger_product_id: card.triggerId, product_id: card.productId, kind: card.kind });
+    },
+
+    // El combo más grande (más caro) que incluye este producto y le conviene al cliente.
+    cristalVgComboStep(order, product) {
+        const vg = this.cristalVgConfig();
+        const state = this.cristalVgState(order);
         const loose = {};
         for (const l of order.lines.filter(isLoose)) {
             loose[l.product_id.id] = (loose[l.product_id.id] || 0) + l.get_quantity();
@@ -115,7 +161,7 @@ patch(PosStore.prototype, {
         const checkoutId = vg.checkout?.product_id;
         let best = null;
         for (const combo of vg.combos || []) {
-            if (!this.models["product.product"].get(combo.product_id)) {
+            if (combo.product_id === checkoutId || !this.models["product.product"].get(combo.product_id)) {
                 continue;
             }
             const avail = { ...loose };
@@ -130,97 +176,58 @@ patch(PosStore.prototype, {
                     missing.push(slot);
                 }
             }
-            const key = `combo-${combo.product_id}-${matched.length}`;
-            if (!matched.includes(product.id) || matched.length * 2 < combo.slots.length) {
+            const key = `combo-${combo.product_id}`;
+            if (!matched.includes(product.id) || state.shown.includes(key)) {
                 continue;
             }
             const loosePrice =
                 matched.reduce((sum, pid) => sum + priceOf(pid), 0) +
                 missing.reduce((sum, slot) => sum + slotPrice(slot), 0);
-            if (state.shown.includes(key) || loosePrice <= combo.price) {
+            if (loosePrice <= combo.price) {
                 continue;
             }
-            const ratio = matched.length / combo.slots.length;
-            const saving = loosePrice - combo.price;
-            if (!best || ratio > best.ratio || (ratio === best.ratio && saving > best.saving)) {
-                best = { combo, matched, missing, key, ratio, saving, loosePrice };
+            if (!best || combo.price > best.combo.price) {
+                best = { combo, matched, missing, key, saving: loosePrice - combo.price, loosePrice };
             }
         }
-        if (best) {
-            const { combo, matched, missing, key, saving, loosePrice } = best;
-            let text;
-            if (combo.product_id === checkoutId) {
-                text = missing.length
-                    ? _t("Llevando otro (%(items)s) se lleva los 2 por %(price)s.", {
-                          items: (vg.checkout.items || []).join(", "),
-                          price: this.cristalVgFormat(combo.price),
-                      })
-                    : _t("Lleva 2 de la promo: cobralos juntos a %(price)s y ahorra %(saving)s.", {
-                          price: this.cristalVgFormat(combo.price),
-                          saving: this.cristalVgFormat(saving),
-                      });
-            } else if (!missing.length) {
-                text = _t("Ya lleva todo el %(name)s. Cobralo como combo: suelto %(loose)s, combo %(price)s. Ahorra %(saving)s.", {
-                    name: combo.name,
-                    loose: this.cristalVgFormat(loosePrice),
-                    price: this.cristalVgFormat(combo.price),
-                    saving: this.cristalVgFormat(saving),
-                });
-            } else {
-                const names = missing
-                    .slice(0, 2)
-                    .map((slot) => cleanName(this.models["product.product"].get(slot[0])))
-                    .filter(Boolean);
-                const more = missing.length > 2 ? _t(" y %s más", missing.length - 2) : "";
-                text = _t("Sumando %(missing)s%(more)s se lleva el %(name)s a %(price)s (suelto %(loose)s). Ahorra %(saving)s.", {
-                    missing: names.join(", "),
-                    more,
-                    name: combo.name,
-                    price: this.cristalVgFormat(combo.price),
-                    loose: this.cristalVgFormat(loosePrice),
-                    saving: this.cristalVgFormat(saving),
-                });
-            }
-            state.shown.push(key);
-            this.cristalVg.card = {
-                kind: "combo",
-                title: KIND_TITLE.combo,
-                text,
-                triggerId: product.id,
-                productId: combo.product_id,
-                matched,
-                orderUuid: order.uuid,
-                amount: combo.price,
-            };
-            this.cristalVgLog(order, { trigger_product_id: product.id, product_id: combo.product_id, kind: "combo" });
-            return;
+        if (!best) {
+            return null;
         }
-
-        // 2) Sugerencia calculada para este producto (tamaño mayor, complemento, respaldo)
-        for (const [pid, kind, text] of vg.suggestions?.[product.id] || []) {
-            const key = `${product.id}-${pid}`;
-            const suggested = this.models["product.product"].get(pid);
-            if (!suggested || inCart.has(pid) || state.shown.includes(key)) {
-                continue;
-            }
-            state.shown.push(key);
-            this.cristalVg.card = {
-                kind,
-                title: KIND_TITLE[kind] || KIND_TITLE.manual,
-                text,
-                triggerId: product.id,
-                productId: pid,
-                orderUuid: order.uuid,
-                amount: suggested.get_price(order.pricelist_id, 1),
-            };
-            this.cristalVgLog(order, { trigger_product_id: product.id, product_id: pid, kind });
-            return;
+        const { combo, matched, missing, key, saving, loosePrice } = best;
+        let text;
+        if (!missing.length) {
+            text = _t("Ya lleva todo el %(name)s. Cobralo como combo: suelto %(loose)s, combo %(price)s. Ahorra %(saving)s.", {
+                name: combo.name,
+                loose: this.cristalVgFormat(loosePrice),
+                price: this.cristalVgFormat(combo.price),
+                saving: this.cristalVgFormat(saving),
+            });
+        } else {
+            const names = missing
+                .slice(0, 3)
+                .map((slot) => cleanName(this.models["product.product"].get(slot[0])))
+                .filter(Boolean);
+            const more = missing.length > 3 ? _t(" y %s más", missing.length - 3) : "";
+            text = _t("Ofrecé el %(name)s a %(price)s: suma %(missing)s%(more)s (suelto %(loose)s). Ahorra %(saving)s.", {
+                name: combo.name,
+                price: this.cristalVgFormat(combo.price),
+                missing: names.join(", "),
+                more,
+                loose: this.cristalVgFormat(loosePrice),
+                saving: this.cristalVgFormat(saving),
+            });
         }
-
-        // 3) Sin otra sugerencia y con 2 productos o más: anunciar la promo de caja.
-        if (order.lines.filter(isLoose).length >= 2) {
-            this.cristalVgShowCheckout(order);
-        }
+        return {
+            kind: "combo",
+            key,
+            title: KIND_TITLE.combo,
+            text,
+            triggerId: product.id,
+            productId: combo.product_id,
+            matched,
+            orderUuid: order.uuid,
+            amount: combo.price,
+        };
     },
 
     async cristalVgAccept() {
@@ -270,6 +277,15 @@ patch(PosStore.prototype, {
             accepted: true,
             amount: card.amount,
         });
+        if (card.kind === "size") {
+            // Agrandar: el tamaño grande reemplaza a uno del chico, no se suma.
+            const small = order.lines.find((x) => x.product_id?.id === card.triggerId && isLoose(x));
+            if (small && small.get_quantity() > 1) {
+                small.set_quantity(small.get_quantity() - 1);
+            } else if (small) {
+                order.removeOrderline(small);
+            }
+        }
         // La sugerencia ya es una variante concreta: se agrega sin pedir presentación/aroma.
         // Lo agregado también es un producto cargado: puede traer su propia sugerencia.
         const line = await this.addLineToCurrentOrder({ product_id: product }, {}, false);
@@ -281,14 +297,20 @@ patch(PosStore.prototype, {
     cristalVgDismiss() {
         const card = this.cristalVg.card;
         const order = this.get_order();
-        if (card?.kind === "checkout" && order) {
-            this.cristalVgState(order).checkoutDone = true;
-        }
         this.cristalVg.card = null;
+        if (!card || !order) {
+            return;
+        }
+        if (card.kind === "checkout") {
+            this.cristalVgState(order).checkoutDone = true;
+            return;
+        }
+        // Dijo que no: baja un escalón (combo → tamaño → complemento).
+        this.cristalVgNext(order);
     },
 
-    // Promo de caja (2 por $X): una sola vez por ticket. Se anuncia mientras se carga,
-    // cuando no hay otra sugerencia, y si no se anunció, al ir a cobrar.
+    // Promo de caja (2 por $X): al final, en la pantalla de cobro, a todos los tickets.
+    // Una sola vez por ticket.
     cristalVgShowCheckout(order) {
         const vg = this.cristalVgConfig();
         const promo = vg?.checkout && this.models["product.product"].get(vg.checkout.product_id);
@@ -317,8 +339,9 @@ patch(PosStore.prototype, {
 
     async pay() {
         const order = this.get_order();
-        if (order && !order.is_empty() && this.cristalVgActive(order)) {
+        if (order && !order.is_empty() && this.cristalVgConfig()) {
             // No frena el cobro: la tarjeta aparece en la pantalla de pago.
+            this.cristalVg.queue = [];
             if (!this.cristalVgShowCheckout(order)) {
                 this.cristalVg.card = null;
             }
