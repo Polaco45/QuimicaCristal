@@ -7,6 +7,16 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.44.0] — 2026-10-28
+
+### Added — Permiso para avisos por WhatsApp (sistema minorista)
+
+- Tool `set_promo_consent`: anota si el cliente acepta avisos por WhatsApp (reposición y
+  promos) o pide no recibir promos. Usa los campos de `cristal_minorista`; sin ese módulo
+  no hace nada.
+- El bloque del cliente dice si ya se le preguntó; la regla del prompt v7 pide preguntarlo
+  una sola vez, al cerrar una cotización.
+
 ## [18.0.1.43.0] — 2026-10-27
 
 ### Added — Las mejoras propuestas en el informe de la 1.42
