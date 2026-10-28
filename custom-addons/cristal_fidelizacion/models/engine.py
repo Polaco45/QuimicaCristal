@@ -15,7 +15,9 @@ REPOSITION_LEAD_DAYS = 4   # avisar 4 días antes de que se le termine
 
 
 def _label(family):
-    return 'tu %s' % (family.name or '').lower() if family else 'tus productos de limpieza'
+    if not family:
+        return 'tus productos de limpieza'
+    return family.wa_label or 'tu %s' % (family.name or '').lower()
 
 
 class CristalFidEngine(models.AbstractModel):

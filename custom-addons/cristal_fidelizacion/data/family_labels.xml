@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <function model="cristal.cf.family" name="_cristal_fid_set_default_labels"/>
+</odoo>
