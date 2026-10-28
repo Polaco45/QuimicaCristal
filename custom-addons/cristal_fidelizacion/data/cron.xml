@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- 13:00 UTC = 10:00 en Argentina, después del recálculo de clientes (06:30 UTC) -->
+    <record id="cron_fidelizacion_run" model="ir.cron">
+        <field name="name">Fidelización: mensajes automáticos del día</field>
+        <field name="model_id" ref="model_cristal_fid_engine"/>
+        <field name="state">code</field>
+        <field name="code">model._cron_run()</field>
+        <field name="interval_number">1</field>
+        <field name="interval_type">days</field>
+        <field name="nextcall" eval="(DateTime.now().replace(hour=13, minute=0, second=0) + timedelta(days=1)).strftime('%Y-%m-%d %H:%M:%S')"/>
+        <field name="active" eval="True"/>
+    </record>
+</odoo>

@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="action_cristal_fid_touch" model="ir.actions.act_window">
+        <field name="name">Mensajes de fidelización</field>
+        <field name="res_model">cristal.fid.touch</field>
+        <field name="view_mode">list,pivot,graph</field>
+        <field name="context">{'search_default_group_flow': 1}</field>
+    </record>
+    <!-- Flujos -->
+    <record id="view_cristal_fid_flow_list" model="ir.ui.view">
+        <field name="name">cristal.fid.flow.list</field>
+        <field name="model">cristal.fid.flow</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+                <field name="category"/>
+                <field name="send_enabled" widget="boolean_toggle"/>
+                <field name="template_status"/>
+                <field name="daily_limit"/>
+                <field name="touch_count" string="Contactos"/>
+                <field name="conversion_rate" string="Compró (%)"/>
+                <field name="holdout_rate" string="Control (%)"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_cristal_fid_flow_form" model="ir.ui.view">
+        <field name="name">cristal.fid.flow.form</field>
+        <field name="model">cristal.fid.flow</field>
+        <field name="arch" type="xml">
+            <form>
+                <header>
+                    <button name="action_create_template" type="object" string="Crear plantilla"
+                            invisible="template_id" class="btn-primary"/>
+                    <button name="action_submit_template" type="object" string="Mandar a aprobación de Meta"
+                            invisible="not template_id or template_status not in ('draft', 'rejected')"/>
+                    <button name="action_run_now" type="object" string="Correr ahora"
+                            confirm="Corre el flujo para hoy. Si 'Enviar de verdad' está apagado solo registra a quién le escribiría."/>
+                </header>
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="%(action_cristal_fid_touch)d" type="action" class="oe_stat_button" icon="fa-whatsapp"
+                                context="{'search_default_flow_id': id}">
+                            <field name="touch_count" widget="statinfo" string="Contactos"/>
+                        </button>
+                    </div>
+                    <div class="oe_title"><h1><field name="name"/></h1></div>
+                    <group>
+                        <group>
+                            <field name="code"/>
+                            <field name="category"/>
+                            <field name="send_enabled" widget="boolean_toggle"/>
+                            <field name="daily_limit"/>
+                            <field name="holdout_pct"/>
+                            <field name="responsible_user_id"/>
+                        </group>
+                        <group>
+                            <field name="wa_account_id"/>
+                            <field name="template_id"/>
+                            <field name="template_status"/>
+                            <field name="offer_text"/>
+                            <field name="conversion_rate" string="Compró después (%)"/>
+                            <field name="holdout_rate" string="Compró sin mensaje (%)"/>
+                        </group>
+                    </group>
+                    <field name="description" placeholder="Qué hace el flujo"/>
+                    <separator string="Mensaje"/>
+                    <field name="template_body" readonly="template_id"/>
+                    <group><field name="button_texts" readonly="template_id"/></group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_cristal_fid_flow" model="ir.actions.act_window">
+        <field name="name">Flujos de fidelización</field>
+        <field name="res_model">cristal.fid.flow</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <!-- Contactos -->
+    <record id="view_cristal_fid_touch_list" model="ir.ui.view">
+        <field name="name">cristal.fid.touch.list</field>
+        <field name="model">cristal.fid.touch</field>
+        <field name="arch" type="xml">
+            <list create="0" decoration-muted="state == 'holdout'" decoration-danger="state == 'error'"
+                  decoration-success="converted">
+                <field name="date"/>
+                <field name="flow_id"/>
+                <field name="partner_id"/>
+                <field name="variables"/>
+                <field name="state" widget="badge"/>
+                <field name="reply"/>
+                <field name="sale_order_id" optional="show"/>
+                <field name="converted"/>
+                <field name="converted_amount" sum="Total" optional="show"/>
+                <field name="error" optional="hide"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_cristal_fid_touch_search" model="ir.ui.view">
+        <field name="name">cristal.fid.touch.search</field>
+        <field name="model">cristal.fid.touch</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="partner_id"/>
+                <field name="flow_id"/>
+                <filter name="today" string="Hoy"
+                        domain="[('date', '&gt;=', (context_today()).strftime('%Y-%m-%d'))]"/>
+                <filter name="sent" string="Enviados" domain="[('state', '=', 'sent')]"/>
+                <filter name="dry_run" string="Prueba" domain="[('state', '=', 'dry_run')]"/>
+                <filter name="replied" string="Respondieron" domain="[('reply', '!=', False)]"/>
+                <filter name="converted" string="Compraron" domain="[('converted', '=', True)]"/>
+                <group expand="0" string="Agrupar por">
+                    <filter name="group_flow" string="Flujo" context="{'group_by': 'flow_id'}"/>
+                    <filter name="group_state" string="Estado" context="{'group_by': 'state'}"/>
+                    <filter name="group_date" string="Día" context="{'group_by': 'date:day'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <menuitem id="menu_fidelizacion" name="Fidelización" parent="cristal_minorista.menu_minorista_root" sequence="25"/>
+    <menuitem id="menu_fidelizacion_touch" name="Mensajes" parent="menu_fidelizacion"
+              action="action_cristal_fid_touch" sequence="10"/>
+    <menuitem id="menu_fidelizacion_flow" name="Flujos" parent="menu_fidelizacion"
+              action="action_cristal_fid_flow" sequence="20"/>
+</odoo>

@@ -1,0 +1,5 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_cristal_fid_flow_user,cristal.fid.flow user,model_cristal_fid_flow,sales_team.group_sale_salesman,1,0,0,0
+access_cristal_fid_flow_manager,cristal.fid.flow manager,model_cristal_fid_flow,sales_team.group_sale_manager,1,1,1,1
+access_cristal_fid_touch_user,cristal.fid.touch user,model_cristal_fid_touch,sales_team.group_sale_salesman,1,0,0,0
+access_cristal_fid_touch_manager,cristal.fid.touch manager,model_cristal_fid_touch,sales_team.group_sale_manager,1,1,1,1
