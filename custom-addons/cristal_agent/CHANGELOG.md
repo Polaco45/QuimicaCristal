@@ -7,6 +7,14 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.47.0] — 2026-10-28
+
+### Added
+
+- Contexto del cliente: el último mensaje automático de fidelización de los últimos 3 días
+  (texto ya armado y su respuesta), con la instrucción de cotizar ese producto si quiere
+  pedir. Con Claudio activo, cristal_fidelizacion ya no arma su propia cotización.
+
 ## [18.0.1.46.0] — 2026-10-28
 
 ### Added — Reseñas en Google
