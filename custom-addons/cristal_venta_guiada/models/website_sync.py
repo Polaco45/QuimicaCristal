@@ -19,6 +19,7 @@ from odoo import api, fields, models
 
 _logger = logging.getLogger(__name__)
 
+CF_WEBSITE_ID = 1   # "Cristal" — www.quimicacristal.com.ar
 MAX_OPTIONAL = 3
 MAX_ACCESSORY = 3
 
@@ -50,7 +51,9 @@ class CristalVgSuggestion(models.Model):
         Template = self.env['product.template'].sudo()
         if 'accessory_product_ids' not in Template._fields:
             return  # sin tienda online
-        published = Template.search([('is_published', '=', True), ('sale_ok', '=', True)])
+        # Solo la tienda de consumidor final (quimicacristal.com.ar) y lo que no tiene sitio fijo
+        published = Template.search([('is_published', '=', True), ('sale_ok', '=', True),
+                                     ('website_id', 'in', [CF_WEBSITE_ID, False])])
         if not published:
             return
         pub_ids = set(published.ids)
@@ -82,11 +85,16 @@ class CristalVgSuggestion(models.Model):
                              ('accessory_product_ids', '!=', False)]).write({'cristal_web_manual': True})
             Param.set_param('cristal_venta_guiada.web_sync_initialized', fields.Datetime.now())
 
+        def same_company(tmpl, records):
+            # Un producto sin empresa no puede sugerir productos de una empresa (y al revés
+            # solo los de la misma): Odoo lo rechaza.
+            return [r for r in records if not r.company_id or r.company_id == tmpl.company_id]
+
         updated = 0
         for tmpl in published.filtered(lambda t: not t.cristal_web_manual and t.type != 'combo'):
-            bigger = list(dict.fromkeys(sizes.get(tmpl.id, [])))[:1]
-            optional = (combos_of.get(tmpl.id, [])[:2] + bigger)[:MAX_OPTIONAL]
-            accessory = list(dict.fromkeys(complements.get(tmpl.id, [])))[:MAX_ACCESSORY]
+            bigger = same_company(tmpl, list(dict.fromkeys(sizes.get(tmpl.id, []))))[:1]
+            optional = same_company(tmpl, combos_of.get(tmpl.id, [])[:2] + bigger)[:MAX_OPTIONAL]
+            accessory = same_company(tmpl, list(dict.fromkeys(complements.get(tmpl.id, []))))[:MAX_ACCESSORY]
             vals = {}
             if [t.id for t in optional] != tmpl.optional_product_ids.ids:
                 vals['optional_product_ids'] = [(6, 0, [t.id for t in optional])]
@@ -95,8 +103,12 @@ class CristalVgSuggestion(models.Model):
             if [p.id for p in accessory] != tmpl.accessory_product_ids.ids:
                 vals['accessory_product_ids'] = [(6, 0, [p.id for p in accessory])]
             if vals:
-                tmpl.write(vals)
-                updated += 1
+                try:
+                    with self.env.cr.savepoint():
+                        tmpl.write(vals)
+                    updated += 1
+                except Exception as e:  # noqa: BLE001 — un producto raro no frena al resto
+                    _logger.warning("venta guiada: no pude actualizar la web de %s: %s", tmpl.display_name, e)
 
         # Orden del catálogo: combos primero, después lo más vendido
         since = fields.Datetime.now() - timedelta(days=days)
