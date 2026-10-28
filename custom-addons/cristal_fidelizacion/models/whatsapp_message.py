@@ -127,6 +127,11 @@ class CristalFidTouch(models.Model):
             return
         if self.reply != 'positive':
             return
+        config = self.env['cristal.agent.config'].sudo().get_active()
+        if config and config.enabled:
+            # Claudio ve el mensaje y la respuesta en el contexto del cliente: cotiza y
+            # cierra él (si armáramos otra cotización acá, quedarían dos).
+            return
         order = self._cristal_fid_draft_order()
         self._cristal_fid_activity(
             _("%(name)s respondió «%(reply)s» a %(flow)s. Confirmar pedido y día de entrega.",

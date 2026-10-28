@@ -11,4 +11,18 @@
         <field name="nextcall" eval="(DateTime.now().replace(hour=13, minute=0, second=0) + timedelta(days=1)).strftime('%Y-%m-%d %H:%M:%S')"/>
         <field name="active" eval="True"/>
     </record>
+
+    <!-- Lunes 12:00 UTC = 9:00 en Argentina. noupdate: que una actualización no lo dispare. -->
+    <data noupdate="1">
+        <record id="cron_minorista_weekly_report" model="ir.cron">
+            <field name="name">Minorista: tablero semanal en el canal interno</field>
+            <field name="model_id" ref="model_cristal_minorista_report"/>
+            <field name="state">code</field>
+            <field name="code">model._cron_weekly()</field>
+            <field name="interval_number">1</field>
+            <field name="interval_type">weeks</field>
+            <field name="nextcall">2026-11-02 12:00:00</field>
+            <field name="active" eval="True"/>
+        </record>
+    </data>
 </odoo>

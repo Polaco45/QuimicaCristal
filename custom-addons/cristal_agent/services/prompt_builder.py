@@ -308,6 +308,25 @@ def _build_partner_context(env, partner):
         else:
             lines.append("- avisos por WhatsApp: todavía no se le preguntó.")
 
+    # v1.47 — Último mensaje automático de fidelización (cristal_fidelizacion, si está)
+    if 'cristal.fid.touch' in partner.env:
+        from datetime import timedelta
+        from odoo import fields as _f
+        touch = partner.env['cristal.fid.touch'].sudo().search([
+            ('partner_id', '=', partner.id), ('state', '=', 'sent'),
+            ('date', '>=', _f.Datetime.now() - timedelta(days=3))], limit=1)
+        if touch:
+            body = touch.flow_id.template_body or ''
+            for i, value in enumerate((touch.variables or '').split(' | '), start=1):
+                body = body.replace('{{%s}}' % i, value)
+            answer = (f"respondió «{touch.reply_text}»" if touch.reply_text
+                      else "todavía no respondió")
+            lines.append(
+                f"- 📩 MENSAJE AUTOMÁTICO que le mandamos el {touch.date.strftime('%d/%m')} "
+                f"({touch.flow_id.name}): «{body}» — {answer}. Si dice que sí o quiere pedir: "
+                f"cotizá ESE producto (consumidor final: consumidor_final=true), preguntá envío o "
+                f"retiro y cerrá. Si dice que no: una línea cordial, sin insistir.")
+
     # Observaciones acumuladas
     if partner.agent_observations:
         lines.append(f"\n### Observaciones acumuladas sobre este cliente:\n{partner.agent_observations}")

@@ -5,3 +5,4 @@ from . import family
 from . import engine
 from . import whatsapp_message
 from . import loyalty
+from . import report
