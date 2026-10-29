@@ -129,7 +129,9 @@ class ResPartner(models.Model):
                  'commercial_partner_id.l10n_ar_afip_responsibility_type_id',
                  'commercial_partner_id.cristal_customer_type_manual',
                  'category_id', 'commercial_partner_id.category_id',
-                 'commercial_partner_id.cristal_wholesale_buyer')
+                 'commercial_partner_id.cristal_wholesale_buyer',
+                 'specific_property_product_pricelist',
+                 'commercial_partner_id.specific_property_product_pricelist')
     def _compute_cristal_customer_type(self):
         for partner in self:
             com = partner.commercial_partner_id or partner
@@ -138,7 +140,12 @@ class ResPartner(models.Model):
                 partner.cristal_customer_type = manual
                 continue
             resp = com.l10n_ar_afip_responsibility_type_id
+            # La lista de precios asignada manda (Joaco, 29/10/2026): L.C = consumidor final;
+            # L.E (empresa), Lista Mayorista, Crilimp = negocio.
+            pricelist = (com.property_product_pricelist.name or '').strip().upper()
             if com.agent_level in ('bronce', 'plata', 'oro'):
+                kind = 'negocio'
+            elif pricelist and not pricelist.startswith('L.C'):
                 kind = 'negocio'
             elif com.cristal_wholesale_buyer or 'Mayorista' in com.category_id.mapped('name'):
                 kind = 'negocio'     # Claudio lo etiquetó mayorista o compra a precio mayorista

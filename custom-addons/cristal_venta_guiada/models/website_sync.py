@@ -60,59 +60,9 @@ class CristalVgSuggestion(models.Model):
             return
         pub_ids = set(published.ids)
 
-        # Combos publicados que contienen cada producto, del más caro al más barato
-        combos_of = defaultdict(list)
-        for combo in published.filtered(lambda t: t.type == 'combo').sorted('list_price', reverse=True):
-            for tmpl in combo.combo_ids.combo_item_ids.product_id.product_tmpl_id:
-                combos_of[tmpl.id].append(combo)
-
-        # Sugerencias de la caja agrupadas por producto
-        sizes, complements = defaultdict(list), defaultdict(list)
-        for s in self.sudo().search([('active', '=', True)], order='manual desc, score desc'):
-            target = s.product_id
-            if not target or target.product_tmpl_id.id not in pub_ids:
-                continue
-            key = s.trigger_product_id.product_tmpl_id.id
-            if s.kind == 'size':
-                sizes[key].append(target.product_tmpl_id)
-            else:
-                if target.product_tmpl_id.id != key:
-                    complements[key].append(target)
-
-        # Primera vez: lo que ya estaba cargado a mano queda protegido
-        Param = self.env['ir.config_parameter'].sudo()
-        if not Param.get_param('cristal_venta_guiada.web_sync_initialized'):
-            Template.search([('id', 'in', list(pub_ids)), '|', '|',
-                             ('optional_product_ids', '!=', False),
-                             ('alternative_product_ids', '!=', False),
-                             ('accessory_product_ids', '!=', False)]).write({'cristal_web_manual': True})
-            Param.set_param('cristal_venta_guiada.web_sync_initialized', fields.Datetime.now())
-
-        def same_company(tmpl, records):
-            # Un producto sin empresa no puede sugerir productos de una empresa (y al revés
-            # solo los de la misma): Odoo lo rechaza.
-            return [r for r in records if not r.company_id or r.company_id == tmpl.company_id]
-
-        updated = 0
-        for tmpl in published.filtered(lambda t: not t.cristal_web_manual and t.type != 'combo'):
-            # Si el tamaño grande es otra variante del mismo producto, ya se elige en la ficha
-            bigger = same_company(tmpl, [t for t in dict.fromkeys(sizes.get(tmpl.id, [])) if t != tmpl])[:1]
-            optional = same_company(tmpl, combos_of.get(tmpl.id, [])[:2] + bigger)[:MAX_OPTIONAL]
-            accessory = same_company(tmpl, list(dict.fromkeys(complements.get(tmpl.id, []))))[:MAX_ACCESSORY]
-            vals = {}
-            if [t.id for t in optional] != tmpl.optional_product_ids.ids:
-                vals['optional_product_ids'] = [(6, 0, [t.id for t in optional])]
-            if [t.id for t in bigger] != tmpl.alternative_product_ids.ids:
-                vals['alternative_product_ids'] = [(6, 0, [t.id for t in bigger])]
-            if [p.id for p in accessory] != tmpl.accessory_product_ids.ids:
-                vals['accessory_product_ids'] = [(6, 0, [p.id for p in accessory])]
-            if vals:
-                try:
-                    with self.env.cr.savepoint():
-                        tmpl.write(vals)
-                    updated += 1
-                except Exception as e:  # noqa: BLE001 — un producto raro no frena al resto
-                    _logger.warning("venta guiada: no pude actualizar la web de %s: %s", tmpl.display_name, e)
+        # Los opcionales/alternativos/accesorios nativos quedaron de baja (29/10/2026): la web usa
+        # nuestro popup al agregar y nuestro bloque en el carrito (website_ladder.py).
+        updated = self._cristal_clear_native_suggestions(published)
 
         # Orden del catálogo: combos primero, después lo más vendido
         since = fields.Datetime.now() - timedelta(days=days)
@@ -136,6 +86,21 @@ class CristalVgSuggestion(models.Model):
         self._cristal_sync_qty_ribbon(published)
         _logger.info("venta guiada: web actualizada (%s productos con sugerencias nuevas, %s ordenados)",
                      updated, len(published))
+
+    @api.model
+    def _cristal_clear_native_suggestions(self, published):
+        """Saca los productos opcionales, alternativos y accesorios de Odoo (los popups viejos).
+        Devuelve cuántos productos se limpiaron."""
+        dirty = published.filtered(lambda t: t.optional_product_ids or t.alternative_product_ids
+                                   or t.accessory_product_ids)
+        for tmpl in dirty:
+            try:
+                with self.env.cr.savepoint():
+                    tmpl.write({'optional_product_ids': [(5, 0, 0)], 'alternative_product_ids': [(5, 0, 0)],
+                                'accessory_product_ids': [(5, 0, 0)]})
+            except Exception as e:  # noqa: BLE001
+                _logger.warning("venta guiada: no pude limpiar los sugeridos nativos de %s: %s", tmpl.display_name, e)
+        return len(dirty)
 
     @api.model
     def _cristal_sync_qty_ribbon(self, published):

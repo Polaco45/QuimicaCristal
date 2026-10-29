@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 {
     'name': 'Cristal — Minorista (datos base)',
-    'version': '18.0.1.3.0',
+    'version': '18.0.1.4.0',
     'summary': 'Cimientos del sistema minorista: cliente único por WhatsApp, tipo de cliente '
                '(consumidor final o negocio), origen de cada venta, consentimiento de '
                'marketing, ciclo de consumo por familia de producto y segmentos RFM, '
@@ -9,7 +9,7 @@
     'author': 'Química Cristal',
     'category': 'Sales/Sales',
     'license': 'LGPL-3',
-    'depends': ['sale', 'point_of_sale', 'l10n_ar', 'cristal_agent'],
+    'depends': ['sale', 'point_of_sale', 'l10n_ar', 'stock', 'payment', 'cristal_agent'],
     'data': [
         'security/ir.model.access.csv',
         'data/config.xml',

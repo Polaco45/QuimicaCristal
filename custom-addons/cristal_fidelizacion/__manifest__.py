@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 {
     'name': 'Cristal — Fidelización automática',
-    'version': '18.0.1.3.4',
+    'version': '18.0.1.4.0',
     'summary': 'Flujos automáticos por WhatsApp para consumidor final: recordatorio de '
                'reposición, segunda compra, satisfacción y reseña, reactivación en '
                'escalera. Grupo de control, tope de frecuencia, registro de respuestas '
