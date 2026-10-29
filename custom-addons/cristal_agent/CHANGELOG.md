@@ -16,6 +16,12 @@ de consumidor final (método 14, el de la web y de la regla #73 para la lista L.
 pasado a $49.000; el mayorista (método 1) ya estaba en $65.000. La migración pone el
 método 14 en $65.000 y recarga el prompt v7 ("$6.500, gratis desde $65.000").
 
+### Fixed — Claudio no confirmaba pedidos de consumidor final con envío
+
+El servicio del envío de consumidor final ("Envío a domicilio GRATIS (Kit Cloro)") quedó
+marcado con seguimiento de stock y `confirm_cf_order` pedía stock del envío. Ahora el
+control de stock ignora servicios y líneas de envío (caso 40 del autotest).
+
 ---
 
 ## [18.0.1.48.0] — 2026-10-28
