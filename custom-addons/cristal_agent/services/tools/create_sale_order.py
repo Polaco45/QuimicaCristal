@@ -42,7 +42,8 @@ class CreateSaleOrder(AgentTool):
     COMPRA_MIN = 50000.0       # compra mínima oficial (comunicar + upsell)
     COMPRA_PISO = 39990.0      # piso duro: NO cotizar/enviar por menos
     CF_PRICELIST = 'L.C 1'     # precio público (consumidor final)
-    CF_FREE_SHIPPING = 49000.0  # respaldo; el monto real sale del método "Envío a Domicilio"
+    CF_FREE_SHIPPING = 49000.0  # respaldo; el monto real sale del método de consumidor final
+    CF_CARRIER_ID = 14          # "Envío a Domicilio" de la web: $6.500, gratis desde $49.000
 
     description = (
         "Crea o ACTUALIZA la ÚNICA cotización (sale.order draft) del cliente. "
@@ -883,10 +884,9 @@ class CreateSaleOrder(AgentTool):
         if is_cf and not is_pickup:
             products_total = sum(l.price_total for l in order.order_line
                                  if not getattr(l, 'is_delivery', False))
-            # El monto y el costo salen del método de envío que usa la regla #73.
-            carrier = env['delivery.carrier'].sudo().search(
-                [('name', '=', 'Envío a Domicilio'), ('website_id', '=', False),
-                 ('free_over', '=', True)], limit=1)
+            # El monto y el costo salen del método de envío de consumidor final que usa la
+            # regla #73 para la lista L.C 1 (el de la web; el mayorista es otro: $65.000).
+            carrier = env['delivery.carrier'].sudo().browse(self.CF_CARRIER_ID).exists()
             free_from = carrier.amount if carrier else self.CF_FREE_SHIPPING
             cost = carrier.fixed_price if carrier else 6500
             if products_total < free_from:
