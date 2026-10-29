@@ -42,7 +42,7 @@ class CreateSaleOrder(AgentTool):
     COMPRA_MIN = 50000.0       # compra mínima oficial (comunicar + upsell)
     COMPRA_PISO = 39990.0      # piso duro: NO cotizar/enviar por menos
     CF_PRICELIST = 'L.C 1'     # precio público (consumidor final)
-    CF_FREE_SHIPPING = 65000.0  # regla automática #73: envío gratis desde acá
+    CF_FREE_SHIPPING = 49000.0  # respaldo; el monto real sale del método "Envío a Domicilio"
 
     description = (
         "Crea o ACTUALIZA la ÚNICA cotización (sale.order draft) del cliente. "
@@ -96,7 +96,7 @@ class CreateSaleOrder(AgentTool):
                 "type": "boolean",
                 "description": "true = compra para su casa (no revende): precio público "
                                "(L.C 1), sin compra mínima, envío solo en Río Cuarto / Las "
-                               "Higueras ($6.500, gratis desde $65.000) o retiro en el local. "
+                               "Higueras ($6.500, gratis desde $49.000) o retiro en el local. "
                                "Sin 20% de primera compra.",
             },
             "note": {"type": "string", "description": "(Opcional) Nota interna."},
@@ -513,7 +513,7 @@ class CreateSaleOrder(AgentTool):
             return {"error": f"partner_id={partner_id} no existe"}
 
         # v1.45 — CONSUMIDOR FINAL: precio público, sin mínimo ni 20% de primera compra.
-        # El envío ($6.500, gratis desde $65.000) lo agrega la regla automática #73.
+        # El envío ($6.500, gratis desde $49.000) lo agrega la regla automática #73.
         is_cf = bool(consumidor_final)
         if is_cf:
             pricelist_name = self.CF_PRICELIST
@@ -883,11 +883,17 @@ class CreateSaleOrder(AgentTool):
         if is_cf and not is_pickup:
             products_total = sum(l.price_total for l in order.order_line
                                  if not getattr(l, 'is_delivery', False))
-            if products_total < self.CF_FREE_SHIPPING:
+            # El monto y el costo salen del método de envío que usa la regla #73.
+            carrier = env['delivery.carrier'].sudo().search(
+                [('name', '=', 'Envío a Domicilio'), ('website_id', '=', False),
+                 ('free_over', '=', True)], limit=1)
+            free_from = carrier.amount if carrier else self.CF_FREE_SHIPPING
+            cost = carrier.fixed_price if carrier else 6500
+            if products_total < free_from:
                 upsell = (
-                    f"Consumidor final: el envío cuesta $6.500 y es GRATIS desde "
-                    f"{_fmt_money(self.CF_FREE_SHIPPING)} (le faltan "
-                    f"{_fmt_money(self.CF_FREE_SHIPPING - products_total)}). Ofrecé UNA opción "
+                    f"Consumidor final: el envío cuesta {_fmt_money(cost)} y es GRATIS desde "
+                    f"{_fmt_money(free_from)} (le faltan "
+                    f"{_fmt_money(free_from - products_total)}). Ofrecé UNA opción "
                     f"concreta para llegar, empezando por un combo; si no quiere, va con envío.")
         elif not is_route and not is_pickup and total < self.COMPRA_MIN:
             falta = self.COMPRA_MIN - total
