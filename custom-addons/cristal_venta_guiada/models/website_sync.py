@@ -21,7 +21,7 @@ _logger = logging.getLogger(__name__)
 
 CF_WEBSITE_ID = 1   # "Cristal" — www.quimicacristal.com.ar
 CF_PRICELIST_ID = 19  # L.C 1, precio de consumidor final
-QTY_RIBBON = 'Llevando 3, más barato'
+QTY_RIBBON = 'Promo x 3'   # corto: en diagonal un texto largo se corta
 MAX_OPTIONAL = 3
 MAX_ACCESSORY = 3
 
@@ -139,7 +139,7 @@ class CristalVgSuggestion(models.Model):
 
     @api.model
     def _cristal_sync_qty_ribbon(self, published):
-        """Cinta "Llevando 3, más barato" en la foto de los productos con precio por cantidad
+        """Cinta "Promo x 3" en la foto de los productos con precio por cantidad
         en la lista de consumidor final. Solo pone o saca la cinta nuestra."""
         if 'website_ribbon_id' not in published._fields or 'product.ribbon' not in self.env:
             return
