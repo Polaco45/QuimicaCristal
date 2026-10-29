@@ -80,6 +80,10 @@ class ResPartner(models.Model):
     cristal_customer_type = fields.Selection(
         [('cf', 'Consumidor final'), ('negocio', 'Negocio')], string='Tipo de cliente',
         compute='_compute_cristal_customer_type', store=True, index=True)
+    cristal_wholesale_buyer = fields.Boolean(
+        string='Compra a precio mayorista', readonly=True,
+        help='Tiene pedidos confirmados con una lista que no es la de consumidor final '
+             '(se recalcula cada noche). Lo vuelve "negocio".')
 
     # ── Origen ────────────────────────────────────────────────────
     cristal_first_origin = fields.Selection(ORIGINS, string='Origen del cliente', readonly=True,
@@ -123,7 +127,9 @@ class ResPartner(models.Model):
                  'commercial_partner_id.is_company', 'commercial_partner_id.vat',
                  'commercial_partner_id.agent_level',
                  'commercial_partner_id.l10n_ar_afip_responsibility_type_id',
-                 'commercial_partner_id.cristal_customer_type_manual')
+                 'commercial_partner_id.cristal_customer_type_manual',
+                 'category_id', 'commercial_partner_id.category_id',
+                 'commercial_partner_id.cristal_wholesale_buyer')
     def _compute_cristal_customer_type(self):
         for partner in self:
             com = partner.commercial_partner_id or partner
@@ -134,6 +140,8 @@ class ResPartner(models.Model):
             resp = com.l10n_ar_afip_responsibility_type_id
             if com.agent_level in ('bronce', 'plata', 'oro'):
                 kind = 'negocio'
+            elif com.cristal_wholesale_buyer or 'Mayorista' in com.category_id.mapped('name'):
+                kind = 'negocio'     # Claudio lo etiquetó mayorista o compra a precio mayorista
             elif resp and resp.code != '5':          # cualquier responsabilidad que no sea CF
                 kind = 'negocio'
             elif com.is_company and com.vat:

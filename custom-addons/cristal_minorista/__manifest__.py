@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 {
     'name': 'Cristal — Minorista (datos base)',
-    'version': '18.0.1.2.0',
+    'version': '18.0.1.3.0',
     'summary': 'Cimientos del sistema minorista: cliente único por WhatsApp, tipo de cliente '
                '(consumidor final o negocio), origen de cada venta, consentimiento de '
                'marketing, ciclo de consumo por familia de producto y segmentos RFM, '
