@@ -321,18 +321,11 @@ def _build_partner_context(env, partner):
                 body = body.replace('{{%s}}' % i, value)
             answer = (f"respondió «{touch.reply_text}»" if touch.reply_text
                       else "todavía no respondió")
-            cart = touch.sale_order_id if touch.sale_order_id and touch.sale_order_id.state in ('draft', 'sent') else False
-            if cart:
-                next_step = (f"Ya tiene el carrito web {cart.name} (order_id={cart.id}, ${cart.amount_total:,.0f}) con "
-                             f"esos productos: NO lo vuelvas a cotizar. Si quiere terminarlo, acordá entrega o retiro y "
-                             f"pago (efectivo/transferencia) y confirmalo con confirm_cf_order(order_id={cart.id}).").replace(',', '.')
-            else:
-                next_step = ("Si dice que sí o quiere pedir: cotizá ESE producto (consumidor final: "
-                             "consumidor_final=true), preguntá envío o retiro y cerrá.")
             lines.append(
                 f"- 📩 MENSAJE AUTOMÁTICO que le mandamos el {touch.date.strftime('%d/%m')} "
-                f"({touch.flow_id.name}): «{body}» — {answer}. {next_step} "
-                f"Si dice que no: una línea cordial, sin insistir.")
+                f"({touch.flow_id.name}): «{body}» — {answer}. Si dice que sí o quiere pedir: "
+                f"cotizá ESE producto (consumidor final: consumidor_final=true), preguntá envío o "
+                f"retiro y cerrá. Si dice que no: una línea cordial, sin insistir.")
 
     # Observaciones acumuladas
     if partner.agent_observations:

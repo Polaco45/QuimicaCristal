@@ -42,8 +42,8 @@ class CreateSaleOrder(AgentTool):
     COMPRA_MIN = 50000.0       # compra mínima oficial (comunicar + upsell)
     COMPRA_PISO = 39990.0      # piso duro: NO cotizar/enviar por menos
     CF_PRICELIST = 'L.C 1'     # precio público (consumidor final)
-    CF_FREE_SHIPPING = 49000.0  # respaldo; el monto real sale del método de consumidor final
-    CF_CARRIER_ID = 14          # "Envío a Domicilio" de la web: $6.500, gratis desde $49.000
+    CF_FREE_SHIPPING = 65000.0  # respaldo; el monto real sale del método de consumidor final
+    CF_CARRIER_ID = 14          # "Envío a Domicilio" de la web: $6.500, gratis desde $65.000
 
     description = (
         "Crea o ACTUALIZA la ÚNICA cotización (sale.order draft) del cliente. "
@@ -97,7 +97,7 @@ class CreateSaleOrder(AgentTool):
                 "type": "boolean",
                 "description": "true = compra para su casa (no revende): precio público "
                                "(L.C 1), sin compra mínima, envío solo en Río Cuarto / Las "
-                               "Higueras ($6.500, gratis desde $49.000) o retiro en el local. "
+                               "Higueras ($6.500, gratis desde $65.000) o retiro en el local. "
                                "Sin 20% de primera compra.",
             },
             "note": {"type": "string", "description": "(Opcional) Nota interna."},
@@ -514,7 +514,7 @@ class CreateSaleOrder(AgentTool):
             return {"error": f"partner_id={partner_id} no existe"}
 
         # v1.45 — CONSUMIDOR FINAL: precio público, sin mínimo ni 20% de primera compra.
-        # El envío ($6.500, gratis desde $49.000) lo agrega la regla automática #73.
+        # El envío ($6.500, gratis desde $65.000) lo agrega la regla automática #73.
         is_cf = bool(consumidor_final)
         if is_cf:
             pricelist_name = self.CF_PRICELIST
