@@ -59,7 +59,12 @@ class ConfirmCfOrder(AgentTool):
                 problems.append(f"envío fuera de Río Cuarto / Las Higueras ({partner.city or 'sin localidad'})")
             if not (partner.street or '').strip():
                 problems.append("falta la dirección de entrega")
-        for line in order.order_line.filtered(lambda l: l.product_id.is_storable):
+        # v1.49.2: solo productos físicos. El envío de consumidor final (método 14) usa el
+        # servicio "Envío a domicilio GRATIS (Kit Cloro)", que quedó marcado con
+        # seguimiento de stock: sin esto Claudio no confirmaba ningún pedido con envío.
+        for line in order.order_line.filtered(
+                lambda l: l.product_id.is_storable and l.product_id.type != 'service'
+                and not getattr(l, 'is_delivery', False)):
             if line.product_id.free_qty < line.product_uom_qty:
                 problems.append(f"no hay stock suficiente de {line.product_id.display_name}")
         if not order.order_line.filtered(lambda l: not getattr(l, 'is_delivery', False)):
