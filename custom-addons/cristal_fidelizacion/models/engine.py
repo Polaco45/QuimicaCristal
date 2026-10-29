@@ -4,7 +4,7 @@ import re
 from collections import defaultdict
 from datetime import timedelta
 
-from odoo import api, fields, models
+from odoo import api, fields, models, tools
 
 _logger = logging.getLogger(__name__)
 
@@ -21,19 +21,38 @@ def _label(family):
 
 
 def _first_name(partner):
-    """Nombre de pila para el saludo: "Giordano, Oscar Rafael" → "Oscar"; "ana PEREZ" → "Ana"."""
+    """Nombre de pila para el saludo. "Giordano, Oscar Rafael" → "Oscar"; sin coma no se sabe
+    el orden ("Funes Monica", "Ana Perez"): se usa la palabra que es un nombre conocido.
+    Si no hay ninguna, "qué tal" ("Hola qué tal 👋"; Meta no acepta la variable vacía)."""
     name = (partner.name or '').strip()
+    if name.lower().startswith('cliente whatsapp'):
+        return 'qué tal'
     if ',' in name:
-        name = name.split(',', 1)[1].strip()
-    word = name.split()[0] if name.split() else ''
-    if not word.isalpha() or name.lower().startswith('cliente whatsapp'):
-        return 'qué tal'   # "Hola qué tal 👋": Meta no acepta la variable vacía
+        candidates = name.split(',', 1)[1].split()[:1]
+    else:
+        known = partner.env['cristal.fid.engine']._known_first_names()
+        candidates = [w for w in name.split() if w.lower() in known][:1]
+    word = candidates[0] if candidates else ''
+    if not word.isalpha():
+        return 'qué tal'
     return word[:1].upper() + word[1:].lower()
 
 
 class CristalFidEngine(models.AbstractModel):
     _name = 'cristal.fid.engine'
     _description = 'Fidelización — motor diario'
+
+    @api.model
+    @tools.ormcache()
+    def _known_first_names(self):
+        """Nombres de pila que aparecen después de la coma en los contactos cargados
+        "Apellido, Nombre" (al menos 2 veces). Sirven para leer los que no tienen coma."""
+        self.env.cr.execute("""
+            SELECT lower(split_part(trim(split_part(name, ',', 2)), ' ', 1)) AS w
+              FROM res_partner
+             WHERE name LIKE '%,%'
+             GROUP BY 1 HAVING count(*) >= 2""")
+        return frozenset(w for (w,) in self.env.cr.fetchall() if w and len(w) >= 3 and w.isalpha())
 
     # ── Reglas comunes ─────────────────────────────────────────────
     @api.model
