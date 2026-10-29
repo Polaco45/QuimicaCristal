@@ -19,6 +19,7 @@ const KIND_TITLE = {
     category: "Sumale",
     manual: "Sumale",
     checkout: "Para cerrar",
+    qty: "Llevando más, más barato",
 };
 
 function cleanName(product) {
@@ -111,6 +112,31 @@ patch(PosStore.prototype, {
             steps.push(combo);
         }
         const state = this.cristalVgState(order);
+        // "Llevando N": precio por cantidad de la lista (ej. 3 trapos de piso).
+        const tier = this.cristalVgConfig().qty_tiers?.[product.id];
+        const qtyKey = `qty-${product.id}`;
+        if (tier && line.get_quantity() < tier[0] && !state.shown.includes(qtyKey)) {
+            const [minQty, unit] = tier;
+            const regular = product.get_price(order.pricelist_id, 1);
+            if (unit < regular) {
+                steps.push({
+                    kind: "qty",
+                    key: qtyKey,
+                    title: KIND_TITLE.qty,
+                    text: _t("Llevando %(n)s te sale %(unit)s cada uno (en vez de %(regular)s). Ahorra %(saving)s.", {
+                        n: minQty,
+                        unit: this.cristalVgFormat(unit),
+                        regular: this.cristalVgFormat(regular),
+                        saving: this.cristalVgFormat((regular - unit) * minQty),
+                    }),
+                    triggerId: product.id,
+                    productId: product.id,
+                    qty: minQty,
+                    orderUuid: order.uuid,
+                    amount: unit * minQty - regular * line.get_quantity(),
+                });
+            }
+        }
         const inCart = new Set(order.lines.map((l) => l.product_id?.id));
         const suggestions = (this.cristalVgConfig().suggestions?.[product.id] || []).filter(
             ([pid]) => this.models["product.product"].get(pid) && !inCart.has(pid)
@@ -302,6 +328,14 @@ patch(PosStore.prototype, {
             accepted: true,
             amount: card.amount,
         });
+        if (card.kind === "qty") {
+            // "Llevando N": se sube la cantidad de esa línea; la lista de precios baja el precio.
+            const qtyLine = order.lines.find((x) => x.product_id?.id === card.productId && isLoose(x));
+            if (qtyLine) {
+                qtyLine.set_quantity(card.qty);
+            }
+            return;
+        }
         if (card.kind === "size") {
             // Agrandar: el tamaño grande reemplaza a uno del chico, no se suma.
             const small = order.lines.find((x) => x.product_id?.id === card.triggerId && isLoose(x));

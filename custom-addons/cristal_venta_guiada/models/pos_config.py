@@ -77,5 +77,20 @@ class PosConfig(models.Model):
             'suggestions': suggestions,
             'combos': combos,
             'checkout': checkout,
+            'qty_tiers': self._cristal_vg_qty_tiers(pricelist),
             'start_categ_id': self.cristal_vg_start_categ_id.id,
         }
+
+    def _cristal_vg_qty_tiers(self, pricelist):
+        """{product_id: [cantidad, precio por unidad]}: la promo "llevando N" de la lista de
+        precios (precio fijo por variante desde N unidades, N de 2 a 6)."""
+        tiers = {}
+        if not pricelist:
+            return tiers
+        items = self.env['product.pricelist.item'].sudo().search([
+            ('pricelist_id', '=', pricelist.id), ('applied_on', '=', '0_product_variant'),
+            ('compute_price', '=', 'fixed'), ('min_quantity', '>=', 2), ('min_quantity', '<=', 6)],
+            order='min_quantity')
+        for item in items:
+            tiers.setdefault(item.product_id.id, [item.min_quantity, item.fixed_price])
+        return tiers

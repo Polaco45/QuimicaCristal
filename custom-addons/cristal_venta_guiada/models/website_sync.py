@@ -20,6 +20,8 @@ from odoo import api, fields, models
 _logger = logging.getLogger(__name__)
 
 CF_WEBSITE_ID = 1   # "Cristal" — www.quimicacristal.com.ar
+CF_PRICELIST_ID = 19  # L.C 1, precio de consumidor final
+QTY_RIBBON = 'Llevando 3, más barato'
 MAX_OPTIONAL = 3
 MAX_ACCESSORY = 3
 
@@ -131,5 +133,25 @@ class CristalVgSuggestion(models.Model):
         for seq, tmpl in enumerate(rest, start=100):
             if tmpl.website_sequence != seq:
                 tmpl.website_sequence = seq
+        self._cristal_sync_qty_ribbon(published)
         _logger.info("venta guiada: web actualizada (%s productos con sugerencias nuevas, %s ordenados)",
                      updated, len(published))
+
+    @api.model
+    def _cristal_sync_qty_ribbon(self, published):
+        """Cinta "Llevando 3, más barato" en la foto de los productos con precio por cantidad
+        en la lista de consumidor final. Solo pone o saca la cinta nuestra."""
+        if 'website_ribbon_id' not in published._fields or 'product.ribbon' not in self.env:
+            return
+        Ribbon = self.env['product.ribbon'].sudo()
+        ribbon = Ribbon.search([('name', '=', QTY_RIBBON)], limit=1) or Ribbon.create(
+            {'name': QTY_RIBBON, 'bg_color': '#f4b400', 'text_color': '#1d2433'})
+        items = self.env['product.pricelist.item'].sudo().search([
+            ('pricelist_id', '=', CF_PRICELIST_ID), ('applied_on', '=', '0_product_variant'),
+            ('compute_price', '=', 'fixed'), ('min_quantity', '>=', 2), ('min_quantity', '<=', 6)])
+        with_tier = set(items.product_id.product_tmpl_id.ids)
+        for tmpl in published:
+            if tmpl.id in with_tier and not tmpl.website_ribbon_id:
+                tmpl.website_ribbon_id = ribbon
+            elif tmpl.id not in with_tier and tmpl.website_ribbon_id == ribbon:
+                tmpl.website_ribbon_id = False

@@ -13,6 +13,7 @@
                         t-on-click="accept">
                     <t t-if="card.kind === 'combo'">Armar combo</t>
                     <t t-elif="card.kind === 'checkout'">Elegir 2</t>
+                    <t t-elif="card.kind === 'qty'">Llevar <t t-esc="card.qty"/></t>
                     <t t-else="">Agregar</t>
                 </button>
                 <button class="btn btn-light btn-sm" t-on-click="dismiss">No</button>
