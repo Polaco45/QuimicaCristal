@@ -69,20 +69,33 @@ class CristalFidEngine(models.AbstractModel):
 
     @api.model
     def _recent_contacts(self, days, categories=None):
-        """Partners contactados (enviado o prueba) en los últimos `days` días."""
+        """Números de WhatsApp contactados (enviado o prueba) en los últimos `days` días.
+        Se cuida por número, no por contacto: un número duplicado nunca recibe dos mensajes."""
         since = fields.Datetime.now() - timedelta(days=days)
         domain = [('date', '>=', since), ('state', 'in', ('sent', 'dry_run', 'holdout'))]
         if categories:
             domain.append(('flow_id.category', 'in', categories))
-        return set(self.env['cristal.fid.touch'].sudo().search(domain).partner_id.ids)
+        return set(self.env['cristal.fid.touch'].sudo().search(domain).partner_id.mapped('cristal_wa_key'))
 
     @api.model
-    def _blocked(self, partner, flow, recent_any, recent_mkt):
+    def _blocked_keys(self):
+        """Números donde algún contacto (aunque sea un duplicado o un contacto hijo) pidió la
+        baja o está en "No contactar": no se le escribe a ninguno de sus contactos."""
+        Partner = self.env['res.partner'].sudo().with_context(active_test=False)
+        domain = [('cristal_wa_key', '!=', False), '|', ('cristal_mkt_optout', '=', True)]
+        domain += [('agent_opt_out', '=', True)] if 'agent_opt_out' in Partner._fields else [('id', '=', 0)]
+        return set(Partner.search(domain).mapped('cristal_wa_key'))
+
+    @api.model
+    def _blocked(self, partner, flow, recent_any, recent_mkt, blocked_keys=()):
+        key = partner.cristal_wa_key
+        if not key or key in blocked_keys or partner.parent_id:
+            return True
         if 'agent_opt_out' in partner._fields and partner.agent_opt_out:
             return True
-        if partner.id in recent_any:
+        if key in recent_any:
             return True
-        if flow.category == 'marketing' and (not partner.cristal_mkt_allowed or partner.id in recent_mkt):
+        if flow.category == 'marketing' and (not partner.cristal_mkt_allowed or key in recent_mkt):
             return True
         return False
 
@@ -186,6 +199,7 @@ class CristalFidEngine(models.AbstractModel):
         Touch = self.env['cristal.fid.touch'].sudo()
         recent_any = self._recent_contacts(ANY_GAP_DAYS)
         recent_mkt = self._recent_contacts(MARKETING_GAP_DAYS, ['marketing'])
+        blocked_keys = self._blocked_keys()
         selectors = {
             'reposicion': self._candidates_reposicion,
             'satisfaccion': self._candidates_satisfaccion,
@@ -204,7 +218,7 @@ class CristalFidEngine(models.AbstractModel):
                 variables = [_first_name(partner)] + variables   # {{1}} = nombre de pila
                 if count >= (flow.daily_limit or 0):
                     break
-                if self._blocked(partner, flow, recent_any, recent_mkt):
+                if self._blocked(partner, flow, recent_any, recent_mkt, blocked_keys):
                     continue
                 vals = {'partner_id': partner.id, 'flow_id': flow.id, 'variables': ' | '.join(variables),
                         'family_id': family.id if family else False, 'ref_date': ref_date}
@@ -222,9 +236,9 @@ class CristalFidEngine(models.AbstractModel):
                     vals['state'] = 'dry_run'
                 Touch.create(vals)
                 count += 1
-                recent_any.add(partner.id)
+                recent_any.add(partner.cristal_wa_key)
                 if flow.category == 'marketing':
-                    recent_mkt.add(partner.id)
+                    recent_mkt.add(partner.cristal_wa_key)
             summary[flow.code] = count
         self._update_conversions()
         _logger.info("fidelización: %s", summary)
