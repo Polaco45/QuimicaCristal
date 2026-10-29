@@ -219,6 +219,35 @@
         <field name="code">model._cron_refresh()</field>
     </record>
 
+    <!-- Pedidos de consumidor final -->
+    <record id="view_order_tree_cf" model="ir.ui.view">
+        <field name="name">sale.order.list.cf</field>
+        <field name="model">sale.order</field>
+        <field name="priority">50</field>
+        <field name="arch" type="xml">
+            <list decoration-success="cristal_delivered_date" decoration-warning="state == 'sale' and not cristal_delivered_date">
+                <field name="date_order" widget="date"/>
+                <field name="name"/>
+                <field name="partner_id"/>
+                <field name="cristal_origin"/>
+                <field name="cristal_delivery_mode" optional="show"/>
+                <field name="cristal_payment_note" optional="show"/>
+                <field name="amount_total" sum="Total"/>
+                <field name="state" widget="badge"/>
+                <field name="cristal_delivered_date"/>
+                <field name="activity_ids" widget="list_activity"/>
+            </list>
+        </field>
+    </record>
+    <record id="action_cf_orders" model="ir.actions.act_window">
+        <field name="name">Pedidos de consumidor final</field>
+        <field name="res_model">sale.order</field>
+        <field name="view_mode">list,form</field>
+        <field name="view_id" ref="view_order_tree_cf"/>
+        <field name="domain">[('cristal_is_cf', '=', True)]</field>
+        <field name="context">{'search_default_sales': 1}</field>
+    </record>
+
     <!-- Origen en pedidos -->
     <record id="view_order_tree_minorista" model="ir.ui.view">
         <field name="name">sale.order.list.minorista</field>
@@ -259,6 +288,8 @@
               groups="sales_team.group_sale_salesman"/>
     <menuitem id="menu_minorista_clientes" name="Clientes" parent="menu_minorista_root"
               action="action_minorista_clientes" sequence="10"/>
+    <menuitem id="menu_minorista_pedidos" name="Pedidos" parent="menu_minorista_root"
+              action="action_cf_orders" sequence="15"/>
     <menuitem id="menu_minorista_reposicion" name="Reposición" parent="menu_minorista_root"
               action="action_cristal_cf_cycle" sequence="20"/>
     <menuitem id="menu_minorista_duplicados" name="WhatsApp duplicados" parent="menu_minorista_root"

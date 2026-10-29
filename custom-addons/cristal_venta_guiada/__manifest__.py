@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 {
     'name': 'Cristal — Venta guiada POS',
-    'version': '18.0.1.5.1',
+    'version': '18.0.1.6.0',
     'summary': 'En el POS, cada producto que se carga muestra una sugerencia elegida por '
                'el sistema (combo, tamaño mayor o complemento según lo que compran los '
                'clientes) y al cobrar ofrece el producto de caja. Registra lo mostrado y '
@@ -9,13 +9,18 @@
     'author': 'Química Cristal',
     'category': 'Sales/Point of Sale',
     'license': 'LGPL-3',
-    'depends': ['point_of_sale', 'stock'],
+    'depends': ['point_of_sale', 'stock', 'website_sale'],
     'data': [
         'security/ir.model.access.csv',
         'data/cron.xml',
         'views/venta_guiada_views.xml',
+        'views/website_templates.xml',
     ],
     'assets': {
+        'web.assets_frontend': [
+            'cristal_venta_guiada/static/src/js/website_ladder.js',
+            'cristal_venta_guiada/static/src/scss/website_ladder.scss',
+        ],
         'point_of_sale._assets_pos': [
             'cristal_venta_guiada/static/src/js/venta_guiada.js',
             'cristal_venta_guiada/static/src/xml/venta_guiada.xml',

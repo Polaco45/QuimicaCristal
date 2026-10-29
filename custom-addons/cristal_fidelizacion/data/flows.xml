@@ -11,6 +11,17 @@
         <field name="template_body">Hola {{1}} 👋 Por tu última compra, en estos días se te estaría terminando {{2}}. ¿Querés que te lo llevemos en la próxima vuelta de reparto? Respondé con un botón y te lo reservamos.</field>
         <field name="button_texts">Sí, reservámelo|Ahora no|No me avisen más</field>
     </record>
+    <record id="flow_carrito" model="cristal.fid.flow">
+        <field name="name">Carrito abandonado (web)</field>
+        <field name="code">carrito</field>
+        <field name="sequence">15</field>
+        <field name="category">utility</field>
+        <field name="daily_limit">20</field>
+        <field name="wa_account_id" search="[('name', '=', 'Cristal Mayorista')]"/>
+        <field name="description">Entre 6 y 72 horas después de dejar productos en el carrito de la web sin pagar, le pregunta si se lo guardamos y lo llevamos. Si dice que sí, Claudio cierra la venta sobre ese mismo carrito.</field>
+        <field name="template_body">Hola {{1}} 👋 Dejaste {{2}} en tu carrito de quimicacristal.com.ar. ¿Te lo guardamos y te lo llevamos a tu casa? Envío gratis desde $49.000.</field>
+        <field name="button_texts">Sí, quiero terminarlo|Ahora no|No me avisen más</field>
+    </record>
     <record id="flow_satisfaccion" model="cristal.fid.flow">
         <field name="name">Encuesta post-compra</field>
         <field name="code">satisfaccion</field>

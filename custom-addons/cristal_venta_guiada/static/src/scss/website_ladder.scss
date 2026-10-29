@@ -1,0 +1,96 @@
+.cristal-ladder {
+    position: fixed;
+    inset: 0;
+    z-index: 1060;
+    background: rgba(29, 36, 51, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+
+    &__box {
+        background: #fff;
+        border-radius: 14px;
+        max-width: 520px;
+        width: 100%;
+        padding: 20px 22px;
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+        animation: cristal-ladder-in 0.18s ease-out;
+    }
+    &__added {
+        color: #1f8a4c;
+        font-weight: 700;
+        margin-bottom: 8px;
+    }
+    &__kind {
+        font-size: 12px;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+        color: #c2611a;
+        margin-bottom: 6px;
+    }
+    &__body {
+        display: flex;
+        gap: 14px;
+        align-items: center;
+        img {
+            width: 96px;
+            height: 96px;
+            object-fit: contain;
+            border: 1px solid #e3e7ee;
+            border-radius: 10px;
+            flex-shrink: 0;
+            background: #fff;
+        }
+    }
+    &__name {
+        font-weight: 700;
+        font-size: 17px;
+        line-height: 1.2;
+        margin-bottom: 4px;
+    }
+    &__text {
+        color: #3d4555;
+        font-size: 15px;
+        line-height: 1.35;
+    }
+    &__actions {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        justify-content: flex-end;
+        margin-top: 16px;
+        flex-wrap: wrap;
+    }
+    &__step {
+        text-align: right;
+        color: #9aa3b2;
+        font-size: 12px;
+        margin-top: 6px;
+    }
+}
+
+@keyframes cristal-ladder-in {
+    from { transform: translateY(12px); opacity: 0; }
+    to { transform: none; opacity: 1; }
+}
+
+.cristal-cart-suggest {
+    &__title {
+        font-weight: 700;
+        margin: 24px 0 10px;
+    }
+    &__combo {
+        background: #e6f4ec;
+        border: 2px solid #1f8a4c;
+        border-radius: 10px;
+        padding: 10px 14px;
+        margin-bottom: 14px;
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+    }
+}

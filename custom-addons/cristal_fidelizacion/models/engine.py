@@ -14,6 +14,10 @@ CONVERSION_DAYS = 14
 REPOSITION_LEAD_DAYS = 4   # avisar 4 días antes de que se le termine
 
 
+def _clean_name(product):
+    return re.sub(r'^\[[^\]]*\]\s*', '', product.display_name or '')
+
+
 def _label(family):
     if not family:
         return 'tus productos de limpieza'
@@ -138,6 +142,32 @@ class CristalFidEngine(models.AbstractModel):
         return [(p, [day.strftime('%d/%m')], False, day) for p in partners if p.id not in asked]
 
     @api.model
+    def _candidates_carrito(self, flow, today):
+        """Carritos de la web sin pagar hace entre 6 y 72 horas, de consumidor final con WhatsApp."""
+        now = fields.Datetime.now()
+        orders = self.env['sale.order'].sudo().search([
+            ('website_id', '!=', False), ('state', 'in', ('draft', 'sent')), ('amount_total', '>', 0),
+            ('write_date', '<=', now - timedelta(hours=6)), ('create_date', '>=', now - timedelta(hours=72)),
+            ('partner_id.cristal_customer_type', '=', 'cf'), ('partner_id.cristal_wa_key', '!=', False),
+            ('partner_id.cristal_mkt_optout', '=', False), ('partner_id.active', '=', True)])
+        done = set(self.env['cristal.fid.touch'].sudo().search(
+            [('flow_id', '=', flow.id), ('sale_order_id', 'in', orders.ids)]).sale_order_id.ids)
+        result, seen = [], set()
+        for order in orders:
+            partner = order.partner_id
+            if order.id in done or partner.id in seen or partner.name.lower().startswith('public'):
+                continue
+            products = [l.product_id for l in order.order_line if l.product_id and not l.is_delivery]
+            if not products:
+                continue
+            names = [_clean_name(p) for p in products[:2]]
+            label = ' y '.join(names) + (' y %d más' % (len(products) - 2) if len(products) > 2 else '')
+            seen.add(partner.id)
+            result.append((partner, [label[:150]], False, fields.Date.to_date(order.create_date),
+                           {'sale_order_id': order.id}))
+        return result
+
+    @api.model
     def _candidates_segunda_compra(self, flow, today):
         day = today - timedelta(days=20)
         partners = self.env['res.partner'].sudo().search(self._base_domain() + [
@@ -203,6 +233,7 @@ class CristalFidEngine(models.AbstractModel):
         selectors = {
             'reposicion': self._candidates_reposicion,
             'satisfaccion': self._candidates_satisfaccion,
+            'carrito': self._candidates_carrito,
             'segunda_compra': self._candidates_segunda_compra,
             'reactivacion_1': lambda f, d: self._candidates_reactivacion(f, d, 1),
             'reactivacion_2': lambda f, d: self._candidates_reactivacion(f, d, 2),
@@ -214,14 +245,16 @@ class CristalFidEngine(models.AbstractModel):
             if not selector:
                 continue
             count = 0
-            for partner, variables, family, ref_date in selector(flow, today):
+            for item in selector(flow, today):
+                partner, variables, family, ref_date = item[:4]
+                extra = item[4] if len(item) > 4 else {}
                 variables = [_first_name(partner)] + variables   # {{1}} = nombre de pila
                 if count >= (flow.daily_limit or 0):
                     break
                 if self._blocked(partner, flow, recent_any, recent_mkt, blocked_keys):
                     continue
                 vals = {'partner_id': partner.id, 'flow_id': flow.id, 'variables': ' | '.join(variables),
-                        'family_id': family.id if family else False, 'ref_date': ref_date}
+                        'family_id': family.id if family else False, 'ref_date': ref_date, **extra}
                 if self._in_holdout(partner, flow):
                     vals['state'] = 'holdout'
                 elif flow.send_enabled and flow.template_id.status == 'approved':

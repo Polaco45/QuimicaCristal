@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Carrito: complementos de lo que lleva y el combo que casi completa (reemplaza a los
+         "Suggested accessories" nativos, que quedaron vacíos). Mismo markup que Odoo para que
+         el botón agregue sin JS propio. -->
+    <template id="cart_cross_sell" inherit_id="website_sale.cart_lines" name="Cristal — cross sell en el carrito">
+        <xpath expr="//div[@id='cart_products']" position="inside">
+            <t t-set="cristal" t-value="request.env['cristal.vg.suggestion'].sudo().website_cart_suggestions(website_sale_order)"/>
+            <div t-if="cristal['combo']" class="cristal-cart-suggest__combo">
+                <div>
+                    <div class="small fw-bold text-uppercase opacity-75">Ya tenés la mitad del combo</div>
+                    <div class="fw-bold">
+                        <t t-out="cristal['combo']['template'].name"/>:
+                        <t t-out="cristal['combo']['matched']"/> de <t t-out="cristal['combo']['slots']"/> productos
+                        · completo <t t-out="cristal['combo']['price']" t-options="{'widget': 'monetary', 'display_currency': website.currency_id}"/>
+                        · ahorrás <t t-out="cristal['combo']['saving']" t-options="{'widget': 'monetary', 'display_currency': website.currency_id}"/>
+                    </div>
+                </div>
+                <a class="btn btn-success" t-att-href="cristal['combo']['url']">Ver el combo</a>
+            </div>
+            <t t-if="cristal['products']">
+                <h5 class="cristal-cart-suggest__title">Te puede faltar</h5>
+                <div id="cristal_cart_suggest" class="d-flex flex-column align-items-stretch mb32">
+                    <t t-foreach="cristal['products']" t-as="item">
+                        <t t-set="product" t-value="item[0]"/>
+                        <div t-attf-class="d-flex gap-3 align-items-center #{not item_last and 'border-bottom pb-3'} #{item_index &gt; 0 and 'pt-3'}">
+                            <div style="width: 64px">
+                                <a t-att-href="product.product_tmpl_id.website_url">
+                                    <span t-field="product.image_128" t-options="{'widget': 'image', 'qweb_img_responsive': False, 'class': 'o_image_64_max rounded'}"/>
+                                </a>
+                            </div>
+                            <div class="flex-grow-1">
+                                <a t-att-href="product.product_tmpl_id.website_url">
+                                    <strong t-out="product.with_context(display_default_code=False).display_name"/>
+                                </a>
+                            </div>
+                            <div class="d-flex flex-column align-items-end">
+                                <input class="js_quantity" name="product_id" t-att-data-product-id="product.id" type="hidden"/>
+                                <a role="button" class="js_add_suggested_products btn btn-md btn-outline-primary text-nowrap">
+                                    <span class="d-md-none fa fa-shopping-cart"/>
+                                    <span class="d-none d-md-inline">Agregar</span>
+                                </a>
+                                <div class="mb-0 h-6 fw-bold text-end">
+                                    <span t-out="item[1]" t-options="{'widget': 'monetary', 'display_currency': website.currency_id}"/>
+                                </div>
+                            </div>
+                        </div>
+                    </t>
+                </div>
+            </t>
+        </xpath>
+    </template>
+</odoo>

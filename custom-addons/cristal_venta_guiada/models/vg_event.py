@@ -20,9 +20,11 @@ class CristalVgEvent(models.Model):
         ('category', 'Respaldo categoría'),
         ('manual', 'Fijada a mano'),
         ('checkout', 'Promo de caja'),
+        ('qty', 'Llevando N'),
     ], string='Tipo')
     accepted = fields.Boolean(string='Aceptada')
     amount = fields.Float(string='Monto sumado')
+    channel = fields.Selection([('pos', 'Caja'), ('web', 'Web')], string='Canal', default='pos', index=True)
 
     @api.model
     def log_events(self, events):
@@ -37,6 +39,7 @@ class CristalVgEvent(models.Model):
                 'trigger_product_id': ev.get('trigger_product_id') or False,
                 'product_id': ev.get('product_id') or False,
                 'kind': ev.get('kind') if ev.get('kind') in kinds else False,
+                'channel': ev.get('channel') or 'pos',
             }
             if ev.get('accepted'):
                 shown = self.search([
