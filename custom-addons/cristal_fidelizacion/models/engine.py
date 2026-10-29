@@ -30,8 +30,11 @@ def _first_name(partner):
     if ',' in name:
         candidates = name.split(',', 1)[1].split()[:1]
     else:
+        # La palabra que más se usa como nombre que como apellido ("Funes Monica" → Monica)
         known = partner.env['cristal.fid.engine']._known_first_names()
-        candidates = [w for w in name.split() if w.lower() in known][:1]
+        scored = sorted(((known.get(w.lower(), 0), i, w) for i, w in enumerate(name.split())),
+                        key=lambda s: (-s[0], s[1]))
+        candidates = [w for score, _i, w in scored if score > 0][:1]
     word = candidates[0] if candidates else ''
     if not word.isalpha():
         return 'qué tal'
@@ -45,14 +48,18 @@ class CristalFidEngine(models.AbstractModel):
     @api.model
     @tools.ormcache()
     def _known_first_names(self):
-        """Nombres de pila que aparecen después de la coma en los contactos cargados
-        "Apellido, Nombre" (al menos 2 veces). Sirven para leer los que no tienen coma."""
+        """{palabra: veces como nombre − veces como apellido}, sacado de los contactos
+        cargados "Apellido, Nombre". Sirve para leer los que no tienen coma."""
         self.env.cr.execute("""
-            SELECT lower(split_part(trim(split_part(name, ',', 2)), ' ', 1)) AS w
-              FROM res_partner
-             WHERE name LIKE '%,%'
-             GROUP BY 1 HAVING count(*) >= 2""")
-        return frozenset(w for (w,) in self.env.cr.fetchall() if w and len(w) >= 3 and w.isalpha())
+            WITH c AS (SELECT name FROM res_partner WHERE name LIKE '%,%'),
+                 f AS (SELECT lower(split_part(trim(split_part(name, ',', 2)), ' ', 1)) w, count(*) n
+                         FROM c GROUP BY 1),
+                 s AS (SELECT lower(split_part(trim(split_part(name, ',', 1)), ' ', 1)) w, count(*) n
+                         FROM c GROUP BY 1)
+            SELECT f.w, f.n - coalesce(s.n, 0) FROM f LEFT JOIN s ON s.w = f.w
+             WHERE f.n >= 2""")
+        return {w: score for w, score in self.env.cr.fetchall()
+                if w and len(w) >= 3 and w.isalpha() and score > 0}
 
     # ── Reglas comunes ─────────────────────────────────────────────
     @api.model
