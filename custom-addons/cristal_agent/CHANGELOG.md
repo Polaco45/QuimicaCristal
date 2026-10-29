@@ -7,6 +7,17 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.49.2] — 2026-10-29
+
+### Changed — Envío a domicilio gratis desde $65.000 (para todos)
+
+Joaco: "cambio, el envío a domicilio es gratis a partir de 65000". En la 1.49.0/1.49.1 el
+de consumidor final (método 14, el de la web y de la regla #73 para la lista L.C 1) había
+pasado a $49.000; el mayorista (método 1) ya estaba en $65.000. La migración pone el
+método 14 en $65.000 y recarga el prompt v7 ("$6.500, gratis desde $65.000").
+
+---
+
 ## [18.0.1.48.0] — 2026-10-28
 
 ### Added — Claudio confirma solo los pedidos de consumidor final
