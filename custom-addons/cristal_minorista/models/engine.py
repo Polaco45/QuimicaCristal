@@ -9,6 +9,7 @@ from odoo import api, fields, models
 _logger = logging.getLogger(__name__)
 
 HISTORY_DAYS = 730
+CF_PRICELIST = 'L.C 1'   # lista de consumidor final; cualquier otra es precio de negocio
 DEFAULT_CYCLE = 35        # mediana de recompra de consumidor final (oct-2026)
 MIN_CYCLE, MAX_CYCLE = 14, 120
 MIN_GAP = 3               # compras con menos días de diferencia cuentan como una
@@ -33,6 +34,21 @@ class CristalMinoristaEngine(models.AbstractModel):
     def _anonymous_partner_id(self):
         value = self.env['ir.config_parameter'].sudo().get_param('cristal_minorista.anonymous_partner_id')
         return int(value) if value and value.isdigit() else 0
+
+    @api.model
+    def _refresh_wholesale_buyers(self, since):
+        """Marca a quien tiene pedidos confirmados con una lista que no es la de consumidor
+        final (Lista Mayorista, L.E, etc.): esos clientes son negocios aunque no tengan CUIT."""
+        cf_pricelist = self.env['product.pricelist'].sudo().search([('name', '=', CF_PRICELIST)], limit=1)
+        orders = self.env['sale.order'].sudo().search([
+            ('state', '=', 'sale'), ('date_order', '>=', since),
+            ('pricelist_id', '!=', cf_pricelist.id)])
+        buyers = orders.partner_id.commercial_partner_id
+        Partner = self.env['res.partner'].sudo().with_context(active_test=False)
+        Partner.search([('cristal_wholesale_buyer', '=', True), ('id', 'not in', buyers.ids)]).write(
+            {'cristal_wholesale_buyer': False})
+        buyers.filtered(lambda p: not p.cristal_wholesale_buyer).write({'cristal_wholesale_buyer': True})
+        return buyers
 
     @api.model
     def _purchases(self, since):
@@ -71,6 +87,7 @@ class CristalMinoristaEngine(models.AbstractModel):
         today = fields.Date.context_today(self)
         since = fields.Datetime.now() - timedelta(days=HISTORY_DAYS)
         year_ago = today - timedelta(days=365)
+        self._refresh_wholesale_buyers(since)
         rows = self._purchases(since)
 
         by_partner = defaultdict(list)
