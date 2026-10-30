@@ -19,7 +19,7 @@
         <field name="daily_limit">20</field>
         <field name="wa_account_id" search="[('name', '=', 'Cristal Mayorista')]"/>
         <field name="description">Entre 6 y 72 horas después de dejar productos en el carrito de la web sin pagar, le pregunta si se lo guardamos y lo llevamos. Si dice que sí, Claudio cierra la venta sobre ese mismo carrito.</field>
-        <field name="template_body">Hola {{1}} 👋 Dejaste {{2}} en tu carrito de quimicacristal.com.ar. ¿Te lo guardamos y te lo llevamos a tu casa? Envío gratis desde $49.000.</field>
+        <field name="template_body">Hola {{1}} 👋 Dejaste {{2}} en tu carrito de quimicacristal.com.ar. ¿Te lo guardamos y te lo llevamos a tu casa? Envío gratis desde $65.000.</field>
         <field name="button_texts">Sí, quiero terminarlo|Ahora no|No me avisen más</field>
     </record>
     <record id="flow_satisfaccion" model="cristal.fid.flow">
