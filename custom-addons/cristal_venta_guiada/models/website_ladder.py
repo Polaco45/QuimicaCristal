@@ -24,6 +24,17 @@ def _base(product):
     return re.sub(r'\s*\([^)]*\)\s*$', '', _clean(product)).strip().lower()
 
 
+SIZE_RE = re.compile(r'(\d+(?:[.,]\d+)?)\s*(lts?\b|litros?\b|l\b|cc\b|ml\b|kg\b|kilos?\b)', re.I)
+
+
+def _liters(product):
+    m = SIZE_RE.search(_clean(product).lower())
+    if not m:
+        return None
+    value = float(m.group(1).replace(',', '.'))
+    return value / 1000.0 if m.group(2).lower() in ('cc', 'ml') else value
+
+
 class CristalVgSuggestion(models.Model):
     _inherit = 'cristal.vg.suggestion'
 
@@ -108,14 +119,22 @@ class CristalVgSuggestion(models.Model):
         # 3) Tamaño más grande y 4) complemento, de las sugerencias de la caja
         suggestions = self.sudo().search([('trigger_product_id', '=', product.id), ('active', '=', True)],
                                          order='manual desc, score desc')
-        size = next((s for s in suggestions if s.kind == 'size' and s.product_id.id not in cart_pids
-                     and self._web_sellable(website, s.product_id, company)), None)
+        # El tamaño SIGUIENTE (1 L → 5 L, 5 L → 10 L), nunca el más grande de una (Joaco 30/10).
+        sizes = [s for s in suggestions if s.kind == 'size' and s.product_id.id not in cart_pids
+                 and self._web_sellable(website, s.product_id, company)]
+        size = min(sizes, key=lambda s: _liters(s.product_id) or 0, default=None) if sizes else None
         if size:
             big, big_price = size.product_id, self._web_price(order, size.product_id)
+            small_l, big_l = _liters(product), _liters(big)
+            per_liter = ''
+            if small_l and big_l and unit:
+                pct = round(100 * (1 - (big_price / big_l) / (unit / small_l)))
+                if pct > 0:
+                    per_liter = ' Te sale %d%% menos el litro.' % pct
             steps.append({
-                'kind': 'size', 'title': 'Te conviene el tamaño grande',
-                'text': '%s a $%s: rinde mucho más por litro que el de %s.' % (
-                    _clean(big), f'{big_price:,.0f}', _clean(product).split('(')[-1].rstrip(')') or 'este'),
+                'kind': 'size', 'title': 'Te conviene el tamaño siguiente',
+                'text': '%s a $%s: rinde mucho más que el de %s.%s' % (
+                    _clean(big), f'{big_price:,.0f}', _clean(product).split('(')[-1].rstrip(')') or 'este', per_liter),
                 'cta': 'Cambiar por el grande', 'product': self._web_product(order, big),
                 'replace_line_id': line.id if line else False,
             })
@@ -153,7 +172,7 @@ class CristalVgSuggestion(models.Model):
             if not self._web_sellable(website, p, company):
                 continue
             seen.add(p.product_tmpl_id.id)
-            products.append((p, self._web_price(order, p)))
+            products.append((p, self._web_price(order, p), s.trigger_product_id.id))
             if len(products) >= MAX_CART_SUGGESTIONS:
                 break
         # El combo que ya está a mitad de camino con lo que lleva
@@ -170,3 +189,33 @@ class CristalVgSuggestion(models.Model):
                     best = {'template': combo, 'matched': matched, 'slots': len(slots), 'ratio': matched / len(slots),
                             'price': price, 'saving': loose - price, 'url': combo.website_url}
         return {'products': products, 'combo': best}
+
+    @api.model
+    def website_cart_popup(self, order):
+        """Datos del popup "Completá tu compra" del carrito: sugerencias, combo a medio camino y
+        cuánto falta para el envío gratis (lo que hacen las tiendas grandes: barra de envío gratis +
+        "los que compraron esto también llevaron" + un clic para agregar)."""
+        data = self.website_cart_suggestions(order)
+        website = order.website_id or self.env['website'].get_current_website()
+        products = [dict(self._web_product(order, p), trigger_id=trigger) for p, _price, trigger in data['products']]
+        combo = data['combo'] and {
+            'name': data['combo']['template'].name, 'matched': data['combo']['matched'], 'slots': data['combo']['slots'],
+            'price': data['combo']['price'], 'saving': data['combo']['saving'], 'url': data['combo']['url'],
+        }
+        carriers = self.env['delivery.carrier'].sudo().search([
+            ('website_published', '=', True), ('free_over', '=', True), ('website_id', 'in', [website.id, False])])
+        free_over = min(carriers.mapped('amount')) if carriers else 0.0
+        if hasattr(order, '_compute_amount_total_without_delivery'):
+            subtotal = order._compute_amount_total_without_delivery()
+        else:
+            subtotal = order.amount_total - order.amount_delivery
+        if products:
+            self.env['cristal.vg.event'].sudo().log_events([{
+                'order_uuid': 'web-%s' % order.id, 'trigger_product_id': p['trigger_id'] or False,
+                'product_id': p['id'], 'kind': 'complement', 'channel': 'web',
+            } for p in products])
+        return {
+            'order_id': order.id, 'cart_quantity': order.cart_quantity,
+            'products': products, 'combo': combo,
+            'free_over': free_over, 'subtotal': subtotal, 'missing': max(0.0, free_over - subtotal),
+        }
