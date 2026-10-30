@@ -190,7 +190,12 @@ class CartPopup {
                 step: { kind: "complement", product: p, trigger_id: p.trigger_id || false },
             });
             btn.textContent = "✓ Agregado";
-            // El carrito se vuelve a dibujar con la línea nueva.
+            // El carrito se vuelve a dibujar con la línea nueva, sin volver a abrir el popup.
+            try {
+                sessionStorage.setItem("cristal_cart_popup_skip", "1");
+            } catch (error) {
+                // sin storage
+            }
             window.location.reload();
         } catch (error) {
             console.warn("Popup carrito:", error);
@@ -207,6 +212,14 @@ class CartPopup {
 async function maybeCartPopup() {
     if (!/^\/shop\/cart\/?$/.test(window.location.pathname) || !document.querySelector("#cart_products")) {
         return;
+    }
+    try {
+        if (sessionStorage.getItem("cristal_cart_popup_skip")) {
+            sessionStorage.removeItem("cristal_cart_popup_skip");
+            return;
+        }
+    } catch (error) {
+        // sin storage
     }
     let data;
     try {
