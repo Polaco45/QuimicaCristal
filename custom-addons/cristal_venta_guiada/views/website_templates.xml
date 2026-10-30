@@ -3,6 +3,17 @@
     <!-- Carrito: complementos de lo que lleva y el combo que casi completa (reemplaza a los
          "Suggested accessories" nativos, que quedaron vacíos). Mismo markup que Odoo para que
          el botón agregue sin JS propio. -->
+    <!-- Grilla de la tienda: el carrito de un producto con varias presentaciones no agrega la
+         primera a ciegas (Joaco 30/10: "bolsa negra me agrega la 45x60 cuando quería la 90x120");
+         el JS lo manda a la ficha para elegir. -->
+    <template id="grid_add_to_cart_variants" inherit_id="website_sale.products_add_to_cart" name="Cristal — carrito de la grilla con variantes">
+        <xpath expr="//a[hasclass('a-submit')]" position="attributes">
+            <attribute name="t-att-data-variants">product.product_variant_count</attribute>
+            <attribute name="t-att-data-product-url">product.website_url</attribute>
+            <attribute name="t-att-title">'Elegir presentación' if product.product_variant_count &gt; 1 else 'Agregar al carrito'</attribute>
+        </xpath>
+    </template>
+
     <template id="cart_cross_sell" inherit_id="website_sale.cart_lines" name="Cristal — cross sell en el carrito">
         <xpath expr="//div[@id='cart_products']" position="inside">
             <t t-set="cristal" t-value="request.env['cristal.vg.suggestion'].sudo().website_cart_suggestions(website_sale_order)"/>

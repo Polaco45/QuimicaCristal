@@ -236,6 +236,19 @@ if (document.readyState === "loading") {
 }
 
 WebsiteSale.include({
+    // En la grilla, un producto con varias presentaciones (1/5/10 L, bolsas 45x60/90x120) no se
+    // agrega a ciegas: se abre la ficha para que elija.
+    _onClickAdd(ev) {
+        const el = ev.currentTarget;
+        if (el.closest("#products_grid") && parseInt(el.dataset.variants || "1", 10) > 1 && el.dataset.productUrl) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            window.location.href = el.dataset.productUrl;
+            return Promise.resolve();
+        }
+        return this._super(...arguments);
+    },
+
     async _onProductReady(isOnProductPage = false) {
         if (this.isBuyNow) {
             return this._super(...arguments);
