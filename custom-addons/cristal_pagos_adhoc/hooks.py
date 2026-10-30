@@ -1,10 +1,9 @@
-from odoo import SUPERUSER_ID, api
-
 # ADHOC dejó estos dos términos sin traducir en el es.po de l10n_ar_payment_bundle
 # (la vista heredada pisa los <span> del reporte de l10n_ar_tax, que sí los traduce).
+# Las claves son los términos tal como los extrae xml_translate (con las etiquetas).
 RECEIPT_TRANSLATIONS = {
-    "Total Paid": "Total Pagado",
-    "Total Imputed": "Total Imputado",
+    "<strong><span>Total Paid</span></strong>": "<strong><span>Total Pagado</span></strong>",
+    "<strong><span>Total Imputed</span></strong>": "<strong><span>Total Imputado</span></strong>",
 }
 
 
