@@ -199,14 +199,15 @@ class CristalVgSuggestion(models.Model):
         for pid, p in info.items():
             cands = []   # (kind, product_info, text, reason, score)
 
-            # 1) Tamaño mayor con mejor precio por litro (mismo aroma; si no, otro aroma)
+            # 1) El tamaño SIGUIENTE con mejor precio por litro (mismo aroma; si no, otro aroma).
+            #    Joaco (30/10/2026): de 1 L se ofrece el de 5, de 5 el de 10; saltar de 1 a 10 es mucho.
             if p['liters'] and p['liquid']:
                 for key in ('fam', 'base_fam'):
                     bigger = sorted(
                         (q for q in info.values() if q['product'].id != pid and q[key] == p[key]
                          and q['liters'] and q['liters'] > p['liters'] and sellable(q)
                          and q['price'] / q['liters'] < 0.9 * p['price'] / p['liters']),
-                        key=lambda q: (-q['liters'], -q['stock']))   # el más grande primero
+                        key=lambda q: (q['liters'], -q['stock']))   # el siguiente tamaño, no el más grande
                     if bigger:
                         q = bigger[0]
                         saving = round(100 * (1 - (q['price'] / q['liters']) / (p['price'] / p['liters'])))

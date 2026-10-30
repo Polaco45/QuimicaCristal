@@ -23,6 +23,14 @@ class CristalVentaGuiadaWeb(http.Controller):
             } for s in steps])
         return {'steps': steps, 'order_id': order.id}
 
+    @http.route('/cristal/vg/cart', type='json', auth='public', website=True)
+    def cart_popup(self, **kw):
+        """Popup "Completá tu compra" del carrito."""
+        order = request.website.sale_get_order()
+        if not order or not order.order_line:
+            return {}
+        return request.env['cristal.vg.suggestion'].sudo().website_cart_popup(order)
+
     @http.route('/cristal/vg/accept', type='json', auth='public', website=True)
     def accept(self, step, **kw):
         """Aplica el paso aceptado sobre el carrito y lo registra."""
