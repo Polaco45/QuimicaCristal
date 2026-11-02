@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <menuitem id="menu_correo_root" name="Correo" sequence="15"
+              web_icon="mail,static/description/icon.png"/>
+    <menuitem id="menu_correo_bandeja" name="Bandeja" parent="menu_correo_root"
+              sequence="10" action="action_bandeja_server"/>
+    <menuitem id="menu_correo_enviados" name="Enviados" parent="menu_correo_root"
+              sequence="20" action="action_enviados_server"/>
+    <menuitem id="menu_correo_casillas" name="Casillas" parent="menu_correo_root"
+              sequence="30" action="action_casillas"/>
+</odoo>
