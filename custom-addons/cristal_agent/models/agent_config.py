@@ -590,6 +590,11 @@ class CristalAgentConfig(models.Model):
         help="Todas las mañanas clasifica a cada mayorista por etapa y elige UNA próxima "
              "acción por cliente y semana. En seco solo deja el registro (menú Ciclo de "
              "vida); en real se la agenda a Claudio como actividad.")
+    lifecycle_live_actions = fields.Char(
+        string="Acciones en modo real", default='c_',
+        help="Códigos o prefijos separados por coma que SÍ se ejecutan en modo real; el resto "
+             "queda en seco. Vacío = todas. Prefijos: c_ cotizado sin comprar, n_ cliente nuevo, "
+             "a_ activo, q_ calificado sin cotizar, r_ en riesgo, d_ dormido.")
     lifecycle_holdout_pct = fields.Integer(
         string="Grupo de control (%)", default=10,
         help="Porcentaje de clientes que NO reciben la acción, para medir cuánto suma.")

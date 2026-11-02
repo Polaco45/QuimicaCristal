@@ -1311,7 +1311,7 @@ class CristalAgentRouteSelftest(models.TransientModel):
         cfg = env['cristal.agent.config'].sudo().get_active()
         cfg.write({'lifecycle_mode': 'dry_run', 'lifecycle_holdout_pct': 0,
                    'lifecycle_daily_cap': 30, 'lifecycle_default_cycle_days': 30,
-                   'enable_create_leads': True,
+                   'enable_create_leads': True, 'lifecycle_live_actions': '',
                    'bot_user_id': cfg.bot_user_id.id or env.ref('base.user_root').id})
         today_ar = fields.Date.context_today(cfg)
         lc_state = {}
@@ -1391,9 +1391,16 @@ class CristalAgentRouteSelftest(models.TransientModel):
             _confirmed(p_risk, 0)
             NBA.mark_conversions(today_ar)
             assert live.converted and live.converted_amount > 0, live.read(['converted', 'converted_amount'])
-            cfg.lifecycle_mode = 'dry_run'
+            # Modo real acotado: solo las acciones habilitadas se agendan; el resto sigue en seco.
+            p_dorm = group.filtered(lambda p: p.name.endswith('LC dormido'))
+            created.filtered(lambda n: n.partner_id == p_dorm).unlink()
+            cfg.lifecycle_live_actions = 'c_'
+            limited = NBA.plan(p_dorm, stats, today_ar, cfg)
+            assert len(limited) == 1 and limited.state == 'dry_run' and not limited.activity_id, limited.read()
+            cfg.write({'lifecycle_mode': 'dry_run', 'lifecycle_live_actions': ''})
             return ("5 acciones correctas por etapa · en seco sin actividades ni corridas · una por "
-                    "semana · en real agenda [NBA] a Claudio y marca la compra")
+                    "semana · en real agenda [NBA] a Claudio y marca la compra · acciones no "
+                    "habilitadas quedan en seco")
         self._case(results, "43. Próxima mejor acción (en seco y real)", c_nba)
 
         # 44) Origen del contacto: código, frase del anuncio, orgánico, fuente del lead
