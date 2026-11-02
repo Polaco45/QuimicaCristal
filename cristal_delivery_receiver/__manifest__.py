@@ -1,6 +1,6 @@
 {
     "name": "Cristal - Recibido por en remito de entrega",
-    "version": "18.0.1.1.0",
+    "version": "18.0.1.2.0",
     "summary": "Registra quién recibe la entrega y lo imprime en el remito, junto a la firma.",
     "description": """
 Agrega un campo 'Recibido por' en las órdenes de entrega (stock.picking) para
