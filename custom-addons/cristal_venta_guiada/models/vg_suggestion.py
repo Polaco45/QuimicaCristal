@@ -64,6 +64,8 @@ class CristalVgSuggestion(models.Model):
         Sugg.search([('manual', '=', False)]).unlink()
         Sugg.create(result)
         _logger.info("venta guiada: %s sugerencias automáticas recalculadas", len(result))
+        # La escalera aprende: el orden de los escalones sale de lo que aceptan.
+        self.env['cristal.vg.event']._cron_update_ladder_order()
 
     def action_recompute(self):
         self._cron_recompute()

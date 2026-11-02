@@ -151,6 +151,10 @@ class CristalVgSuggestion(models.Model):
         for step in steps:
             for key in ('text', 'title'):
                 step[key] = step[key].replace(',', '.')
+        # La escalera aprende: el orden sale de lo que aceptan en la web (recálculo nocturno).
+        Event = self.env['cristal.vg.event'].sudo()
+        ladder = Event._ladder_orders()['web']
+        steps.sort(key=lambda s: ladder.index(Event._ladder_group(s['kind'])))
         return steps
 
     # ── En el carrito ─────────────────────────────────────────────
