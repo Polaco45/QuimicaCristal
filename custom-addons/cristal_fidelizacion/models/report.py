@@ -87,7 +87,7 @@ class CristalMinoristaReport(models.AbstractModel):
             f"<p><b>1 · Captación</b><br/>Ventas a consumidor final: {len(now_rows)} por "
             f"{_money(total)}{_delta(total, total_prev)}.<br/>Por origen: {origin_txt or '—'}.<br/>"
             f"Clientes anotados para avisos: {optins} esta semana ({optin_local} en la caja); "
-            f"{allowed} en total.</p>")
+            f"{allowed} en total.{self._optin_goal_txt(allowed)}</p>")
 
         # 2 · Conversión (Claudio)
         quotes = self.env['sale.order'].sudo().search([
@@ -106,7 +106,7 @@ class CristalMinoristaReport(models.AbstractModel):
             combos = acc.filtered(lambda e: e.kind == 'combo')
             vg_txt = (f"<br/>Venta guiada: {len(shown)} ofertas, {len(acc)} aceptadas "
                       f"({_pct(len(acc), len(shown))}), {_money(sum(acc.mapped('amount')))} sumados; "
-                      f"combos armados: {len(combos)}.")
+                      f"combos armados: {len(combos)}.{self._ladder_txt()}")
         parts.append(f"<p><b>3 · Ticket</b><br/>Ticket promedio en el local: {_money(ticket)}"
                      f"{_delta(ticket, ticket_prev)}.{vg_txt}</p>")
 
@@ -135,6 +135,30 @@ class CristalMinoristaReport(models.AbstractModel):
             f"<br/>Pedidos de reseña en Google: {reviews}." + (f" ⚠️ Errores de envío: {errors}." if errors else '') +
             f"<br/>Clientes por segmento: {seg_txt or '—'}.</p>")
         return ''.join(parts)
+
+    def _optin_goal_txt(self, allowed):
+        """Cuánto falta para que se prendan solos los flujos de marketing."""
+        Param = self.env['ir.config_parameter'].sudo()
+        if Param.get_param('cristal_fidelizacion.marketing_auto_enabled'):
+            return " Segunda compra y reactivación: prendidos."
+        threshold = int(Param.get_param('cristal_fidelizacion.marketing_optin_threshold') or 50)
+        return (f" Faltan {max(threshold - allowed, 0)} para {threshold}: ahí se prenden solos "
+                f"segunda compra y reactivación.")
+
+    def _ladder_txt(self):
+        """Orden de la escalera y aceptación por escalón, caja y web (últimos 30 días)."""
+        if 'cristal.vg.event' not in self.env:
+            return ''
+        Event = self.env['cristal.vg.event'].sudo()
+        names = {'combo': 'combo', 'qty': 'llevá N', 'size': 'tamaño', 'other': 'complemento'}
+        out = []
+        for ch, label in (('pos', 'caja'), ('web', 'web')):
+            stats = Event._ladder_stats(ch)
+            order = Event._ladder_orders()[ch]
+            parts = [f"{names[g]} {_pct(stats[g][1], stats[g][0])} de {stats[g][0]}" for g in order if stats[g][0]]
+            if parts:
+                out.append(f"escalera {label} (30 d): " + ' → '.join(parts))
+        return ('<br/>' + '<br/>'.join(out)) if out else ''
 
     @api.model
     def _cron_weekly(self):

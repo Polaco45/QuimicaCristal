@@ -1,5 +1,11 @@
 # -*- coding: utf-8 -*-
+import json
+import logging
+from datetime import timedelta
+
 from odoo import api, fields, models
+
+_logger = logging.getLogger(__name__)
 
 
 class CristalVgEvent(models.Model):
@@ -25,6 +31,63 @@ class CristalVgEvent(models.Model):
     accepted = fields.Boolean(string='Aceptada')
     amount = fields.Float(string='Monto sumado')
     channel = fields.Selection([('pos', 'Caja'), ('web', 'Web')], string='Canal', default='pos', index=True)
+
+    # Orden por defecto de la escalera (Joaco, 28/10/2026: de mayor a menor).
+    LADDER_DEFAULT = ['combo', 'qty', 'size', 'other']
+    LADDER_PARAM = 'cristal_venta_guiada.ladder_order'
+    LADDER_MIN_OFFERS = 30
+
+    @api.model
+    def _ladder_group(self, kind):
+        return kind if kind in ('combo', 'qty', 'size') else 'other'
+
+    @api.model
+    def _ladder_stats(self, channel, days=30):
+        """{grupo: (ofertas, aceptadas)} de los últimos días en ese canal. La promo de
+        caja no entra: siempre va al final, a todos."""
+        since = fields.Datetime.now() - timedelta(days=days)
+        stats = {g: [0, 0] for g in self.LADDER_DEFAULT}
+        for row in self.read_group(
+                [('channel', '=', channel), ('date', '>=', since), ('kind', '!=', 'checkout'), ('kind', '!=', False)],
+                ['kind', 'accepted'], ['kind', 'accepted'], lazy=False):
+            g = self._ladder_group(row['kind'])
+            stats[g][0] += row['__count']
+            if row['accepted']:
+                stats[g][1] += row['__count']
+        return {g: tuple(v) for g, v in stats.items()}
+
+    @api.model
+    def _ladder_order(self, channel, days=30):
+        """La escalera se reordena sola: el escalón que más aceptan va primero. Un
+        grupo recién cuenta con LADDER_MIN_OFFERS ofertas; hasta entonces conserva
+        su lugar por defecto (detrás de los que ya tienen datos)."""
+        stats = self._ladder_stats(channel, days)
+
+        def key(group):
+            offers, accepted = stats[group]
+            rate = accepted / offers if offers >= self.LADDER_MIN_OFFERS else -1.0
+            return (-rate, self.LADDER_DEFAULT.index(group))
+        return sorted(self.LADDER_DEFAULT, key=key)
+
+    @api.model
+    def _ladder_orders(self):
+        """Orden vigente por canal, guardado por el recálculo nocturno."""
+        raw = self.env['ir.config_parameter'].sudo().get_param(self.LADDER_PARAM)
+        try:
+            data = json.loads(raw) if raw else {}
+        except ValueError:
+            data = {}
+        return {ch: data.get(ch) or self.LADDER_DEFAULT for ch in ('pos', 'web')}
+
+    @api.model
+    def _cron_update_ladder_order(self):
+        before = self._ladder_orders()
+        after = {ch: self._ladder_order(ch) for ch in ('pos', 'web')}
+        self.env['ir.config_parameter'].sudo().set_param(self.LADDER_PARAM, json.dumps(after))
+        for ch in after:
+            if after[ch] != before[ch]:
+                _logger.info("venta guiada: la escalera %s cambia de %s a %s", ch, before[ch], after[ch])
+        return after
 
     @api.model
     def log_events(self, events):

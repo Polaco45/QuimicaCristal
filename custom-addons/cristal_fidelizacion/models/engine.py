@@ -223,8 +223,44 @@ class CristalFidEngine(models.AbstractModel):
             order='id desc', limit=1)
 
     @api.model
+    MARKETING_OPTIN_THRESHOLD = 50
+
+    @api.model
+    def _auto_enable_marketing(self):
+        """Los flujos de marketing (segunda compra, reactivación) se prenden solos
+        cuando hay suficientes clientes con permiso: no tiene sentido mandarlos a 8
+        personas. Umbral en el parámetro cristal_fidelizacion.marketing_optin_threshold.
+        Se hace una sola vez; después Joaco los maneja a mano."""
+        Param = self.env['ir.config_parameter'].sudo()
+        if Param.get_param('cristal_fidelizacion.marketing_auto_enabled'):
+            return False
+        threshold = int(Param.get_param('cristal_fidelizacion.marketing_optin_threshold') or self.MARKETING_OPTIN_THRESHOLD)
+        optins = self.env['res.partner'].sudo().search_count([
+            ('cristal_mkt_optin', '=', True), ('cristal_mkt_optout', '=', False)])
+        if optins < threshold:
+            return False
+        flows = self.env['cristal.fid.flow'].sudo().search([
+            ('category', '=', 'marketing'), ('send_enabled', '=', False)]).filtered(
+            lambda f: f.template_id and f.template_id.status == 'approved')
+        if not flows:
+            return False
+        flows.write({'send_enabled': True})
+        Param.set_param('cristal_fidelizacion.marketing_auto_enabled', fields.Date.today().isoformat())
+        _logger.info("fidelización: %s clientes con permiso, se prenden %s", optins, flows.mapped('code'))
+        config = self.env['cristal.agent.config'].sudo().search([('active', '=', True)], limit=1) \
+            if 'cristal.agent.config' in self.env else False
+        channel = config and config.internal_channel_id
+        if channel:
+            channel.sudo().with_context(from_cristal_agent=True).message_post(
+                body=(f"<p><b>Fidelización:</b> ya hay {optins} clientes con permiso para avisos "
+                      f"(umbral {threshold}). Se prendieron solos: {', '.join(flows.mapped('name'))}. "
+                      f"Tope: 1 promo por semana por cliente, 10% sin mensaje de control.</p>"),
+                message_type='comment', subtype_xmlid='mail.mt_comment')
+        return True
+
     def _cron_run(self, flows=None):
         today = fields.Date.context_today(self)
+        self._auto_enable_marketing()
         flows = flows or self.env['cristal.fid.flow'].sudo().search([])
         Touch = self.env['cristal.fid.touch'].sudo()
         recent_any = self._recent_contacts(ANY_GAP_DAYS)

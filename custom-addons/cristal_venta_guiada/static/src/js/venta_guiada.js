@@ -159,6 +159,13 @@ patch(PosStore.prototype, {
                 amount: this.models["product.product"].get(pid).get_price(order.pricelist_id, 1),
             });
         }
+        // La escalera aprende: el orden viene del recálculo nocturno (lo que más aceptan, primero).
+        const ladder = this.cristalVgConfig().ladder_order || ["combo", "qty", "size", "other"];
+        const rank = (kind) => {
+            const i = ladder.indexOf(["combo", "qty", "size"].includes(kind) ? kind : "other");
+            return i < 0 ? 99 : i;
+        };
+        steps.sort((a, b) => rank(a.kind) - rank(b.kind));
         this.cristalVg.queue = steps;
         this.cristalVgNext(order);
     },

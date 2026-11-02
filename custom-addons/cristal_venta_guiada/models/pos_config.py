@@ -79,6 +79,8 @@ class PosConfig(models.Model):
             'checkout': checkout,
             'qty_tiers': self._cristal_vg_qty_tiers(pricelist),
             'start_categ_id': self.cristal_vg_start_categ_id.id,
+            # Orden de los escalones, aprendido de lo que la gente acepta (nocturno).
+            'ladder_order': self.env['cristal.vg.event']._ladder_orders()['pos'],
         }
 
     def _cristal_vg_qty_tiers(self, pricelist):
