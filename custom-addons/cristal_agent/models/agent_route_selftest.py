@@ -1271,3 +1271,22 @@ class CristalAgentRouteSelftest(models.TransientModel):
             return ("sin dirección → no · cheque → no · transferencia en RC → confirmado · "
                     "retiro en Sampacho → confirmado · cotización mayorista → no")
         self._case(results, "40. Claudio confirma solo al consumidor final", c_confirma_cf)
+
+        # 41) Modo administración: mail del e-cheq (sin crear cobros: no gasta recibos)
+        def c_echeq_mail():
+            from datetime import date as _date
+            from .agent_admin import _money
+            Admin = env['cristal.agent.admin']
+            assert _money(1421990.26) == '$1.421.990,26', _money(1421990.26)
+            fake = type('P', (), {'name': 'RE-X 0001-00000099'})()
+            no_inv = env['account.move']
+            b = Admin._echeq_mail_body(fake, '90043481', 236092.06, _date(2026, 11, 13), no_inv, 0.0)
+            assert 'e-cheq N° 90043481 por $236.092,06 con fecha de pago 13/11/2026' in b, b
+            assert 'recibo RE-X 0001-00000099' in b and 'admin@quimicacristal.com.ar' in b, b
+            assert 'retención' not in b, "pidió certificado sin diferencia"
+            b2 = Admin._echeq_mail_body(fake, '1', 100.0, _date(2026, 11, 13), no_inv, 3.5)
+            assert 'por los $3,50 de diferencia' in b2 and 'certificado de retención' in b2, b2
+            r = Admin.register_echeq(False, '', 0, False)
+            assert not r.get('ok') and r.get('error'), r
+            return "texto de Sergio con y sin diferencia · faltan datos → no registra"
+        self._case(results, "41. Modo administración: mail del e-cheq", c_echeq_mail)
