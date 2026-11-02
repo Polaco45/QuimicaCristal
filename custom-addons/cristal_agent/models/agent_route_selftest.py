@@ -1290,3 +1290,154 @@ class CristalAgentRouteSelftest(models.TransientModel):
             assert not r.get('ok') and r.get('error'), r
             return "texto de Sergio con y sin diferencia · faltan datos → no registra"
         self._case(results, "41. Modo administración: mail del e-cheq", c_echeq_mail)
+
+        # ═════════════════ v1.52 — Ciclo de vida, NBA, origen y sugerencias ═════════════════
+        # Todo con partners/pedidos ZZ creados acá: no depende del día ni de la config.
+        def _backdate_order(order, days_ago):
+            dt = fields.Datetime.now() - timedelta(days=days_ago)
+            order.write({'date_order': dt})
+            env.cr.execute("UPDATE sale_order SET create_date=%s WHERE id=%s", (dt, order.id))
+            order.invalidate_recordset(['create_date', 'date_order'])
+
+        def _confirmed(partner, days_ago, amount=20000):
+            o = SaleOrder.browse(quote(partner, amount)['order_id'])
+            o.action_confirm()
+            _backdate_order(o, days_ago)
+            return o
+
+        may_tag = env['res.partner.category'].sudo().search([('name', '=', 'Mayorista')], limit=1)
+        Life = env['cristal.agent.lifecycle']
+        NBA = env['cristal.agent.nba'].sudo()
+        cfg = env['cristal.agent.config'].sudo().get_active()
+        cfg.write({'lifecycle_mode': 'dry_run', 'lifecycle_holdout_pct': 0,
+                   'lifecycle_daily_cap': 30, 'lifecycle_default_cycle_days': 30,
+                   'enable_create_leads': True,
+                   'bot_user_id': cfg.bot_user_id.id or env.ref('base.user_root').id})
+        today_ar = fields.Date.context_today(cfg)
+        lc_state = {}
+
+        def mk_lc(name, city=None, mobile='+5493589990042'):
+            p = mk_partner(name, city, cat=may_tag)
+            p.mobile = mobile
+            if city:
+                p.agent_zone = 'rio_cuarto'
+            return p
+
+        # 42) Etapas del ciclo de vida
+        def c_ciclo_vida():
+            p_lead = mk_lc('LC lead')
+            p_qual = mk_lc('LC calificado', 'Rio Cuarto')
+            p_qual.agent_phase_started_at = fields.Datetime.now() - timedelta(days=12)
+            p_quot = mk_lc('LC cotizado', 'Rio Cuarto')
+            o = SaleOrder.browse(quote(p_quot, 30000)['order_id'])
+            _backdate_order(o, 20)
+            p_new = mk_lc('LC nuevo', 'Rio Cuarto')
+            _confirmed(p_new, 11)
+            p_act = mk_lc('LC activo', 'Rio Cuarto')
+            for d in (60, 30, 5):          # ciclo 27, último hace 5 → activo
+                _confirmed(p_act, d)
+            p_risk = mk_lc('LC riesgo', 'Rio Cuarto')
+            for d in (150, 120, 70):       # ciclo 40, último hace 70 (> 1,5 ciclos) → en riesgo
+                _confirmed(p_risk, d)
+            p_dorm = mk_lc('LC dormido', 'Rio Cuarto')
+            for d in (230, 200, 170):      # ciclo 30, último hace 170 (> 90) → dormido
+                _confirmed(p_dorm, d)
+            p_lost = mk_lc('LC perdido', 'Rio Cuarto')
+            _confirmed(p_lost, 200)
+            p_opt = mk_lc('LC opt-out', 'Rio Cuarto')
+            p_opt.set_agent_opt_out('no vende')
+            group = p_lead | p_qual | p_quot | p_new | p_act | p_risk | p_dorm | p_lost | p_opt
+            Life.recompute(group, today_ar)
+            got = {p.name.replace('ZZ Autotest LC ', ''): p.agent_lifecycle for p in group}
+            want = {'lead': 'lead', 'calificado': 'qualified_no_quote', 'cotizado': 'quoted_no_order',
+                    'nuevo': 'new_customer', 'activo': 'active', 'riesgo': 'at_risk',
+                    'dormido': 'dormant', 'perdido': 'lost', 'opt-out': 'no_contact'}
+            assert got == want, got
+            assert all(p.agent_lifecycle_date == today_ar and p.agent_lifecycle_reason for p in group)
+            lc_state['group'] = group
+            return " · ".join(f"{k}→{v}" for k, v in want.items())
+        self._case(results, "42. Ciclo de vida: 9 etapas desde los datos", c_ciclo_vida)
+
+        # 43) Próxima mejor acción: en seco no manda nada; en real agenda a Claudio
+        def c_nba():
+            group = lc_state.get('group')
+            assert group, "depende del caso 42"
+            stats = Life.gather(group, today_ar)
+            Act = env['mail.activity'].sudo()
+            Run = env['cristal.agent.run'].sudo()
+            acts_before = Act.search_count([('res_model', '=', 'res.partner'), ('res_id', 'in', group.ids)])
+            runs_before = Run.search_count([('partner_id', 'in', group.ids)])
+            created = NBA.plan(group, stats, today_ar, cfg)
+            by = {n.partner_id.name.replace('ZZ Autotest LC ', ''): n.action_code for n in created}
+            want = {'calificado': 'q_combo', 'cotizado': 'c_objecion', 'nuevo': 'n_producto_top',
+                    'riesgo': 'r_reactivacion_1', 'dormido': 'd_reactivacion_3'}
+            assert by == want, by
+            assert set(created.mapped('state')) == {'dry_run'}, created.mapped('state')
+            assert Act.search_count([('res_model', '=', 'res.partner'), ('res_id', 'in', group.ids)]) == acts_before, \
+                "en seco creó actividades"
+            assert Run.search_count([('partner_id', 'in', group.ids)]) == runs_before, "en seco gastó corridas"
+            again = NBA.plan(group, stats, today_ar, cfg)
+            assert not again, f"repitió acciones en la misma semana: {again.mapped('action_code')}"
+            # Prioridad: lo cotizado (plata parada) va antes que lo dormido.
+            order = [n.action_code[:2] for n in created.sorted('id')]
+            assert order.index('c_') < order.index('d_'), order
+            # Modo real: la acción se agenda a Claudio (actividad) y, si compra, cuenta.
+            p_risk = group.filtered(lambda p: p.name.endswith('LC riesgo'))
+            created.filtered(lambda n: n.partner_id == p_risk).unlink()
+            cfg.lifecycle_mode = 'live'
+            live = NBA.plan(p_risk, stats, today_ar, cfg)
+            assert len(live) == 1 and live.state == 'planned' and live.activity_id, live.read()
+            assert live.activity_id.user_id == cfg.bot_user_id and '[NBA]' in live.activity_id.summary
+            _confirmed(p_risk, 0)
+            NBA.mark_conversions(today_ar)
+            assert live.converted and live.converted_amount > 0, live.read(['converted', 'converted_amount'])
+            cfg.lifecycle_mode = 'dry_run'
+            return ("5 acciones correctas por etapa · en seco sin actividades ni corridas · una por "
+                    "semana · en real agenda [NBA] a Claudio y marca la compra")
+        self._case(results, "43. Próxima mejor acción (en seco y real)", c_nba)
+
+        # 44) Origen del contacto: código, frase del anuncio, orgánico, fuente del lead
+        def c_origen():
+            env['ir.config_parameter'].sudo().set_param(
+                'cristal_agent.origin_phrases', "RUTA-N | el camión pasa por tu pueblo")
+            p1 = mk_lc('Origen código', 'Rio Cuarto')
+            assert p1.agent_capture_origin("Hola! Quiero la lista mayorista MAY-SUAV", first_message=True) == 'MAY-SUAV'
+            assert p1.agent_capture_origin("otra cosa MAY-OTRO", first_message=True) is False, "pisó el origen"
+            p0 = mk_lc('Origen falso', 'Rio Cuarto')
+            assert p0.agent_capture_origin("tengo COVID-19, mañana paso", first_message=True) == 'ORGANICO', \
+                "tomó COVID-19 como anuncio"
+            p2 = mk_lc('Origen frase', 'Rio Cuarto')
+            assert p2.agent_capture_origin("Hola, vi que el camión pasa por tu pueblo", first_message=True) == 'RUTA-N'
+            p3 = mk_lc('Origen orgánico', 'Rio Cuarto')
+            assert p3.agent_capture_origin("hola, precio del detergente?", first_message=True) == 'ORGANICO'
+            p4 = mk_lc('Origen tardío', 'Rio Cuarto')
+            assert p4.agent_capture_origin("hola", first_message=False) is False, "marcó orgánico sin ser el primer mensaje"
+            r = ToolRegistry.get('create_lead').execute(
+                env=env, run=None, partner_id=p1.id, lead_name='ZZ Autotest lead origen',
+                client_type='mayorista')
+            lead = env['crm.lead'].sudo().browse(r.get('lead_id') or 0)
+            assert lead.exists() and lead.source_id.name == 'MAY-SUAV', (r, lead.source_id.name)
+            return "código MAY-SUAV · frase del anuncio → RUTA-N · sin anuncio → ORGANICO · fuente del lead"
+        self._case(results, "44. Origen del contacto (atribución)", c_origen)
+
+        # 45) suggest_products: lo habitual que no pidió + brecha al mínimo, sin tocar la cotización
+        def c_sugerencias():
+            p = mk_lc('Sugerencias', 'Rio Cuarto')
+            _confirmed(p, 30, amount=15000)   # compró el producto ZZ Ruta hace un mes
+            other = env['product.product'].sudo().create({
+                'name': 'ZZ Autotest Detergente', 'type': 'consu', 'list_price': 1000.0,
+                'is_storable': False, 'sale_ok': True, 'taxes_id': [(6, 0, [])]})
+            oid = cso.execute(env=env, run=None, partner_id=p.id,
+                              lines=[{'product_id': other.id, 'qty': 1, 'price_unit': 1000}])['order_id']
+            lines_before = len(SaleOrder.browse(oid).order_line)
+            r = ToolRegistry.get('suggest_products').execute(env=env, run=None, partner_id=p.id, order_id=oid)
+            assert r.get('ok') and r.get('suggestions'), r
+            ids = [s['product_id'] for s in r['suggestions']]
+            assert product.id in ids and other.id not in ids, ids
+            s0 = next(s for s in r['suggestions'] if s['product_id'] == product.id)
+            assert s0['kind'] == 'habitual' and s0['price'] >= 0 and s0['text'], s0
+            assert r['gaps'].get('falta_para_minimo', 0) > 0 and 'subtotal_productos' in r['gaps'], r['gaps']
+            assert len(SaleOrder.browse(oid).order_line) == lines_before, "modificó la cotización"
+            return ("sugiere lo que compró antes y no pidió · no sugiere lo ya cotizado · "
+                    "informa cuánto falta para el mínimo · no toca la cotización")
+        self._case(results, "45. suggest_products (cross-sell con datos)", c_sugerencias)

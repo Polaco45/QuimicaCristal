@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 {
     'name': "Cristal Agent — Claudio (Mayorista)",
-    'version': '18.0.1.51.1',
+    'version': '18.0.1.52.0',
     'summary': "Agente comercial autónomo (Claude AI) para Cristal Mayorista",
     'description': """
 Cristal Agent — Claudio
@@ -67,6 +67,7 @@ Características principales
         'data/route_circuits.xml',
         'data/route_crons.xml',
         'data/v143_crons.xml',
+        'data/lifecycle_crons.xml',
 
         # views (los que definen acciones primero, menu al final)
         'views/agent_config_views.xml',
@@ -78,6 +79,7 @@ Características principales
         'views/agent_dashboard.xml',
         'views/agent_weekly_report_views.xml',
         'views/res_partner_views.xml',
+        'views/agent_lifecycle_views.xml',
         'views/product_mayorista_catalog_views.xml',
         'views/actions_by_client_type.xml',
         'views/agent_circuit_views.xml',

@@ -63,6 +63,22 @@
               sequence="40"
               action="action_cadence_mayorista"/>
 
+    <!-- 🧭 Ciclo de vida y próxima mejor acción (v1.52) -->
+    <menuitem id="menu_mayorista_lifecycle_root"
+              name="🧭 Ciclo de vida"
+              parent="menu_mayorista_root"
+              sequence="42"/>
+    <menuitem id="menu_mayorista_funnel"
+              name="Embudo (etapa × origen)"
+              parent="menu_mayorista_lifecycle_root"
+              sequence="10"
+              action="action_partner_lifecycle_funnel"/>
+    <menuitem id="menu_mayorista_nba"
+              name="Próximas acciones"
+              parent="menu_mayorista_lifecycle_root"
+              sequence="20"
+              action="action_cristal_agent_nba"/>
+
     <!-- 🚚 Ruta del camión mayorista (v1.32) -->
     <menuitem id="menu_ruta_camion_root"
               name="🚚 Ruta del camión"

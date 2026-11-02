@@ -22,3 +22,5 @@ access_cristal_agent_route_departure_manager,cristal.agent.route.departure manag
 access_cristal_agent_route_selftest_manager,cristal.agent.route.selftest manager,model_cristal_agent_route_selftest,base.group_system,1,1,1,1
 access_cristal_agent_weekly_report_user,cristal.agent.weekly.report user,model_cristal_agent_weekly_report,base.group_user,1,0,0,0
 access_cristal_agent_weekly_report_manager,cristal.agent.weekly.report manager,model_cristal_agent_weekly_report,base.group_system,1,1,1,1
+access_cristal_agent_nba_user,cristal.agent.nba user,model_cristal_agent_nba,base.group_user,1,1,1,0
+access_cristal_agent_nba_manager,cristal.agent.nba manager,model_cristal_agent_nba,base.group_system,1,1,1,1

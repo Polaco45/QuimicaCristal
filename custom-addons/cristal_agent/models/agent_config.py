@@ -581,6 +581,32 @@ class CristalAgentConfig(models.Model):
         help="Hasta este consumo mensual el cliente es PLATA (5% off). Por encima → ORO.",
     )
 
+    # ═════════════════ CICLO DE VIDA Y PRÓXIMA MEJOR ACCIÓN (v1.52) ═════════════════
+    lifecycle_mode = fields.Selection([
+        ('off', 'Apagado'),
+        ('dry_run', 'En seco: calcula y registra, no manda nada'),
+        ('live', 'Real: agenda la acción a Claudio'),
+    ], string="Motor de ciclo de vida", default='dry_run',
+        help="Todas las mañanas clasifica a cada mayorista por etapa y elige UNA próxima "
+             "acción por cliente y semana. En seco solo deja el registro (menú Ciclo de "
+             "vida); en real se la agenda a Claudio como actividad.")
+    lifecycle_holdout_pct = fields.Integer(
+        string="Grupo de control (%)", default=10,
+        help="Porcentaje de clientes que NO reciben la acción, para medir cuánto suma.")
+    lifecycle_daily_cap = fields.Integer(
+        string="Máximo de acciones por día", default=30,
+        help="Tope de acciones agendadas a Claudio por día (modo real).")
+    lifecycle_default_cycle_days = fields.Integer(
+        string="Ciclo de recompra por defecto (días)", default=30,
+        help="Se usa cuando el cliente todavía no tiene historia suficiente.")
+    lifecycle_visit_user_id = fields.Many2one(
+        'res.users', string="Responsable de visitas (dormidos)",
+        help="A quién se le agenda la visita de un cliente dormido de Río Cuarto con "
+             "ticket alto (modo real). Vacío = solo se registra.")
+    lifecycle_visit_min_ticket = fields.Float(
+        string="Ticket mínimo para sugerir visita", default=100000.0,
+        digits='Product Price')
+
     # ─────────── Métricas computadas ───────────
     runs_today = fields.Integer(
         string="Ejecuciones hoy",

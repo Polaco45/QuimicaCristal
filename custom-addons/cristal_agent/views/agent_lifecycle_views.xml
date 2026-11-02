@@ -1,0 +1,227 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v1.52 — Ciclo de vida del mayorista y próxima mejor acción (NBA). -->
+<odoo>
+
+    <!-- ═══════════ Próximas acciones (cristal.agent.nba) ═══════════ -->
+    <record id="view_cristal_agent_nba_list" model="ir.ui.view">
+        <field name="name">cristal.agent.nba.list</field>
+        <field name="model">cristal.agent.nba</field>
+        <field name="arch" type="xml">
+            <list string="Próximas acciones" default_order="date desc, id desc"
+                  decoration-success="converted" decoration-muted="state in ('holdout', 'skipped')">
+                <field name="date"/>
+                <field name="partner_id"/>
+                <field name="lifecycle" widget="badge"/>
+                <field name="action_label"/>
+                <field name="channel" optional="hide"/>
+                <field name="state" widget="badge"
+                       decoration-info="state == 'planned'"
+                       decoration-success="state == 'done'"
+                       decoration-warning="state == 'holdout'"/>
+                <field name="reason" optional="show"/>
+                <field name="zone" optional="hide"/>
+                <field name="origin_code" optional="hide"/>
+                <field name="converted" widget="boolean_toggle" readonly="1"/>
+                <field name="converted_amount" sum="Vendido" optional="show"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_cristal_agent_nba_form" model="ir.ui.view">
+        <field name="name">cristal.agent.nba.form</field>
+        <field name="model">cristal.agent.nba</field>
+        <field name="arch" type="xml">
+            <form string="Próxima acción">
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="partner_id"/>
+                            <field name="date"/>
+                            <field name="lifecycle"/>
+                            <field name="action_code"/>
+                            <field name="channel"/>
+                        </group>
+                        <group>
+                            <field name="state"/>
+                            <field name="activity_id"/>
+                            <field name="converted"/>
+                            <field name="converted_order_id"/>
+                            <field name="converted_amount"/>
+                        </group>
+                    </group>
+                    <field name="reason"/>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_cristal_agent_nba_pivot" model="ir.ui.view">
+        <field name="name">cristal.agent.nba.pivot</field>
+        <field name="model">cristal.agent.nba</field>
+        <field name="arch" type="xml">
+            <pivot string="Acciones por etapa y resultado">
+                <field name="action_label" type="row"/>
+                <field name="state" type="col"/>
+                <field name="converted_amount" type="measure"/>
+            </pivot>
+        </field>
+    </record>
+
+    <record id="view_cristal_agent_nba_graph" model="ir.ui.view">
+        <field name="name">cristal.agent.nba.graph</field>
+        <field name="model">cristal.agent.nba</field>
+        <field name="arch" type="xml">
+            <graph string="Acciones por día" type="bar" stacked="True">
+                <field name="date" interval="day"/>
+                <field name="state"/>
+            </graph>
+        </field>
+    </record>
+
+    <record id="view_cristal_agent_nba_search" model="ir.ui.view">
+        <field name="name">cristal.agent.nba.search</field>
+        <field name="model">cristal.agent.nba</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="partner_id"/>
+                <field name="action_label"/>
+                <filter name="today" string="Hoy" domain="[('date', '=', context_today().strftime('%Y-%m-%d'))]"/>
+                <filter name="week" string="Últimos 7 días"
+                        domain="[('date', '>=', (context_today() - datetime.timedelta(days=7)).strftime('%Y-%m-%d'))]"/>
+                <separator/>
+                <filter name="planned" string="Agendadas" domain="[('state', '=', 'planned')]"/>
+                <filter name="done" string="Hechas" domain="[('state', '=', 'done')]"/>
+                <filter name="dry" string="En seco" domain="[('state', '=', 'dry_run')]"/>
+                <filter name="holdout" string="Grupo de control" domain="[('state', '=', 'holdout')]"/>
+                <filter name="converted" string="Compró después" domain="[('converted', '=', True)]"/>
+                <group expand="0" string="Agrupar por">
+                    <filter name="group_action" string="Acción" context="{'group_by': 'action_label'}"/>
+                    <filter name="group_lifecycle" string="Etapa" context="{'group_by': 'lifecycle'}"/>
+                    <filter name="group_state" string="Estado" context="{'group_by': 'state'}"/>
+                    <filter name="group_date" string="Día" context="{'group_by': 'date:day'}"/>
+                    <filter name="group_origin" string="Origen" context="{'group_by': 'origin_code'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_cristal_agent_nba" model="ir.actions.act_window">
+        <field name="name">Próximas acciones</field>
+        <field name="res_model">cristal.agent.nba</field>
+        <field name="view_mode">list,pivot,graph,form</field>
+        <field name="context">{'search_default_week': 1, 'search_default_group_action': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">Todavía no hay acciones</p>
+            <p>El motor corre todas las mañanas (Configuración → Ciclo de vida). En seco
+               registra qué le mandaría a cada cliente sin mandar nada.</p>
+        </field>
+    </record>
+
+    <!-- ═══════════ Embudo: partners por etapa × origen ═══════════ -->
+    <record id="view_partner_lifecycle_pivot" model="ir.ui.view">
+        <field name="name">res.partner.pivot.lifecycle</field>
+        <field name="model">res.partner</field>
+        <field name="arch" type="xml">
+            <pivot string="Embudo mayorista">
+                <field name="agent_lifecycle" type="row"/>
+                <field name="agent_origin_code" type="col"/>
+            </pivot>
+        </field>
+    </record>
+
+    <record id="view_partner_lifecycle_list" model="ir.ui.view">
+        <field name="name">res.partner.list.lifecycle</field>
+        <field name="model">res.partner</field>
+        <field name="arch" type="xml">
+            <list string="Mayoristas por etapa" default_order="agent_lifecycle_date desc">
+                <field name="name"/>
+                <field name="city"/>
+                <field name="agent_zone" widget="badge"/>
+                <field name="agent_lifecycle" widget="badge"/>
+                <field name="agent_lifecycle_reason"/>
+                <field name="agent_lifecycle_date"/>
+                <field name="agent_origin_code"/>
+                <field name="agent_nba_count" string="Acciones"/>
+                <field name="create_date" optional="hide"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="action_partner_lifecycle_funnel" model="ir.actions.act_window">
+        <field name="name">Embudo mayorista (etapa × origen)</field>
+        <field name="res_model">res.partner</field>
+        <field name="view_mode">pivot,list,form</field>
+        <field name="domain">[('agent_lifecycle', '!=', False)]</field>
+        <field name="view_ids" eval="[(5, 0, 0),
+            (0, 0, {'view_mode': 'pivot', 'view_id': ref('view_partner_lifecycle_pivot')}),
+            (0, 0, {'view_mode': 'list', 'view_id': ref('view_partner_lifecycle_list')}),
+            (0, 0, {'view_mode': 'form', 'view_id': ref('base.view_partner_form')})]"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">Todavía no se calculó ninguna etapa</p>
+            <p>Se calcula todas las mañanas. Columnas = origen del contacto (código del anuncio);
+               ORGANICO = llegó sin anuncio conocido; vacío = anterior a la atribución.</p>
+        </field>
+    </record>
+
+    <!-- ═══════════ Ficha del cliente ═══════════ -->
+    <record id="view_partner_form_inherit_lifecycle" model="ir.ui.view">
+        <field name="name">res.partner.form.inherit.cristal.lifecycle</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="cristal_agent.view_partner_form_inherit_cristal_agent"/>
+        <field name="arch" type="xml">
+            <xpath expr="//div[@name='button_box']" position="inside">
+                <button class="oe_stat_button" type="object" name="action_view_agent_nba"
+                        icon="fa-bolt" invisible="not agent_lifecycle">
+                    <field name="agent_nba_count" widget="statinfo" string="Acciones auto."/>
+                </button>
+            </xpath>
+            <xpath expr="//page[@name='cristal_agent_page']/group[1]" position="before">
+                <group>
+                    <group string="🧭 Ciclo de vida">
+                        <field name="agent_lifecycle" widget="badge"
+                               decoration-success="agent_lifecycle in ('active', 'new_customer')"
+                               decoration-info="agent_lifecycle in ('qualified_no_quote', 'quoted_no_order')"
+                               decoration-warning="agent_lifecycle in ('at_risk', 'dormant')"
+                               decoration-danger="agent_lifecycle in ('lost', 'no_contact')"/>
+                        <field name="agent_lifecycle_reason"/>
+                        <field name="agent_lifecycle_date"/>
+                    </group>
+                    <group string="📣 Origen">
+                        <field name="agent_origin_code"/>
+                        <field name="agent_origin_date"/>
+                        <field name="agent_origin_text"/>
+                    </group>
+                </group>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="view_partner_filter_inherit_lifecycle" model="ir.ui.view">
+        <field name="name">res.partner.search.inherit.cristal.lifecycle</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="cristal_agent.view_partner_filter_inherit_cristal_agent"/>
+        <field name="arch" type="xml">
+            <xpath expr="//search" position="inside">
+                <separator/>
+                <field name="agent_origin_code"/>
+                <filter name="lc_quoted" string="Etapa: cotizado sin comprar"
+                        domain="[('agent_lifecycle', '=', 'quoted_no_order')]"/>
+                <filter name="lc_qualified" string="Etapa: calificado sin cotizar"
+                        domain="[('agent_lifecycle', '=', 'qualified_no_quote')]"/>
+                <filter name="lc_new" string="Etapa: cliente nuevo"
+                        domain="[('agent_lifecycle', '=', 'new_customer')]"/>
+                <filter name="lc_active" string="Etapa: activo"
+                        domain="[('agent_lifecycle', '=', 'active')]"/>
+                <filter name="lc_risk" string="Etapa: en riesgo o dormido"
+                        domain="[('agent_lifecycle', 'in', ('at_risk', 'dormant'))]"/>
+                <group expand="0" string="Agrupar por ciclo de vida">
+                    <filter name="group_lifecycle" string="Etapa"
+                            context="{'group_by': 'agent_lifecycle'}"/>
+                    <filter name="group_origin" string="Origen"
+                            context="{'group_by': 'agent_origin_code'}"/>
+                </group>
+            </xpath>
+        </field>
+    </record>
+
+</odoo>

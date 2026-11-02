@@ -298,6 +298,31 @@ def _build_partner_context(env, partner):
         lines.append(f"- última compra: {partner.agent_last_purchase_at.strftime('%Y-%m-%d')}")
         lines.append(f"- días desde última compra: {partner.agent_days_since_last_purchase}")
 
+    # v1.52 — Etapa del ciclo de vida, origen, comportamiento de compra y última
+    # acción automática (para que no repita lo que el sistema ya hizo).
+    if partner.agent_lifecycle:
+        lc_label = dict(partner._fields['agent_lifecycle'].selection).get(partner.agent_lifecycle)
+        lines.append(f"- etapa: {lc_label} ({partner.agent_lifecycle_reason or ''})")
+    if partner.agent_origin_code:
+        lines.append(f"- origen: {partner.agent_origin_code}"
+                     + (" (vino de un anuncio)" if partner.agent_origin_code not in ('ORGANICO',) else ""))
+    if 'cristal_segment' in partner._fields and partner.cristal_segment \
+            and partner.cristal_segment != 'sin_compras':
+        seg = dict(partner._fields['cristal_segment'].selection).get(partner.cristal_segment)
+        lines.append(f"- comportamiento: segmento {seg}, ticket promedio "
+                     f"${partner.cristal_avg_ticket:,.0f}, compra cada ~{partner.cristal_cycle_days} días"
+                     .replace(',', '.'))
+    if 'cristal.agent.nba' in partner.env:
+        from datetime import timedelta as _td
+        from odoo import fields as _f
+        nba = partner.env['cristal.agent.nba'].sudo().search([
+            ('partner_id', '=', partner.id), ('state', 'in', ('planned', 'done')),
+            ('date', '>=', _f.Date.today() - _td(days=14))], limit=1)
+        if nba:
+            lines.append(f"- última acción automática: {nba.action_label} el "
+                         f"{nba.date.strftime('%d/%m')} — no la repitas; si el cliente la "
+                         f"menciona, seguí desde ahí.")
+
     # v1.42 — No contactar
     if partner.agent_opt_out:
         lines.append(
