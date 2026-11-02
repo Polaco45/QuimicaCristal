@@ -181,7 +181,7 @@ class ResPartner(models.Model):
         """La oportunidad abierta más avanzada de toda la familia comercial."""
         self.ensure_one()
         commercial = self.commercial_partner_id or self
-        leads = self.env['crm.lead'].search([
+        leads = self.env['crm.lead'].sudo().search([
             ('partner_id', 'child_of', commercial.id),
             ('type', '=', 'opportunity'),
         ])

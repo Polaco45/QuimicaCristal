@@ -160,7 +160,7 @@ class ResPartner(models.Model):
     def _ruteo_best_open_lead(self):
         """La oportunidad abierta más avanzada del cliente (la más cerca de cerrar)."""
         self.ensure_one()
-        leads = self.env['crm.lead'].search([
+        leads = self.env['crm.lead'].sudo().search([
             ('partner_id', '=', self.id),
             ('type', '=', 'opportunity'),
         ])
