@@ -7,6 +7,29 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.51.0] — 2026-11-02
+
+### Added — Modo administración, etapa 2: e-cheqs recibidos
+
+Sergio (02/11): los e-cheqs recibidos se aceptan, se asienta el cobro y se valida, y sale
+un mail desde admin@ pidiendo el comprobante de pago y el certificado de retención.
+Nuevo `cristal.agent.admin.register_echeq(partner_id, check_number, amount, payment_date,
+invoice_ids=None, bank_id=None, issuer_vat=None)`, que llama Claudio por RPC después de
+aceptar el cheque en el Galicia:
+
+- registra el cobro en el diario 35 con «Nuevo Cheque de Tercero», imputado a las
+  facturas pasadas o a las más viejas del cliente hasta cubrir el importe, y lo valida;
+  la diferencia queda abierta como retención; si el cheque ya está registrado no repite;
+- manda el mail desde admin@ en el chatter del recibo con el texto del doc de Sergio;
+  mientras `cristal_agent.admin_mail_ready` no esté en True (falta la redirección de
+  DonWeb) el mail no sale y queda como nota en el recibo;
+- los avisos van al canal «Administración · Agente» mencionando a Sergio (todo dentro
+  de Odoo).
+
+Caso 41 del autotest (texto del mail, sin crear cobros).
+
+---
+
 ## [18.0.1.49.2] — 2026-10-29
 
 ### Changed — Envío a domicilio gratis desde $65.000 (para todos)
