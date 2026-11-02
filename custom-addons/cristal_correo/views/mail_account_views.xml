@@ -1,0 +1,166 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ───────────── Casillas (como el panel de cuentas de Ferozo) ───────────── -->
+    <record id="view_cristal_mail_account_kanban" model="ir.ui.view">
+        <field name="name">cristal.mail.account.kanban</field>
+        <field name="model">cristal.mail.account</field>
+        <field name="arch" type="xml">
+            <kanban class="o_kanban_dashboard" create="1">
+                <field name="state"/>
+                <field name="color"/>
+                <templates>
+                    <t t-name="card">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <field name="name" class="fw-bold fs-5"/>
+                                <div><field name="email" class="text-muted"/></div>
+                            </div>
+                            <field name="state" widget="badge"
+                                   decoration-success="state == 'ok'"
+                                   decoration-danger="state == 'error'"
+                                   decoration-warning="state == 'no_password'"/>
+                        </div>
+                        <div class="mt-2 small text-muted"><field name="destination"/></div>
+                        <div class="mt-2 d-flex gap-3">
+                            <span><b><field name="count_open"/></b> abiertos</span>
+                            <span><b><field name="count_today"/></b> hoy</span>
+                        </div>
+                        <div class="small text-muted mt-1">Última lectura: <field name="last_fetch"/></div>
+                        <div class="mt-2 d-flex gap-2">
+                            <button name="action_open_inbox" type="object" class="btn btn-primary btn-sm">Abrir bandeja</button>
+                            <button name="action_fetch" type="object" class="btn btn-secondary btn-sm"
+                                    groups="base.group_system" invisible="state != 'ok'">Traer ahora</button>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
+    <record id="view_cristal_mail_account_list" model="ir.ui.view">
+        <field name="name">cristal.mail.account.list</field>
+        <field name="model">cristal.mail.account</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+                <field name="email"/>
+                <field name="destination"/>
+                <field name="state" widget="badge" decoration-success="state == 'ok'"
+                       decoration-danger="state == 'error'" decoration-warning="state == 'no_password'"/>
+                <field name="count_open"/>
+                <field name="count_today"/>
+                <field name="last_fetch"/>
+                <field name="auto_reply" widget="boolean_toggle"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_cristal_mail_account_form" model="ir.ui.view">
+        <field name="name">cristal.mail.account.form</field>
+        <field name="model">cristal.mail.account</field>
+        <field name="arch" type="xml">
+            <form>
+                <header>
+                    <button name="action_open_inbox" type="object" string="Abrir bandeja" class="btn-primary"/>
+                    <button name="action_test" type="object" string="Probar conexión" groups="base.group_system"/>
+                    <button name="action_fetch" type="object" string="Traer ahora" groups="base.group_system"
+                            invisible="state != 'ok'"/>
+                    <field name="state" widget="statusbar"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1><field name="name" placeholder="Administración"/></h1>
+                        <h3><field name="email" placeholder="admin@quimicacristal.com.ar"/></h3>
+                    </div>
+                    <div class="alert alert-danger" role="alert" invisible="not last_error">
+                        <field name="last_error"/>
+                    </div>
+                    <group>
+                        <group string="Ferozo (IMAP)" groups="base.group_system">
+                            <field name="password" password="True"
+                                   placeholder="contraseña del webmail de Ferozo"/>
+                            <field name="imap_host"/>
+                            <field name="imap_port"/>
+                            <field name="imap_ssl"/>
+                            <field name="fetchmail_server_id" readonly="1"/>
+                            <field name="last_fetch"/>
+                        </group>
+                        <group string="En Odoo">
+                            <field name="destination"/>
+                            <field name="alias_id" readonly="1" groups="base.group_system"/>
+                            <field name="project_id" readonly="1"/>
+                            <field name="count_open"/>
+                            <field name="count_today"/>
+                            <field name="active" widget="boolean_toggle"/>
+                        </group>
+                    </group>
+                    <group string="Respuesta automática">
+                        <field name="auto_reply" widget="boolean_toggle"/>
+                    </group>
+                    <field name="auto_reply_body" invisible="not auto_reply"/>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_casillas" model="ir.actions.act_window">
+        <field name="name">Casillas</field>
+        <field name="res_model">cristal.mail.account</field>
+        <field name="view_mode">kanban,list,form</field>
+        <field name="help" type="html">
+            <p>Cada casilla de Ferozo que Odoo lee por IMAP. Cargá la contraseña de la casilla
+               (la del webmail) y Odoo empieza a traer TODOS los mails cada pocos minutos;
+               en Ferozo quedan igual.</p>
+        </field>
+    </record>
+
+    <!-- ───────────── Bandeja (tareas de los proyectos de bandeja) ───────────── -->
+    <record id="view_task_bandeja_list" model="ir.ui.view">
+        <field name="name">project.task.bandeja.list</field>
+        <field name="model">project.task</field>
+        <field name="priority">90</field>
+        <field name="arch" type="xml">
+            <list string="Bandeja" decoration-bf="stage_id and not is_closed">
+                <field name="create_date" string="Recibido"/>
+                <field name="project_id" string="Casilla"/>
+                <field name="partner_id" string="Cliente / contacto" optional="show"/>
+                <field name="email_from" string="De" optional="show"/>
+                <field name="name" string="Asunto"/>
+                <field name="stage_id" string="Estado"/>
+                <field name="user_ids" widget="many2many_avatar_user" optional="show"/>
+                <field name="is_closed" column_invisible="1"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="action_bandeja" model="ir.actions.act_window">
+        <field name="name">Bandeja</field>
+        <field name="res_model">project.task</field>
+        <field name="view_mode">list,kanban,form</field>
+        <field name="view_ids" eval="[(5, 0, 0),
+                                       (0, 0, {'view_mode': 'list', 'view_id': ref('view_task_bandeja_list')}),
+                                       (0, 0, {'view_mode': 'kanban'}),
+                                       (0, 0, {'view_mode': 'form'})]"/>
+        <field name="help" type="html">
+            <p>Todos los mails nuevos de las casillas. Abrí uno para leerlo y respondé con
+               "Enviar mensaje": sale desde la casilla (ej. admin@quimicacristal.com.ar).</p>
+        </field>
+    </record>
+
+    <record id="action_bandeja_server" model="ir.actions.server">
+        <field name="name">Bandeja (todas las casillas)</field>
+        <field name="model_id" ref="model_cristal_mail_account"/>
+        <field name="state">code</field>
+        <field name="code">action = model.action_bandeja_all()</field>
+    </record>
+
+    <record id="action_enviados_server" model="ir.actions.server">
+        <field name="name">Enviados</field>
+        <field name="model_id" ref="model_cristal_mail_account"/>
+        <field name="state">code</field>
+        <field name="code">action = model.action_enviados()</field>
+    </record>
+
+</odoo>
