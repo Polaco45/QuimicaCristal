@@ -194,6 +194,14 @@ class CreateLead(AgentTool):
         if company_name:
             vals['partner_name'] = company_name
 
+        # v1.52 — Origen del contacto (anuncio) → fuente del lead en el CRM.
+        try:
+            source = partner.agent_origin_utm_source()
+            if source and not vals.get('source_id'):
+                vals['source_id'] = source.id
+        except Exception as e:
+            _logger.warning("No pude resolver el origen del lead: %s", e)
+
         try:
             lead = Lead.create(vals)
         except Exception as e:

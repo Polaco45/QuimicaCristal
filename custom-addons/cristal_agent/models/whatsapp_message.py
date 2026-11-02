@@ -219,6 +219,15 @@ class WhatsAppMessage(models.Model):
             self._notify_joaco_institutional_bypass(wa_message, partner, bypass_reason, plain_body)
             return
 
+        # 6.9) v1.52 — Origen del contacto (código del anuncio o frase prellenada).
+        # Solo la primera vez; el primer mensaje sin anuncio conocido queda ORGANICO.
+        try:
+            partner.agent_capture_origin(
+                plain_body, first_message=(memory.total_messages_received or 0) <= 1,
+                when=wa_message.create_date)
+        except Exception as e:
+            _logger.warning("No se pudo captar el origen de %s: %s", partner.name, e)
+
         # 7) Actualizar timestamp de último inbound
         partner.sudo().write({'agent_last_inbound_at': fields.Datetime.now()})
 

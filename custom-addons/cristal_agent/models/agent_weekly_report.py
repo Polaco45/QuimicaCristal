@@ -53,6 +53,12 @@ class CristalAgentWeeklyReport(models.Model):
     guard_blocks = fields.Integer(string="Mensajes frenados por controles")
     opt_outs = fields.Integer(string="Nuevos 'No contactar'")
     errors = fields.Integer(string="Corridas con error")
+    # v1.52 — Embudo mayorista de la semana
+    funnel_new_contacts = fields.Integer(string="Contactos mayoristas nuevos")
+    funnel_new_quoted = fields.Integer(string="Nuevos cotizados")
+    funnel_new_buyers = fields.Integer(string="Nuevos que compraron")
+    funnel_first_buyers = fields.Integer(string="Primeras compras (todas)")
+    funnel_first_amount = fields.Float(string="Vendido a primeras compras", digits=(12, 0))
     body = fields.Html(string="Informe", sanitize=False)
 
     # ───────────────────────── Informe semanal ─────────────────────────
@@ -143,7 +149,11 @@ class CristalAgentWeeklyReport(models.Model):
             'opt_outs': opt_outs,
             'errors': len(runs.filtered(lambda r: r.state == 'error')),
         }
-        vals['body'] = self._render(vals, reasons, guards, sample)
+        funnel = self._funnel(a, b, start, end)
+        vals.update({k: funnel[k] for k in ('funnel_new_contacts', 'funnel_new_quoted',
+                                             'funnel_new_buyers', 'funnel_first_buyers',
+                                             'funnel_first_amount')})
+        vals['body'] = self._render(vals, reasons, guards, sample) + self._render_funnel(funnel)
         rep = self.search([('week_start', '=', start)], limit=1)
         if rep:
             rep.write(vals)
@@ -179,6 +189,77 @@ class CristalAgentWeeklyReport(models.Model):
             f"<p><b>Para revisar</b> ({len(sample)} conversaciones de Haiku al azar; "
             f"marcá Bien / Con error en cada una, menú Claudio → Revisión semanal):</p>"
             f"<ul>{links or '<li>—</li>'}</ul>")
+
+    # ───────────────────────── Embudo (v1.52) ─────────────────────────
+    @api.model
+    def _funnel(self, a, b, start, end):
+        """Contactos mayoristas nuevos de la semana → cotizados → compraron, por origen;
+        primeras compras de la semana (de cualquier contacto); etapas hoy; acciones del motor."""
+        Partner = self.env['res.partner'].sudo()
+        SO = self.env['sale.order'].sudo()
+        may = Partner.env['res.partner.category'].search([('name', '=', 'Mayorista')], limit=1)
+        new = Partner.search([('category_id', 'in', may.ids), ('create_date', '>=', a),
+                              ('create_date', '<', b)]) if may else Partner
+        quoted = {p.id for p, in SO._read_group([('partner_id', 'in', new.ids)], ['partner_id'])}
+        bought = {p.id for p, in SO._read_group(
+            [('partner_id', 'in', new.ids), ('state', 'in', ('sale', 'done'))], ['partner_id'])}
+        by_origin = {}
+        for p in new:
+            o = by_origin.setdefault(p.agent_origin_code or '(sin origen)', [0, 0, 0])
+            o[0] += 1
+            o[1] += 1 if p.id in quoted else 0
+            o[2] += 1 if p.id in bought else 0
+        first_n, first_amount = 0, 0.0
+        if may:
+            for partner, dmin in SO._read_group(
+                    [('partner_id.category_id', 'in', may.ids), ('state', 'in', ('sale', 'done'))],
+                    ['partner_id'], ['date_order:min']):
+                if dmin and a <= dmin < b:
+                    first_n += 1
+                    first_amount += sum(SO.search([('partner_id', '=', partner.id),
+                                                   ('state', 'in', ('sale', 'done')),
+                                                   ('date_order', '=', dmin)]).mapped('amount_untaxed'))
+        stages = {}
+        if may:
+            labels = dict(Partner._fields['agent_lifecycle'].selection)
+            for lc, n in Partner._read_group([('category_id', 'in', may.ids),
+                                              ('agent_lifecycle', '!=', False)],
+                                             ['agent_lifecycle'], ['__count']):
+                stages[labels.get(lc, lc)] = n
+        nba = self.env['cristal.agent.nba'].sudo().summary(start, end) \
+            if 'cristal.agent.nba' in self.env else {}
+        return {'funnel_new_contacts': len(new), 'funnel_new_quoted': len(quoted),
+                'funnel_new_buyers': len(bought), 'funnel_first_buyers': first_n,
+                'funnel_first_amount': first_amount, 'by_origin': by_origin,
+                'stages': stages, 'nba': nba}
+
+    @api.model
+    def _render_funnel(self, f):
+        def pct(x, y):
+            return f"{(100.0 * x / y):.0f}%" if y else "—"
+        n, q, c = f['funnel_new_contacts'], f['funnel_new_quoted'], f['funnel_new_buyers']
+        rows = ''.join(
+            f"<tr><td>{code}</td><td>{v[0]}</td><td>{v[1]} ({pct(v[1], v[0])})</td>"
+            f"<td>{v[2]} ({pct(v[2], v[0])})</td></tr>"
+            for code, v in sorted(f['by_origin'].items(), key=lambda kv: -kv[1][0]))
+        stages = ' · '.join(f"{k}: {v}" for k, v in sorted(f['stages'].items(), key=lambda kv: -kv[1])) or '—'
+        nba = f.get('nba') or {}
+        nba_line = ''
+        if nba.get('total'):
+            nba_line = (f"<li>Motor de ciclo de vida: {nba['total']} acciones — agendadas/hechas "
+                        f"{nba['reached']} (compraron después {nba['rate_reached']:.0f}%), en seco "
+                        f"{nba['dry']} ({nba['rate_dry']:.0f}%), control {nba['holdout']} "
+                        f"({nba['rate_holdout']:.0f}%)</li>")
+        return (
+            f"<p><b>🧭 Embudo mayorista de la semana</b></p><ul>"
+            f"<li>Contactos nuevos: <b>{n}</b> → cotizados <b>{q}</b> ({pct(q, n)}) → compraron "
+            f"<b>{c}</b> ({pct(c, n)})</li>"
+            f"<li>Primeras compras (de cualquier contacto): <b>{f['funnel_first_buyers']}</b> "
+            f"(${f['funnel_first_amount']:,.0f} sin IVA)</li>".replace(',', '.') +
+            f"<li>Etapas hoy: {stages}</li>{nba_line}</ul>"
+            f"<table class='table table-sm'><thead><tr><th>Origen</th><th>Nuevos</th>"
+            f"<th>Cotizados</th><th>Compraron</th></tr></thead><tbody>{rows or '<tr><td colspan=4>—</td></tr>'}"
+            f"</tbody></table>")
 
     def _post_to_internal_channel(self):
         config = self.env['cristal.agent.config'].sudo().get_active()

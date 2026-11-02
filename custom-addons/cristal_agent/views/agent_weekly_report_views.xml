@@ -19,6 +19,11 @@
                 <field name="guard_blocks"/>
                 <field name="opt_outs"/>
                 <field name="errors"/>
+                <field name="funnel_new_contacts" sum="Total" optional="show"/>
+                <field name="funnel_new_quoted" sum="Total" optional="show"/>
+                <field name="funnel_new_buyers" sum="Total" optional="show"/>
+                <field name="funnel_first_buyers" sum="Total" optional="show"/>
+                <field name="funnel_first_amount" sum="Total" optional="hide"/>
             </list>
         </field>
     </record>

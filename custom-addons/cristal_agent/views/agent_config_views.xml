@@ -267,6 +267,30 @@
                             </div>
                         </page>
 
+                        <page string="🧭 Ciclo de vida" name="lifecycle">
+                            <div class="alert alert-info">
+                                Todas las mañanas (9:30) el motor clasifica a cada mayorista por
+                                <b>etapa</b> (lead, calificado sin cotizar, cotizado sin comprar, cliente
+                                nuevo, activo, en riesgo, dormido, perdido) y elige <b>una sola próxima
+                                acción por cliente y por semana</b>. En seco solo registra qué haría
+                                (menú Mayorista → Ciclo de vida); en real se la agenda a Claudio.
+                                Nunca toca a quien está conversando, en cobranza, en intervención
+                                humana o en "No contactar".
+                            </div>
+                            <group>
+                                <group string="Motor">
+                                    <field name="lifecycle_mode" widget="radio"/>
+                                    <field name="lifecycle_holdout_pct"/>
+                                    <field name="lifecycle_daily_cap"/>
+                                    <field name="lifecycle_default_cycle_days"/>
+                                </group>
+                                <group string="Visitas (clientes dormidos)">
+                                    <field name="lifecycle_visit_user_id"/>
+                                    <field name="lifecycle_visit_min_ticket" widget="monetary"/>
+                                </group>
+                            </group>
+                        </page>
+
                         <page string="🔄 Stages CRM mapeo">
                             <div class="alert alert-info">
                                 Cuando el bot mueve a un cliente de fase, el lead del CRM se mueve
