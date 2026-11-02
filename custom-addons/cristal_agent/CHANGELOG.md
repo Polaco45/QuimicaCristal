@@ -7,6 +7,19 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.51.1] — 2026-11-02
+
+### Fixed — E-cheqs: mail con etiquetas a la vista y retención inventada
+
+Probado en staging: el mail salía con `<p>` escapados (Odoo 18 escapa un str; ahora va
+como Markup) y, sin facturas indicadas, el cheque que coincidía justo con una factura se
+imputaba a las dos más viejas y pedía certificado por la "diferencia". Ahora busca primero
+una factura del mismo importe, después las más viejas que suman justo, después una sola
+factura apenas mayor (hasta 10 %, eso sí es retención); si no, imputa a las más viejas
+sin pedir certificado y avisa a Sergio para que lo revise.
+
+---
+
 ## [18.0.1.51.0] — 2026-11-02
 
 ### Added — Modo administración, etapa 2: e-cheqs recibidos

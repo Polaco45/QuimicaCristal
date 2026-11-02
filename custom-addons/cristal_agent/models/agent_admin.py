@@ -23,6 +23,8 @@ cuando Sergio abre el banco y después llama por RPC a
 import logging
 from datetime import date
 
+from markupsafe import Markup
+
 from odoo import Command, api, fields, models
 from odoo.exceptions import AccessError, UserError
 from odoo.tools import html_escape
@@ -81,7 +83,7 @@ class CristalAgentAdmin(models.AbstractModel):
                 return self._fail(f"El diario {ECHEQ_JOURNAL_ID} no tiene el método «Nuevo Cheque de Tercero».",
                                   partner)
 
-            invoices = self._echeq_invoices(partner, amount, invoice_ids)
+            invoices, is_retention = self._echeq_invoices(partner, amount, invoice_ids)
             due_before = sum(invoices.mapped('amount_residual'))
             receivable = invoices.line_ids.filtered(
                 lambda l: l.account_id.account_type == 'asset_receivable' and not l.reconciled)
@@ -116,7 +118,13 @@ class CristalAgentAdmin(models.AbstractModel):
             return self._fail(f"No pude registrar el e-cheq {check_number} de {_money(float(amount or 0))}: {e}",
                               None)
 
-        difference = max(round(due_before - amount, 2), 0.0) if invoices else 0.0
+        open_left = max(round(due_before - amount, 2), 0.0) if invoices else 0.0
+        difference = open_left if is_retention else 0.0
+        if open_left and not is_retention:
+            self.notify_admin(
+                f"E-cheq {check_number} de {partner.name} imputado a las facturas más viejas "
+                f"({', '.join(invoices.mapped('name'))}); quedan {_money(open_left)} sin cubrir "
+                "que no parecen retención. Revisalo.", record=payment)
         mail_sent, mail_note = (False, "no pedido")
         if send_mail:
             mail_sent, mail_note = self._send_echeq_mail(
@@ -139,7 +147,14 @@ class CristalAgentAdmin(models.AbstractModel):
         return self.env['l10n_latam.check'].search(domain, limit=1)
 
     def _echeq_invoices(self, partner, amount, invoice_ids=None):
-        """Las facturas que se pasan o, si no, las más viejas hasta cubrir el importe."""
+        """Facturas a las que va el cheque y si la diferencia es una retención.
+
+        Devuelve ``(facturas, es_retencion)``. Con ``invoice_ids`` son esas y la diferencia
+        es retención. Si no, en este orden: una factura del mismo importe; las más viejas que
+        suman justo el importe; una sola factura apenas mayor (hasta 10 %: retención); y si
+        nada de eso, las más viejas hasta cubrir el importe, SIN pedir certificado (la última
+        queda con saldo porque el cheque no alcanza, no por una retención).
+        """
         Move = self.env['account.move']
         base = [('move_type', '=', 'out_invoice'), ('state', '=', 'posted'),
                 ('payment_state', 'in', ['not_paid', 'partial']),
@@ -148,15 +163,32 @@ class CristalAgentAdmin(models.AbstractModel):
             invoices = Move.search(base + [('id', 'in', [int(i) for i in invoice_ids])])
             if len(invoices) != len(set(invoice_ids)):
                 raise UserError("Alguna de las facturas no es del cliente o ya está pagada.")
-            return invoices
+            return invoices, True
+        open_invoices = Move.search(base, order='invoice_date asc, id asc')
+        same = open_invoices.filtered(lambda i: abs(i.amount_residual - amount) <= 1)
+        if same:
+            return same[:1], False
         picked = Move.browse()
         covered = 0.0
-        for inv in Move.search(base, order='invoice_date asc, id asc'):
+        for inv in open_invoices:
+            picked |= inv
+            covered += inv.amount_residual
+            if abs(covered - amount) <= 1:
+                return picked, False
+            if covered > amount:
+                break
+        near = open_invoices.filtered(
+            lambda i: i.amount_residual > amount and i.amount_residual - amount <= i.amount_residual * 0.10)
+        if near:
+            return near[:1], True
+        picked = Move.browse()
+        covered = 0.0
+        for inv in open_invoices:
             if covered >= amount - 0.01:
                 break
             picked |= inv
             covered += inv.amount_residual
-        return picked
+        return picked, False
 
     def _send_echeq_mail(self, payment, number, amount, payment_date, invoices, difference):
         """Mail al cliente desde admin@ en el chatter del recibo (texto de Sergio, 02/11)."""
@@ -168,7 +200,7 @@ class CristalAgentAdmin(models.AbstractModel):
             why = ("admin@ todavía no recibe en Odoo (falta la redirección de DonWeb)" if not ready
                    else "el cliente no tiene mail cargado")
             payment.message_post(
-                body=f"<p><b>Mail al cliente pendiente</b> ({html_escape(why)}). Texto:</p>{body}",
+                body=Markup("<p><b>Mail al cliente pendiente</b> (%s). Texto:</p>") % why + body,
                 message_type='comment', subtype_xmlid='mail.mt_note')
             self.notify_admin(f"E-cheq {number} de {partner.name} registrado en {payment.name}, "
                               f"pero el mail no salió: {why}.", record=payment)
@@ -210,7 +242,7 @@ class CristalAgentAdmin(models.AbstractModel):
             "Muchas gracias.",
             "Administración · Química Cristal",
         ]
-        return "".join(f"<p>{l}</p>" for l in lines)
+        return Markup("".join(f"<p>{l}</p>" for l in lines))
 
     # ── Avisos a Sergio (dentro de Odoo) ───────────────────────────────────
 
@@ -228,7 +260,7 @@ class CristalAgentAdmin(models.AbstractModel):
             body += (f' <a href="/odoo/{record._name}/{record.id}">'
                      f'{html_escape(record.display_name)}</a>')
         channel.sudo().message_post(
-            body=f"<p>{body}</p>", message_type='comment', subtype_xmlid='mail.mt_comment',
+            body=Markup(f"<p>{body}</p>"), message_type="comment", subtype_xmlid="mail.mt_comment",
             author_id=self.env.ref('base.partner_root').id,
             partner_ids=sergio.ids)
         return True
