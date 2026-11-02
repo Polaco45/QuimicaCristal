@@ -269,11 +269,17 @@ def _build_partner_context(env, partner):
     if partner.is_mayorista():
         lines.append("- TIPO: MAYORISTA — aplica la estrategia comercial completa")
     elif partner.is_consumidor_final():
-        lines.append("- TIPO: CONSUMIDOR FINAL — atención simple, derivá si pide algo concreto")
+        lines.append("- TIPO: CONSUMIDOR FINAL — compra para su casa: vendele VOS (sección 4b): combos, "
+                     "precio público, envío $6.500 (gratis desde $65.000) o retiro, confirmás con confirm_cf_order")
     elif partner.is_empresa():
         lines.append("- TIPO: EMPRESA — derivá a Joaco, NO avances ciclo comercial")
     else:
-        lines.append("- TIPO: SIN ETIQUETA (cliente nuevo) — pregunta si es CF, Mayorista o Empresa")
+        lines.append("- TIPO: SIN ETIQUETA (cliente nuevo) — preguntá en UNA línea si es para su casa o para "
+                     "revender/comercio. Si su primer mensaje es el saludo de un anuncio (\"Quiero más "
+                     "información\"), puede venir del anuncio de COMBOS para la casa (Limpieza Total $29.900, "
+                     "Casa Completa $39.900) o del anuncio mayorista: preguntá igual y, si es para su casa, "
+                     "ofrecé el combo (sección 4b); si revende, lista mayorista. No mandes la lista mayorista "
+                     "sin saberlo.")
 
     # Nivel
     if partner.agent_level and partner.agent_level != 'none':
