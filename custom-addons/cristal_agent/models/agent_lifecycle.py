@@ -132,8 +132,13 @@ ACTIONS = {
         "presencial en vez de otro mensaje."),
 }
 ACTION_SELECTION = [(k, v[0]) for k, v in ACTIONS.items()]
-# Orden de prioridad cuando hay más candidatos que cupo diario (plata parada primero).
-PRIORITY = ['c_', 'n_', 'a_', 'q_', 'r_', 'd_']
+# Orden de prioridad cuando hay más candidatos que cupo diario: primero la plata parada
+# y fresca (cotizaciones recientes), último lo que lleva meses frío.
+PRIORITY = ['c_objecion', 'c_promo', 'n_chequeo', 'n_producto_top', 'n_segunda_compra',
+            'a_reposicion', 'n_reposicion', 'q_lista_pregunta', 'q_combo', 'r_reactivacion_1',
+            'r_reactivacion_2', 'c_ultima', 'q_oferta_mes', 'd_reactivacion_3', 'd_visita']
+# Estados que cuentan como "se lo tocó" (en seco solo es un registro).
+TOUCH_STATES = ('holdout', 'planned', 'done')
 
 
 def _first_name(partner):
@@ -414,7 +419,7 @@ class CristalAgentNBA(models.Model):
         """(código, motivo) o None para este partner según etapa y días."""
         lc = partner.agent_lifecycle
         last = {}
-        for n in self.search([('partner_id', '=', partner.id), ('state', '!=', 'skipped')]):
+        for n in self.search([('partner_id', '=', partner.id), ('state', 'in', TOUCH_STATES)]):
             last.setdefault(n.action_code, n.date)   # ordenado desc: la más reciente
         cycle = s['cycle'] or DEFAULT_CYCLE_DAYS
 
@@ -486,8 +491,10 @@ class CristalAgentNBA(models.Model):
             return "contacto de una empresa que ya se gestiona"
         since = today - timedelta(days=GAP_DAYS)
         if self.search_count([('partner_id', '=', partner.id), ('date', '>', since),
-                              ('state', 'in', ('dry_run', 'holdout', 'planned', 'done'))]):
+                              ('state', 'in', TOUCH_STATES)]):
             return "ya tuvo una acción esta semana"
+        if self.search_count([('partner_id', '=', partner.id), ('date', '=', today)]):
+            return "ya se evaluó hoy"
         if partner.agent_last_inbound_at and \
                 partner.agent_last_inbound_at.date() > today - timedelta(days=LIVE_CONVERSATION_DAYS):
             return "está conversando con Claudio"
@@ -536,25 +543,34 @@ class CristalAgentNBA(models.Model):
             if self._blocked_reason(p, today):
                 continue
             cands.append((p, c[0], c[1]))
-        cands.sort(key=lambda x: next((i for i, pre in enumerate(PRIORITY)
-                                       if x[1].startswith(pre)), 99))
+        cands.sort(key=lambda x: PRIORITY.index(x[1]) if x[1] in PRIORITY else 99)
+        # En modo real solo se ejecutan las acciones habilitadas (config); el resto queda
+        # en seco. Vacío = todas. Se aceptan códigos o prefijos ("c_" = las de cotizados).
+        allowed = [a.strip() for a in (config.lifecycle_live_actions or '').split(',') if a.strip()]
+
+        def live_for(code):
+            return mode == 'live' and (not allowed or any(code == a or code.startswith(a)
+                                                          for a in allowed))
         created = self.browse()
+        n_planned = 0
         for p, code, reason in cands:
-            if len(created.filtered(lambda n: n.state == 'planned')) >= cap and mode == 'live':
-                break
             label, channel, instr = ACTIONS[code]
             vals = {'partner_id': p.id, 'date': today, 'lifecycle': p.agent_lifecycle,
                     'action_code': code, 'action_label': label, 'channel': channel,
                     'reason': reason, 'state': 'dry_run'}
-            if self._in_holdout(p, code, config.lifecycle_holdout_pct):
+            is_live = live_for(code)
+            if is_live and n_planned >= cap:
+                continue   # hoy no entra en el cupo; se vuelve a evaluar mañana
+            if is_live and self._in_holdout(p, code, config.lifecycle_holdout_pct):
                 vals['state'] = 'holdout'
-            elif mode == 'live':
+            elif is_live:
                 vals['state'] = 'planned'
                 act = self._schedule(p, code, label, channel, instr, reason, config, today)
                 if act:
                     vals['activity_id'] = act.id
-                elif channel == 'visit':
-                    vals['state'] = 'dry_run'   # sin responsable de visitas configurado
+                    n_planned += 1
+                else:
+                    vals['state'] = 'dry_run'   # sin bot o sin responsable de visitas
             created |= self.create(vals)
         from collections import Counter
         _logger.info("🧭 NBA: %s acciones (%s) — modo %s", len(created),

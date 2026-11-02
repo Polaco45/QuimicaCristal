@@ -280,6 +280,7 @@
                             <group>
                                 <group string="Motor">
                                     <field name="lifecycle_mode" widget="radio"/>
+                                    <field name="lifecycle_live_actions"/>
                                     <field name="lifecycle_holdout_pct"/>
                                     <field name="lifecycle_daily_cap"/>
                                     <field name="lifecycle_default_cycle_days"/>
