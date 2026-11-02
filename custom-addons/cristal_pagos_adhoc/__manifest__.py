@@ -1,11 +1,11 @@
 {
     "name": "Cristal · Pagos ADHOC (puente)",
     "summary": "Ajustes de Química Cristal sobre los recibos de ADHOC (l10n_ar_payment_bundle)",
-    "version": "18.0.1.3.0",
+    "version": "18.0.1.3.1",
     "author": "Química Cristal",
     "license": "AGPL-3",
     "category": "Accounting",
-    "depends": ["l10n_ar_payment_bundle"],
+    "depends": ["l10n_ar_payment_bundle", "l10n_latam_check_ux"],
     "installable": True,
     "application": False,
     "auto_install": False,
