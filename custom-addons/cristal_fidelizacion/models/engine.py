@@ -222,7 +222,6 @@ class CristalFidEngine(models.AbstractModel):
             ('wa_template_id', '=', flow.template_id.id), ('mobile_number', 'ilike', partner.cristal_wa_key[-8:])],
             order='id desc', limit=1)
 
-    @api.model
     MARKETING_OPTIN_THRESHOLD = 50
 
     @api.model
@@ -258,6 +257,7 @@ class CristalFidEngine(models.AbstractModel):
                 message_type='comment', subtype_xmlid='mail.mt_comment')
         return True
 
+    @api.model
     def _cron_run(self, flows=None):
         today = fields.Date.context_today(self)
         self._auto_enable_marketing()
