@@ -2,7 +2,7 @@
 """Casillas de correo de Ferozo leídas desde Odoo (IMAP)."""
 import logging
 import re
-from email.utils import formataddr
+
 
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError
@@ -134,7 +134,8 @@ class CristalMailAccount(models.Model):
     # ─────────────────────────── servidor IMAP ───────────────────────────
     @property
     def email_formatted(self):
-        return formataddr(("Química Cristal", (self.email or '').strip()))
+        # Sin codificar: Odoo arma el encabezado al enviar (formataddr dejaba =?utf-8?q?…).
+        return f'"Química Cristal" <{(self.email or "").strip()}>'
 
     def _server_vals(self, password=None):
         self.ensure_one()

@@ -74,4 +74,6 @@ class ProjectTask(models.Model):
             account = self.env['cristal.mail.account'].sudo()._for_project(self.project_id)
             if account:
                 kwargs['email_from'] = account.email_formatted
+                # Que figure quién respondió (con email_from Odoo no lo deduce).
+                kwargs.setdefault('author_id', self.env.user.partner_id.id)
         return super().message_post(**kwargs)
