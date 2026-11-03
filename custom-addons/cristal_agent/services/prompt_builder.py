@@ -315,9 +315,12 @@ def _build_partner_context(env, partner):
     if 'cristal.agent.nba' in partner.env:
         from datetime import timedelta as _td
         from odoo import fields as _f
+        # Solo acciones de días ANTERIORES: la de hoy puede ser justo la actividad [NBA]
+        # que está ejecutando (caso Daniela 03/11: se saltó su propio seguimiento).
         nba = partner.env['cristal.agent.nba'].sudo().search([
             ('partner_id', '=', partner.id), ('state', 'in', ('planned', 'done')),
-            ('date', '>=', _f.Date.today() - _td(days=14))], limit=1)
+            ('date', '>=', _f.Date.today() - _td(days=14)),
+            ('date', '<', _f.Date.today())], limit=1)
         if nba:
             lines.append(f"- última acción automática: {nba.action_label} el "
                          f"{nba.date.strftime('%d/%m')} — no la repitas; si el cliente la "
