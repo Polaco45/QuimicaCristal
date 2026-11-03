@@ -75,6 +75,7 @@ class ToolRegistry:
             'confirm_order',              # v1.53: confirmación automática mayorista
             'confirm_cf_order',
             'suggest_products',
+            'register_referral',
             # NOTA: create_lead y schedule_activity quedan disponibles para el bot
             # institucional como respaldo, pero su uso normal es vía la tool atómica
             # complete_institutional_qualification.

@@ -581,6 +581,18 @@ class CristalAgentConfig(models.Model):
         help="Hasta este consumo mensual el cliente es PLATA (5% off). Por encima → ORO.",
     )
 
+    # ═════════════════ NIVELES Y REFERIDOS (v1.56) ═════════════════
+    level_plata_discount = fields.Float(
+        string="Descuento PLATA (%)", default=5.0,
+        help="Se aplica solo en las cotizaciones mayoristas de clientes PLATA (sin 20% de "
+             "primera compra ni promos de precio cerrado).")
+    level_oro_discount = fields.Float(string="Descuento ORO (%)", default=10.0)
+    referral_discount = fields.Float(
+        string="Crédito por referido (%)", default=5.0,
+        help="El referido lo usa en su primer pedido (si no tiene el 20% de Río Cuarto) y "
+             "quien lo recomendó, en su próximo pedido cuando ese primer pedido se confirma.")
+    referral_max_per_month = fields.Integer(string="Máximo de referidos premiados por mes", default=3)
+
     # ═════════════════ CONFIRMACIÓN AUTOMÁTICA DE PEDIDOS MAYORISTAS (v1.53) ═════════════════
     auto_confirm_enabled = fields.Boolean(
         string="Claudio confirma pedidos mayoristas", default=True,
