@@ -1,0 +1,7 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_price_list_user,cristal.compras.price.list user,model_cristal_compras_price_list,purchase.group_purchase_user,1,1,1,0
+access_price_list_manager,cristal.compras.price.list manager,model_cristal_compras_price_list,purchase.group_purchase_manager,1,1,1,1
+access_list_request_user,cristal.compras.list.request user,model_cristal_compras_list_request,purchase.group_purchase_user,1,0,0,0
+access_list_request_manager,cristal.compras.list.request manager,model_cristal_compras_list_request,purchase.group_purchase_manager,1,1,1,1
+access_list_request_line_user,cristal.compras.list.request.line user,model_cristal_compras_list_request_line,purchase.group_purchase_user,1,0,0,0
+access_list_request_line_manager,cristal.compras.list.request.line manager,model_cristal_compras_list_request_line,purchase.group_purchase_manager,1,1,1,1

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <menuitem id="menu_compras_agent" name="Agente" parent="purchase.menu_purchase_root" sequence="90"
+              groups="purchase.group_purchase_user"/>
+    <menuitem id="menu_price_list" name="Listas de precios recibidas" parent="menu_compras_agent"
+              action="action_price_list" sequence="10"/>
+    <menuitem id="menu_list_request" name="Pedidos mensuales de listas" parent="menu_compras_agent"
+              action="action_list_request" sequence="20"/>
+    <menuitem id="menu_prepare_lists" name="Armar el pedido de este mes" parent="menu_compras_agent"
+              action="action_server_prepare_lists" sequence="30" groups="purchase.group_purchase_manager"/>
+</odoo>

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="action_report_raw_materials" model="ir.actions.report">
+        <field name="name">Materias primas para cotizar</field>
+        <field name="model">res.partner</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">cristal_compras.report_raw_materials</field>
+        <field name="report_file">cristal_compras.report_raw_materials</field>
+        <field name="print_report_name">'Materias primas para cotizar - %s' % object.name</field>
+        <field name="binding_type">report</field>
+    </record>
+
+    <!-- Lo que le compramos a este proveedor (en el último año y medio), para que lo cotice. -->
+    <template id="report_raw_materials">
+        <t t-call="web.html_container">
+            <t t-foreach="docs" t-as="partner">
+                <t t-call="web.external_layout">
+                    <t t-set="products" t-value="partner._cristal_raw_materials()"/>
+                    <div class="page">
+                        <h3>Materias primas para cotizar</h3>
+                        <p>Proveedor: <span t-field="partner.name"/> · <span t-out="context_timestamp(datetime.datetime.now()).strftime('%d/%m/%Y')"/></p>
+                        <p>Por favor, pasanos precio unitario, presentación y fecha de despacho de cada una.</p>
+                        <table class="table table-sm">
+                            <thead>
+                                <tr><th>Código</th><th>Producto</th><th>Unidad</th><th>Precio</th><th>Despacho</th></tr>
+                            </thead>
+                            <tbody>
+                                <tr t-foreach="products" t-as="product">
+                                    <td><span t-out="product.default_code or ''"/></td>
+                                    <td><span t-out="product.display_name"/></td>
+                                    <td><span t-out="product.uom_po_id.name"/></td>
+                                    <td/>
+                                    <td/>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </t>
+            </t>
+        </t>
+    </template>
+</odoo>

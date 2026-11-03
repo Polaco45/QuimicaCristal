@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_list_request_list" model="ir.ui.view">
+        <field name="name">cristal.compras.list.request.list</field>
+        <field name="model">cristal.compras.list.request</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="date"/>
+                <field name="name"/>
+                <field name="state"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_list_request_form" model="ir.ui.view">
+        <field name="name">cristal.compras.list.request.form</field>
+        <field name="model">cristal.compras.list.request</field>
+        <field name="arch" type="xml">
+            <form>
+                <header>
+                    <button name="action_send" type="object" string="Enviar" class="btn-primary"
+                            invisible="state != 'draft'" groups="purchase.group_purchase_manager"
+                            confirm="Les va a llegar el pedido a los proveedores tildados. ¿Lo mando?"/>
+                    <button name="action_cancel" type="object" string="Descartar"
+                            invisible="state != 'draft'" groups="purchase.group_purchase_manager"/>
+                    <field name="state" widget="statusbar"/>
+                </header>
+                <sheet>
+                    <h1><field name="name" readonly="1"/></h1>
+                    <group><field name="date" readonly="1"/></group>
+                    <field name="line_ids" readonly="state != 'draft'">
+                        <list editable="bottom" create="0">
+                            <field name="include"/>
+                            <field name="partner_id" readonly="1"/>
+                            <field name="mode"/>
+                            <field name="channel"/>
+                            <field name="sent"/>
+                            <field name="result"/>
+                        </list>
+                    </field>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_list_request" model="ir.actions.act_window">
+        <field name="name">Pedidos mensuales de listas</field>
+        <field name="res_model">cristal.compras.list.request</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <record id="action_server_prepare_lists" model="ir.actions.server">
+        <field name="name">Armar el pedido de listas de este mes</field>
+        <field name="model_id" ref="model_cristal_compras_list_request"/>
+        <field name="state">code</field>
+        <field name="code">rec = model.prepare()
+if rec:
+    action = {'type': 'ir.actions.act_window', 'res_model': 'cristal.compras.list.request', 'view_mode': 'form', 'views': [(False, 'form')], 'res_id': rec.id}
+else:
+    action = {'type': 'ir.actions.client', 'tag': 'display_notification', 'params': {'message': "Ya hay un pedido de listas este mes, o todos mandaron la suya.", 'type': 'info'}}</field>
+        <field name="groups_id" eval="[(4, ref('purchase.group_purchase_manager'))]"/>
+    </record>
+</odoo>

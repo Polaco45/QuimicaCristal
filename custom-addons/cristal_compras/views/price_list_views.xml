@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_price_list_list" model="ir.ui.view">
+        <field name="name">cristal.compras.price.list.list</field>
+        <field name="model">cristal.compras.price.list</field>
+        <field name="arch" type="xml">
+            <list decoration-muted="state == 'done'">
+                <field name="date"/>
+                <field name="partner_id"/>
+                <field name="name"/>
+                <field name="source"/>
+                <field name="datas" filename="name" widget="binary"/>
+                <field name="state"/>
+                <button name="action_mark_done" type="object" string="Ya la subí" icon="fa-check"
+                        invisible="state == 'done'"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_price_list_search" model="ir.ui.view">
+        <field name="name">cristal.compras.price.list.search</field>
+        <field name="model">cristal.compras.price.list</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="partner_id"/>
+                <field name="name"/>
+                <filter name="pending" string="Para subir al Drive" domain="[('state', '=', 'new')]"/>
+                <group expand="0" string="Agrupar">
+                    <filter name="group_partner" string="Proveedor" context="{'group_by': 'partner_id'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_price_list" model="ir.actions.act_window">
+        <field name="name">Listas de precios recibidas</field>
+        <field name="res_model">cristal.compras.price.list</field>
+        <field name="view_mode">list</field>
+        <field name="context">{'search_default_pending': 1}</field>
+        <field name="help" type="html">
+            <p>Acá quedan solas las listas que mandan los proveedores por WhatsApp o mail.</p>
+        </field>
+    </record>
+</odoo>

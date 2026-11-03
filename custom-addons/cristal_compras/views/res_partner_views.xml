@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_partner_form_compras" model="ir.ui.view">
+        <field name="name">res.partner.form.cristal.compras</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="base.view_partner_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//notebook" position="inside">
+                <page string="Compras (agente)" name="cristal_compras" groups="purchase.group_purchase_user"
+                      invisible="supplier_rank == 0">
+                    <group>
+                        <group>
+                            <field name="cristal_buy_channel" placeholder="WhatsApp si tiene celular, si no mail"/>
+                            <field name="cristal_price_list_mode"/>
+                            <field name="cristal_price_list_exempt"/>
+                            <field name="cristal_price_list_date"/>
+                        </group>
+                    </group>
+                    <field name="cristal_price_list_ids" readonly="1">
+                        <list>
+                            <field name="date"/>
+                            <field name="name"/>
+                            <field name="source"/>
+                            <field name="datas" filename="name" widget="binary"/>
+                            <field name="state"/>
+                        </list>
+                    </field>
+                </page>
+            </xpath>
+        </field>
+    </record>
+</odoo>

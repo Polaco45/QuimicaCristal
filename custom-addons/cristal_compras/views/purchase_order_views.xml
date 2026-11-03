@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="purchase_order_form_compras" model="ir.ui.view">
+        <field name="name">purchase.order.form.cristal.compras</field>
+        <field name="model">purchase.order</field>
+        <field name="inherit_id" ref="purchase.purchase_order_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//header" position="inside">
+                <button name="action_cristal_request_quote" type="object" string="Pedir precio y fecha"
+                        class="btn-secondary" groups="purchase.group_purchase_manager"
+                        invisible="state not in ('draft', 'sent')"
+                        confirm="Le va a llegar al proveedor el pedido de precio y fecha de despacho. ¿Lo mando?"/>
+                <button name="action_cristal_send_order" type="object" string="Enviar al proveedor"
+                        class="btn-primary" groups="purchase.group_purchase_manager"
+                        invisible="state not in ('purchase', 'done') or cristal_order_sent"
+                        confirm="Le va a llegar al proveedor el PDF de la orden. ¿La mando?"/>
+            </xpath>
+            <xpath expr="//field[@name='partner_ref']" position="after">
+                <field name="cristal_order_sent" invisible="1"/>
+                <field name="cristal_supplier_msg_date" readonly="1" invisible="not cristal_supplier_msg_date"/>
+            </xpath>
+        </field>
+    </record>
+</odoo>
