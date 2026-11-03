@@ -36,6 +36,7 @@ ADMIN_EMAIL = 'admin@quimicacristal.com.ar'
 ADMIN_CHANNEL_NAME = 'Administración · Agente'
 SERGIO_PARTNER_ID = 3
 PARAM_MAIL_READY = 'cristal_agent.admin_mail_ready'
+RETENTION_MAX = 0.10  # una retención no supera el 10 % del saldo de la factura
 
 
 def _money(amount):
@@ -84,6 +85,12 @@ class CristalAgentAdmin(models.AbstractModel):
                                   partner)
 
             invoices, is_retention = self._echeq_invoices(partner, amount, invoice_ids)
+            if not invoices:
+                return self._consult(
+                    f"E-cheq {check_number} de {partner.name} por {_money(amount)}: no coincide con "
+                    + ("las facturas indicadas" if invoice_ids else "ninguna factura abierta")
+                    + " y la diferencia no parece una retención. No lo registré ni mandé mail: "
+                    "decime a qué facturas va.", partner)
             due_before = sum(invoices.mapped('amount_residual'))
             receivable = invoices.line_ids.filtered(
                 lambda l: l.account_id.account_type == 'asset_receivable' and not l.reconciled)
@@ -113,6 +120,8 @@ class CristalAgentAdmin(models.AbstractModel):
                 if receivable and "to_pay_move_line_ids" in Payment._fields:
                     payment.to_pay_move_line_ids = [Command.set(receivable.ids)]
                 payment.action_post()
+                # Las respuestas del cliente al mail llegan al recibo: que le avisen a Sergio.
+                payment.message_subscribe(partner_ids=[SERGIO_PARTNER_ID])
         except Exception as e:
             _logger.exception("register_echeq falló")
             return self._fail(f"No pude registrar el e-cheq {check_number} de {_money(float(amount or 0))}: {e}",
@@ -149,11 +158,12 @@ class CristalAgentAdmin(models.AbstractModel):
     def _echeq_invoices(self, partner, amount, invoice_ids=None):
         """Facturas a las que va el cheque y si la diferencia es una retención.
 
-        Devuelve ``(facturas, es_retencion)``. Con ``invoice_ids`` son esas y la diferencia
-        es retención. Si no, en este orden: una factura del mismo importe; las más viejas que
-        suman justo el importe; una sola factura apenas mayor (hasta 10 %: retención); y si
-        nada de eso, las más viejas hasta cubrir el importe, SIN pedir certificado (la última
-        queda con saldo porque el cheque no alcanza, no por una retención).
+        Devuelve ``(facturas, es_retencion)``; facturas vacías = no hay coincidencia segura
+        y hay que consultar (Sergio, 03/11: mismo criterio que la conciliación de
+        transferencias). Coincidencia: una factura del mismo importe, o las más viejas que
+        suman justo el importe. Revisión de retención: una sola factura apenas mayor (hasta
+        10 %). Con ``invoice_ids`` la diferencia es retención solo si el cheque es menor y
+        hasta un 10 % del saldo; si sobra o falta más, se consulta.
         """
         Move = self.env['account.move']
         base = [('move_type', '=', 'out_invoice'), ('state', '=', 'posted'),
@@ -163,7 +173,12 @@ class CristalAgentAdmin(models.AbstractModel):
             invoices = Move.search(base + [('id', 'in', [int(i) for i in invoice_ids])])
             if len(invoices) != len(set(invoice_ids)):
                 raise UserError("Alguna de las facturas no es del cliente o ya está pagada.")
-            return invoices, True
+            due = sum(invoices.mapped('amount_residual'))
+            if abs(due - amount) <= 1:
+                return invoices, False
+            if amount < due and due - amount <= due * RETENTION_MAX:
+                return invoices, True
+            return Move.browse(), False
         open_invoices = Move.search(base, order='invoice_date asc, id asc')
         same = open_invoices.filtered(lambda i: abs(i.amount_residual - amount) <= 1)
         if same:
@@ -178,17 +193,10 @@ class CristalAgentAdmin(models.AbstractModel):
             if covered > amount:
                 break
         near = open_invoices.filtered(
-            lambda i: i.amount_residual > amount and i.amount_residual - amount <= i.amount_residual * 0.10)
+            lambda i: i.amount_residual > amount and i.amount_residual - amount <= i.amount_residual * RETENTION_MAX)
         if near:
             return near[:1], True
-        picked = Move.browse()
-        covered = 0.0
-        for inv in open_invoices:
-            if covered >= amount - 0.01:
-                break
-            picked |= inv
-            covered += inv.amount_residual
-        return picked, False
+        return Move.browse(), False
 
     def _send_echeq_mail(self, payment, number, amount, payment_date, invoices, difference):
         """Mail al cliente desde admin@ en el chatter del recibo (texto de Sergio, 02/11)."""
@@ -277,6 +285,11 @@ class CristalAgentAdmin(models.AbstractModel):
             if members:
                 channel.add_members(partner_ids=members.ids)
         return channel
+
+    def _consult(self, message, partner):
+        """Caso dudoso: no se registra nada y se le pregunta a Sergio en el canal."""
+        self.notify_admin(message, record=partner)
+        return {'ok': False, 'needs_review': True, 'error': message}
 
     def _fail(self, message, partner):
         try:
