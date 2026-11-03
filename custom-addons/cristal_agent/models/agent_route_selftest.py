@@ -1536,6 +1536,49 @@ class CristalAgentRouteSelftest(models.TransientModel):
                     "sin número → pregunta · '468' encuentra el código ZZ0468")
         self._case(results, "49. Variantes numeradas y códigos", c_variantes_numeradas)
 
+        # 50) Envío a domicilio en Río Cuarto y sugerencias en la misma cotización (caso Jorge S06972)
+        def c_envio_rc():
+            if 'delivery.carrier' not in env:
+                return "módulo delivery no instalado: salteado"
+            carrier = env['delivery.carrier'].sudo().browse(cso.MAY_CARRIER_ID).exists()
+            assert carrier, f"no existe el método de envío mayorista id {cso.MAY_CARRIER_ID}"
+            p = mk_lc('Envio RC', 'Rio Cuarto')
+            p.street = 'Calle Envio 1'
+            r = cso.execute(env=env, run=None, partner_id=p.id,
+                            lines=[{'product_id': product.id, 'qty': 1, 'price_unit': 52000}])
+            assert r.get('order_id'), r
+            o = SaleOrder.browse(r['order_id'])
+            ship = o.order_line.filtered(lambda l: getattr(l, 'is_delivery', False))
+            assert len(ship) == 1, o.order_line.mapped('product_id.display_name')
+            assert r.get('envio') and r['envio']['precio'] == ship.price_unit, (r.get('envio'), ship.price_unit)
+            if carrier.free_over and carrier.amount and 52000 < carrier.amount:
+                assert ship.price_unit == carrier.fixed_price > 0, (ship.price_unit, carrier.fixed_price)
+                assert 'ENVÍO A DOMICILIO' in (r.get('shipping_note') or ''), r.get('shipping_note')
+                assert r['envio']['falta_para_gratis'] > 0, r['envio']
+            assert any('Env' in d['product'] for d in r['lines']), r['lines']
+            assert 'TOTAL' in r['client_summary'] and o.amount_total == r['total_amount'], r['client_summary']
+            # El mínimo se mide sin el envío: 45.000 en productos sigue bajo $50.000 aunque el total lo pase.
+            r2 = cso.execute(env=env, run=None, partner_id=p.id,
+                             lines=[{'product_id': product.id, 'qty': 1, 'price_unit': 45000}])
+            assert r2.get('upsell') and 'mínima' in r2['upsell'], r2.get('upsell')
+            # Retiro: sin línea de envío.
+            r3 = cso.execute(env=env, run=None, partner_id=p.id, delivery_mode='retiro',
+                             lines=[{'product_id': product.id, 'qty': 1, 'price_unit': 52000}])
+            o3 = SaleOrder.browse(r3['order_id'])
+            assert not o3.order_line.filtered(lambda l: getattr(l, 'is_delivery', False)), "retiro con envío"
+            # Sugerencias dentro de la respuesta cuando hay historia.
+            _confirmed(p, 30, amount=15000)
+            other = env['product.product'].sudo().create({
+                'name': 'ZZ Autotest Jabon Test', 'type': 'consu', 'list_price': 1000.0,
+                'is_storable': False, 'sale_ok': True, 'taxes_id': [(6, 0, [])]})
+            r4 = cso.execute(env=env, run=None, partner_id=p.id,
+                             lines=[{'product_id': other.id, 'qty': 1, 'price_unit': 52000}])
+            assert r4.get('sugerencias') and r4.get('upsell_note'), (r4.get('sugerencias'), r4.get('upsell_note'))
+            assert any(s['product_id'] == product.id for s in r4['sugerencias']), r4['sugerencias']
+            return ("envío a domicilio en la cotización y en el total · mínimo medido sin envío · retiro sin "
+                    "envío · sugerencias en la misma respuesta")
+        self._case(results, "50. Envío a domicilio RC y sugerencias en la cotización", c_envio_rc)
+
         # 48) confirm_order: confirma solo lo que cumple la lista de control
         def c_confirm_order():
             co = ToolRegistry.get('confirm_order')
