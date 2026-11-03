@@ -31,6 +31,7 @@ TOOL_TO_FLAG = {
     'generate_quote_pdf': 'enable_generate_quote_pdf',
     'generate_pricelist_pdf': 'enable_generate_pricelist_pdf',
     'get_route_info': 'enable_truck_route',
+    'confirm_order': 'auto_confirm_enabled',       # v1.53: confirmación automática mayorista
 
     # Muestras
     'confirm_sample_sent': 'enable_confirm_sample',

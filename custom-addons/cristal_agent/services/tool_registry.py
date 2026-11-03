@@ -72,6 +72,9 @@ class ToolRegistry:
             'check_stock',                # No relevante para calificación
             'search_invoices',
             'get_route_info',             # Ruta del camión = venta mayorista
+            'confirm_order',              # v1.53: confirmación automática mayorista
+            'confirm_cf_order',
+            'suggest_products',
             # NOTA: create_lead y schedule_activity quedan disponibles para el bot
             # institucional como respaldo, pero su uso normal es vía la tool atómica
             # complete_institutional_qualification.

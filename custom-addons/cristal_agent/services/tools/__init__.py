@@ -85,6 +85,9 @@ from . import set_promo_consent
 # v1.48 — Claudio confirma solo los pedidos de consumidor final
 from . import confirm_cf_order
 
+# v1.53 — Claudio confirma solo los pedidos mayoristas que cumplen la lista de control
+from . import confirm_order
+
 # v1.52 — Sugerencias de cross-sell con datos (venta guiada + historial del cliente)
 from . import suggest_products
 

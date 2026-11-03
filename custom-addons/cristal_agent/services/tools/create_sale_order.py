@@ -169,8 +169,9 @@ class CreateSaleOrder(AgentTool):
     def _disponibilidad(self, product):
         """Stock disponible para productos de DISTRIBUCIÓN/secos.
         Devuelve None si es fabricación a granel o no trackea stock (siempre disp.)."""
-        if self._es_granel(product):
-            return None  # fabricación a pedido → siempre disponible
+        from .search_products import is_made_to_order
+        if self._es_granel(product) or is_made_to_order(product):
+            return None  # fabricación a pedido (granel, bases, fraccionado) → siempre disponible
         # Solo productos almacenables (goods con stock) trackean disponibilidad.
         # En Odoo 17/18 esto es is_storable (el tipo 'product' ya no existe).
         if not getattr(product, 'is_storable', False):
@@ -181,41 +182,52 @@ class CreateSaleOrder(AgentTool):
             return None
 
     def _resolver_producto(self, env, ln):
-        """Resuelve el product.product de una línea (id o nombre fuzzy)."""
+        """Resuelve el product.product de una línea (id o nombre fuzzy).
+
+        v1.53: busca también por aroma/tamaño (valores de variante) y, si el nombre no
+        alcanza para elegir entre variantes del mismo producto ("Base Limpiador
+        Desodorante 1+80" tiene 14: aroma × tamaño), devuelve {'ambiguous': [...]} con
+        las opciones en vez de cargar la primera que aparece (caso S06925)."""
+        from .search_products import _word_domain, _norm, variant_label, is_made_to_order
         Product = env['product.product'].sudo()
-        product = None
         if ln.get('product_id'):
             product = Product.browse(int(ln['product_id']))
-            if not product.exists():
-                product = None
-        if not product and ln.get('product_name'):
-            name = ln['product_name'].strip()
-            words = [w for w in name.split() if len(w) > 1]
-            if words:
-                domain_words = [('product_tmpl_id.is_mayorista_catalog', '=', True),
-                                ('sale_ok', '=', True)]
-                for w in words:
-                    domain_words.append(('name', 'ilike', w))
-                product = Product.search(domain_words, limit=1)
-            if not product and words:
-                domain_words = [('sale_ok', '=', True)]
-                for w in words:
-                    domain_words.append(('name', 'ilike', w))
-                product = Product.search(domain_words, limit=1)
-            # Fallback interpretativo: la palabra más significativa sola, para no
-            # fallar por diferencias de wording (ej: "perfume textil" no matchea
-            # "Perfume p/ropa" con TODAS las palabras, pero sí con "perfume").
-            if not product and words:
-                key = max(words, key=len)
-                product = Product.search(
-                    [('product_tmpl_id.is_mayorista_catalog', '=', True),
-                     ('sale_ok', '=', True), ('name', 'ilike', key)], limit=1)
-                if not product:
-                    product = Product.search(
-                        [('sale_ok', '=', True), ('name', 'ilike', key)], limit=1)
-            if not product:
-                product = Product.search([('name', 'ilike', name), ('sale_ok', '=', True)], limit=1)
-        return product
+            return product if product.exists() else None
+        name = (ln.get('product_name') or '').strip()
+        words = [w for w in name.split() if len(w) > 1]
+        if not words:
+            return None
+
+        def search(extra, ws, limit=20):
+            domain = list(extra) + [('sale_ok', '=', True)]
+            for w in ws:
+                domain += _word_domain(w)
+            return Product.search(domain, limit=limit)
+
+        catalog = [('product_tmpl_id.is_mayorista_catalog', '=', True)]
+        cands = search(catalog, words) or search([], words)
+        if not cands:
+            # Fallback interpretativo: la palabra más significativa sola ("perfume
+            # textil" no matchea "Perfume p/ropa" con todas, pero sí con "perfume").
+            key = max(words, key=len)
+            cands = search(catalog, [key]) or search([], [key]) \
+                or Product.search([('name', 'ilike', name), ('sale_ok', '=', True)], limit=20)
+        if not cands:
+            return None
+        if len(cands) == 1:
+            return cands
+        # Varias variantes del MISMO producto: ¿las palabras definen una sola?
+        if len(cands.mapped('product_tmpl_id')) == 1 and any(variant_label(p) for p in cands):
+            nw = [_norm(w) for w in words]
+            narrowed = cands.filtered(lambda p: any(w and w in _norm(variant_label(p)) for w in nw))
+            if len(narrowed) == 1:
+                return narrowed
+            options = narrowed or cands
+            return {'ambiguous': [{'product_id': p.id, 'name': p.display_name}
+                                  for p in options[:10]]}
+        # Productos distintos: catálogo mayorista y a pedido primero (como search_products).
+        return cands.sorted(lambda p: (not p.product_tmpl_id.is_mayorista_catalog,
+                                       not is_made_to_order(p), p.name or ''))[:1]
 
     # ───────────────────────── Ruta del camión (v1.32) ─────────────────────────
     def _route_context(self, env, config, partner):
@@ -634,6 +646,14 @@ class CreateSaleOrder(AgentTool):
                 problems.append(f"Línea {i+1}: qty inválida ({qty})")
                 continue
             product = self._resolver_producto(env, ln)
+            if isinstance(product, dict):
+                opts = '; '.join(f"{o['name']} (product_id={o['product_id']})"
+                                 for o in product['ambiguous'])
+                problems.append(
+                    f"Línea {i+1}: '{ln.get('product_name')}' tiene varias variantes (aroma / "
+                    f"tamaño) y el nombre no define cuál. NO la cargué. Preguntale al cliente "
+                    f"cuál quiere y volvé a llamar con el product_id exacto. Opciones: {opts}")
+                continue
             if not product:
                 problems.append(
                     f"Línea {i+1}: no encontré el producto "
