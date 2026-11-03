@@ -31,6 +31,8 @@ class CristalComprasListRequest(models.Model):
     def _cron_prepare(self):
         """Corre todos los días; el primer lunes del mes arma la tanda (una sola por mes)."""
         today = fields.Date.context_today(self)
+        if not self.env['cristal.compras']._is_active():
+            return False
         if today != self._first_monday(today):
             return False
         return self.prepare(today)
@@ -46,7 +48,7 @@ class CristalComprasListRequest(models.Model):
         orders = self.env['purchase.order'].sudo().search([('state', 'in', ['purchase', 'done']),
                                                            ('date_order', '>=', since)])
         suppliers = orders.mapped('partner_id.commercial_partner_id').filtered(
-            lambda p: not p.cristal_price_list_exempt
+            lambda p: p.active and not p.cristal_price_list_exempt
             and not (p.cristal_price_list_date and p.cristal_price_list_date >= month_start))
         if not suppliers:
             return False

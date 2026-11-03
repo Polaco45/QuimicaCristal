@@ -20,6 +20,8 @@ class PurchaseOrder(models.Model):
         res = super().button_confirm()
         Compras = self.env['cristal.compras']
         manager = self.env.su or self.env.user.has_group('purchase.group_purchase_manager')
+        if not Compras._is_active():
+            return res
         for order in self.filtered(lambda o: o.state == 'purchase' and not o.cristal_order_sent):
             if manager:
                 order._cristal_send_order()

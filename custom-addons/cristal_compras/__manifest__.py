@@ -15,7 +15,7 @@ Química Cristal — agente de Compras (pedido de Sergio, 03/11/2026).
   le queda una actividad a Compras.
 * Ningún mensaje sale sin un OK de un responsable de Compras; no confirma compras ni paga.
 """,
-    "version": "18.0.1.0.0",
+    "version": "18.0.1.0.1",
     "author": "Química Cristal",
     "license": "LGPL-3",
     "category": "Inventory/Purchase",

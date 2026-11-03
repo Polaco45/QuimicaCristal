@@ -13,6 +13,7 @@ _logger = logging.getLogger(__name__)
 
 PARAM_WA_ACCOUNT = 'cristal_compras.wa_account_id'      # cuenta de WhatsApp de Compras
 PARAM_NOTIFY_USER = 'cristal_compras.notify_user_id'    # a quién le quedan los avisos
+PARAM_ACTIVE = 'cristal_compras.active'                # envío automático al confirmar y pedido mensual
 COMPRAS_EMAIL = '"Química Cristal · Compras" <compras@quimicacristal.com.ar>'
 SERGIO_USER_ID = 2
 
@@ -63,6 +64,12 @@ class CristalCompras(models.AbstractModel):
         """Ningún mensaje a proveedores sale sin el OK de un responsable de Compras."""
         if not (self.env.su or self.env.user.has_group('purchase.group_purchase_manager')):
             raise AccessError(_("Solo un responsable de Compras puede mandar mensajes a proveedores."))
+
+    @api.model
+    def _is_active(self):
+        """Lo automático (orden al confirmar, tanda del primer lunes) se prende con el número
+        de Compras conectado. Los botones a mano funcionan siempre."""
+        return self.env["ir.config_parameter"].sudo().get_param(PARAM_ACTIVE) in ("1", "True", "true")
 
     @api.model
     def _wa_account(self):
@@ -229,7 +236,7 @@ class CristalCompras(models.AbstractModel):
             self._alert(target, f"Lista de precios de {partner.name}",
                         f"Llegó por {source}: {', '.join(saved.mapped('name'))}. Está en Compras → "
                         "Listas de precios recibidas para subirla al Drive y cargarla.")
-        elif text and ALERT_WORDS.search(text):
+        if text and ALERT_WORDS.search(text):
             self._alert(target, f"{partner.name} respondió: revisá precio, fecha o condiciones",
                         text[:500])
         return True
