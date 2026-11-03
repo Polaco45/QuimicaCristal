@@ -7,6 +7,28 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.54.0] — 2026-11-03
+
+### Changed — La ruta del camión vuelve a salir los JUEVES (v1.35-1.53: miércoles)
+
+Joaco, 03/11: "a partir de ahora la zona se hace los jueves, incluyendo esta zona Norte
+de esta semana".
+
+- Config: Río Cuarto sin reparto = jueves; cierre de preventa martes 18 h; rescate hasta
+  el miércoles 12 h (día anterior a la salida, como siempre). Defaults nuevos en el modelo.
+- Circuitos: jueves; primeras salidas Sur-Oeste 29/10, Norte 05/11, Este 12/11,
+  Sur-Este 19/11. Migración: cada salida futura de miércoles pasa al jueves siguiente
+  **con sus pedidos** (se recalcula el commitment_date) y no queda marcada como
+  postergada; después se completan 12 semanas. KB #102 → "Ruta camión jueves";
+  KB #89 sin reparto los jueves. Avisa por el canal interno qué salidas movió.
+- Prompt v10 = v9 con jueves (se carga solo si la config estaba en v9). Los textos del
+  bot siguen saliendo de la config (`rc_no_delivery_day`, `route_weekday`).
+- Autotest: casos 5, 6, 8 y 17 en jueves / martes / miércoles.
+- Plantillas WhatsApp ruta_* (252-256, en borrador) decían miércoles/lunes/martes: se
+  corrigen por datos, no por código.
+
+---
+
 ## [18.0.1.51.1] — 2026-11-02
 
 ### Fixed — E-cheqs: mail con etiquetas a la vista y retención inventada

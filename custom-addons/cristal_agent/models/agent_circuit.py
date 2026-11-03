@@ -2,12 +2,12 @@
 """
 Ruta del camión mayorista — circuitos y localidades.
 
-Un camión sale UNA vez por semana (miércoles desde v1.35; antes jueves) a uno de 4 circuitos, rotando cada 4
+Un camión sale UNA vez por semana (jueves; v1.35-1.53 fue miércoles) a uno de 4 circuitos, rotando cada 4
 semanas: Sur-Oeste → Norte → Este → Sur-Este. Cada circuito agrupa localidades
 (con alias para normalizar el texto que escribe el cliente) y tiene su etiqueta de
 contacto (res.partner.category 35/32/50/51) ya cargada.
 
-Las SALIDAS concretas (cada miércoles) son registros de `cristal.agent.route.departure`
+Las SALIDAS concretas (cada jueves) son registros de `cristal.agent.route.departure`
 (ver agent_route_departure.py); acá vive la definición del circuito + la rotación.
 """
 import logging
@@ -149,7 +149,7 @@ class CristalAgentCircuit(models.Model):
         [('0', 'Lunes'), ('1', 'Martes'), ('2', 'Miércoles'), ('3', 'Jueves'),
          ('4', 'Viernes'), ('5', 'Sábado'), ('6', 'Domingo')],
         string="Día de salida", default='2',
-        help="Día de la semana en que sale el camión (miércoles).")
+        help="Día de la semana en que sale el camión (jueves).")
     partner_category_id = fields.Many2one(
         'res.partner.category', string="Etiqueta de contacto",
         help="Etiqueta (res.partner.category) de los contactos de este circuito.")
