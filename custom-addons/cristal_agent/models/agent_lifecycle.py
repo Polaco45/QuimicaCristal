@@ -176,6 +176,7 @@ class ResPartnerLifecycle(models.Model):
     agent_referral_rewarded = fields.Boolean(
         string="Referido ya premiado", copy=False,
         help="Quien lo recomendó ya recibió su crédito por la primera compra de este cliente.")
+    agent_referral_rewarded_date = fields.Date(string="Premiado el", copy=False)
 
     def agent_grant_referral_credit(self, pct, note):
         """Deja (o sube a) `pct` el crédito por referido, con su motivo."""
