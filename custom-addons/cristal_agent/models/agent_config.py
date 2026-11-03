@@ -618,7 +618,8 @@ class CristalAgentConfig(models.Model):
         string="Acciones en modo real", default='c_',
         help="Códigos o prefijos separados por coma que SÍ se ejecutan en modo real; el resto "
              "queda en seco. Vacío = todas. Prefijos: c_ cotizado sin comprar, n_ cliente nuevo, "
-             "a_ activo, q_ calificado sin cotizar, r_ en riesgo, d_ dormido.")
+             "a_ activo (a_ruta_proxima: reenganche de ruta; a_encuesta: encuesta por plantilla), "
+             "q_ calificado sin cotizar, r_ en riesgo, d_ dormido, o_ ritual Oro.")
     lifecycle_holdout_pct = fields.Integer(
         string="Grupo de control (%)", default=10,
         help="Porcentaje de clientes que NO reciben la acción, para medir cuánto suma.")

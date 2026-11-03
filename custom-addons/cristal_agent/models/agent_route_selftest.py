@@ -1663,6 +1663,110 @@ class CristalAgentRouteSelftest(models.TransientModel):
                     "crédito y aviso a quien recomendó · el crédito se usa en su próxima cotización")
         self._case(results, "52. Referidos", c_referidos)
 
+        # ═════════════════ v1.57 — Reenganche de ruta, encuesta, ritual Oro ═════════════════
+        # 53) Ruta: no pidió en la última pasada y el camión vuelve en pocos días
+        def c_ruta_proxima():
+            Dep = env['cristal.agent.route.departure'].sudo()
+            zc = Circuit.create({'name': 'ZZ Autotest Reenganche', 'sequence': 96,
+                                 'first_departure_date': today_ar})
+            prev = Dep.create({'circuit_id': zc.id, 'date': today_ar - timedelta(days=4),
+                               'state': 'realizada'})
+            # Rescate: el cierre es el día anterior a las 12:00 → siempre futuro con +3.
+            nxt = Dep.create({'circuit_id': zc.id, 'date': today_ar + timedelta(days=3),
+                              'state': 'rescate'})
+            assert zc.get_next_departure() == nxt, "la próxima salida no es la esperada"
+            # Pedidos como cliente de Río Cuarto (sin el camino de la ruta); recién después
+            # pasa al circuito. 20 y 50 días: fuera del ciclo y de la ventana de encuesta.
+            p = mk_lc('Ruta saltó', 'Rio Cuarto')
+            _confirmed(p, 20)
+            _confirmed(p, 50)
+            o = SaleOrder.browse(cso.execute(env=env, run=None, partner_id=p.id, delivery_mode='retiro',
+                                             lines=[{'product_id': product.id, 'qty': 1,
+                                                     'price_unit': 30000}])['order_id'])
+            p.write({'agent_zone': 'ruta_camion', 'truck_circuit_id': zc.id})
+            Life.recompute(p, today_ar)
+            assert p.agent_lifecycle in ('active', 'at_risk'), p.agent_lifecycle
+            st = Life.gather(p, today_ar)
+
+            def cand():
+                return NBA._candidate(p, st[p.id], today_ar, cfg)
+            c = cand()
+            assert c and c[0] == 'a_ruta_proxima', c
+            # Ya pidió para la próxima salida → no se lo molesta
+            o.route_departure_id = nxt.id
+            c = cand()
+            assert not c or c[0] != 'a_ruta_proxima', ("ya pidió y se lo avisaría", c)
+            o.route_departure_id = False
+            # Ya recibió el aviso masivo de esa salida → tampoco
+            nxt.aviso_partner_ids = [(4, p.id)]
+            c = cand()
+            assert not c or c[0] != 'a_ruta_proxima', ("ya tuvo el aviso masivo", c)
+            nxt.aviso_partner_ids = [(3, p.id)]
+            # Una vez por salida: con el aviso ya registrado no se repite
+            NBA.create({'partner_id': p.id, 'date': today_ar - timedelta(days=1),
+                        'action_code': 'a_ruta_proxima', 'state': 'done'})
+            c = cand()
+            assert not c or c[0] != 'a_ruta_proxima', ("repite el aviso de la misma salida", c)
+            return "sin pedido en la pasada anterior → aviso · con pedido o aviso masivo → nada · una vez por salida"
+        self._case(results, "53. Ruta: reenganche a la próxima salida", c_ruta_proxima)
+
+        # 54) Encuesta post-compra: candidato, envío por plantilla (en seco) y captura de la respuesta
+        def c_encuesta():
+            p = mk_lc('Encuesta', 'Rio Cuarto')
+            _confirmed(p, 10)
+            _confirmed(p, 50)
+            _confirmed(p, 90)
+            Life.recompute(p, today_ar)
+            st = Life.gather(p, today_ar)
+            assert p.agent_lifecycle == 'active', p.agent_lifecycle
+            c = NBA._candidate(p, st[p.id], today_ar, cfg)
+            tpl = NBA._survey_template()
+            if not tpl:
+                assert c is None or c[0] != 'a_encuesta', c
+                return "sin plantilla cristal_satisfaccion aprobada: no se propone la encuesta"
+            assert c and c[0] == 'a_encuesta', c
+            created = NBA.plan(p, st, today_ar, cfg)     # modo en seco: registra, no manda
+            assert created and created.channel == 'template' and created.state == 'dry_run', \
+                (created.channel, created.state)
+            # Captura de la respuesta: solo con encuesta mandada (done) hace poco
+            assert p.agent_capture_survey('Regular') is None, "capturó sin encuesta mandada"
+            created.state = 'done'
+            for noise in ('Hola, quería saber el precio de la lavandina por 20 litros',
+                          'Buen día', 'Buenas tardes, me pasás la lista?', '10 bidones',
+                          'ahí te mando', 'no está mal el precio pero quiero 20 lts'):
+                assert p.agent_capture_survey(noise) is None, f"tomó «{noise}» como respuesta"
+            assert p.agent_capture_survey('Regular') == 'regular' and p.agent_survey_answer == 'regular', \
+                p.agent_survey_answer
+            assert p.agent_capture_survey('Mal') is None, "registró dos respuestas a la misma encuesta"
+            # 90 días: no se repite
+            assert NBA._candidate(p, st[p.id], today_ar, cfg) is None or \
+                NBA._candidate(p, st[p.id], today_ar, cfg)[0] != 'a_encuesta', "repite la encuesta"
+            return "activo 10 días después del pedido → encuesta · en seco no manda · respuesta corta registrada · una cada 90 días"
+        self._case(results, "54. Encuesta post-compra", c_encuesta)
+
+        # 55) Ritual Oro: primera semana del mes, una vez por mes
+        def c_ritual_oro():
+            p = mk_lc('Oro ritual', 'Rio Cuarto')
+            p.agent_level = 'oro'
+            _confirmed(p, 10)
+            _confirmed(p, 40)
+            Life.recompute(p, today_ar)
+            st = Life.gather(p, today_ar)
+            day1 = today_ar.replace(day=3)
+            c = NBA._candidate(p, st[p.id], day1, cfg)
+            assert c and c[0] == 'o_ritual', c
+            NBA.create({'partner_id': p.id, 'date': day1, 'action_code': 'o_ritual', 'state': 'done'})
+            c = NBA._candidate(p, st[p.id], day1 + timedelta(days=2), cfg)
+            assert not c or c[0] != 'o_ritual', c
+            day20 = today_ar.replace(day=20)
+            c = NBA._candidate(p, st[p.id], day20, cfg)
+            assert not c or c[0] != 'o_ritual', c
+            p.agent_level = 'plata'
+            c = NBA._candidate(p, st[p.id], day1, cfg)
+            assert not c or c[0] != 'o_ritual', c
+            return "ORO el día 3 → ritual · ya hecho este mes → no · día 20 → no · PLATA → no"
+        self._case(results, "55. Ritual mensual ORO", c_ritual_oro)
+
         # 48) confirm_order: confirma solo lo que cumple la lista de control
         def c_confirm_order():
             co = ToolRegistry.get('confirm_order')

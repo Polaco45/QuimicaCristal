@@ -130,13 +130,52 @@ ACTIONS = {
         "Dormido · visita de la vendedora", 'visit',
         "Cliente dormido de Río Cuarto / Las Higueras con ticket alto: conviene una visita "
         "presencial en vez de otro mensaje."),
+    # v1.57 — acciones transversales (no dependen de la etapa)
+    'a_ruta_proxima': (
+        "Ruta · saltó una pasada: próxima salida", 'claudio',
+        "Cliente de la ruta del camión que NO pidió en la última pasada. El camión vuelve en "
+        "pocos días: avisale la fecha exacta (get_route_info) y ofrecé reponer lo que llevó "
+        "la vez anterior (search_orders), con el cierre de preventa. Una línea, tono de "
+        "aviso, sin presionar."),
+    'a_encuesta': (
+        "Activo · encuesta post-compra (plantilla)", 'template',
+        "Se manda sola la plantilla de satisfacción con botones; la respuesta la registra "
+        "el sistema y Claudio la sigue en la charla."),
+    'o_ritual': (
+        "Oro · ritual mensual", 'claudio',
+        "Cliente nivel ORO, primera semana del mes. Mensaje de reconocimiento, corto y "
+        "concreto: gracias por el mes, le recordás su beneficio (descuento ORO aplicado "
+        "solo en cada cotización) y preguntás si necesita algo para arrancar el mes. "
+        "Si le toca reponer, ofrecelo (search_orders). Nada de oferta genérica."),
 }
 ACTION_SELECTION = [(k, v[0]) for k, v in ACTIONS.items()]
 # Orden de prioridad cuando hay más candidatos que cupo diario: primero la plata parada
 # y fresca (cotizaciones recientes), último lo que lleva meses frío.
-PRIORITY = ['c_objecion', 'c_promo', 'n_chequeo', 'n_producto_top', 'n_segunda_compra',
-            'a_reposicion', 'n_reposicion', 'q_lista_pregunta', 'q_combo', 'r_reactivacion_1',
-            'r_reactivacion_2', 'c_ultima', 'q_oferta_mes', 'd_reactivacion_3', 'd_visita']
+PRIORITY = ['a_ruta_proxima', 'c_objecion', 'c_promo', 'o_ritual', 'n_chequeo',
+            'n_producto_top', 'n_segunda_compra', 'a_reposicion', 'n_reposicion',
+            'q_lista_pregunta', 'q_combo', 'r_reactivacion_1', 'r_reactivacion_2', 'c_ultima',
+            'q_oferta_mes', 'a_encuesta', 'd_reactivacion_3', 'd_visita']
+# v1.57 — encuesta post-compra: plantilla aprobada por Meta con botones.
+SURVEY_TEMPLATE = 'cristal_satisfaccion'
+SURVEY_DAYS = (7, 14)          # ventana después del pedido en la que se manda
+SURVEY_EVERY_DAYS = 90         # no más de una encuesta cada 90 días por cliente
+SURVEY_ANSWER_DAYS = 14        # una respuesta corta dentro de estos días cuenta como respuesta
+SURVEY_ANSWERS = [
+    ('bien', 'Bien'), ('regular', 'Regular'), ('mal', 'Mal'),
+]
+# Solo una respuesta casi exacta (botón o 1-3 palabras); un saludo o un pedido NO cuenta.
+_SURVEY_PATTERNS = (
+    ('mal', re.compile(
+        r"^\W*(?:muy\s+)?(?:mal|malo|mala|pésimo|pesimo|horrible|no me gust[oó]|no sirvi[oó])"
+        r"(?:\s*,?\s*gracias)?\W*$|^[\s😞👎]+$")),
+    ('regular', re.compile(
+        r"^\W*(?:regular|más o menos|mas o menos|ahí nomás|ahi nomas|meh)"
+        r"(?:\s*,?\s*gracias)?\W*$|^[\s😐]+$")),
+    ('bien', re.compile(
+        r"^\W*(?:muy\s+|todo\s+|re\s+)?(?:bien|excelente|genial|bárbaro|barbaro|perfecto|joya|"
+        r"buenísimo|buenisimo)(?:\s*,?\s*gracias)?\W*$|^[\s😀👍😊🙂]+$")),
+)
+ROUTE_NUDGE_DAYS = 4           # se avisa cuando faltan ≤ 4 días para la próxima salida
 # Estados que cuentan como "se lo tocó" (en seco solo es un registro).
 TOUCH_STATES = ('holdout', 'planned', 'done')
 
@@ -158,6 +197,41 @@ class ResPartnerLifecycle(models.Model):
     agent_lifecycle_date = fields.Date(string="En esta etapa desde", copy=False)
     agent_lifecycle_reason = fields.Char(string="Por qué está en esta etapa", copy=False)
     agent_lifecycle_computed_at = fields.Datetime(string="Etapa calculada el", copy=False)
+    # v1.57 — encuesta post-compra (plantilla con botones)
+    agent_survey_answer = fields.Selection(
+        SURVEY_ANSWERS, string="Última encuesta", copy=False,
+        help="Respuesta a la encuesta post-compra que manda el motor de ciclo de vida.")
+    agent_survey_answer_date = fields.Date(string="Encuesta respondida el", copy=False)
+    agent_survey_answer_text = fields.Char(string="Respuesta textual", copy=False)
+
+    def agent_capture_survey(self, text, when=None):
+        """Si hay una encuesta mandada hace poco y el mensaje es una respuesta corta,
+        la registra. Devuelve la respuesta ('bien'/'regular'/'mal') o None."""
+        self.ensure_one()
+        if 'cristal.agent.nba' not in self.env:
+            return None
+        body = (text or '').strip()
+        if not body or len(body) > 80:
+            return None
+        today = (when or fields.Datetime.now()).date()
+        sent = self.env['cristal.agent.nba'].sudo().search([
+            ('partner_id', '=', self.id), ('action_code', '=', 'a_encuesta'),
+            ('state', '=', 'done'), ('date', '>=', today - timedelta(days=SURVEY_ANSWER_DAYS))],
+            order='date desc', limit=1)
+        if not sent or (self.agent_survey_answer_date and self.agent_survey_answer_date >= sent.date):
+            return None
+        low = body.lower()
+        answer = next((a for a, rx in _SURVEY_PATTERNS if rx.search(low)), None)
+        if not answer:
+            return None
+        self.sudo().write({'agent_survey_answer': answer, 'agent_survey_answer_date': today,
+                           'agent_survey_answer_text': body[:80]})
+        label = dict(SURVEY_ANSWERS)[answer]
+        try:
+            self.append_agent_observation(f"📋 Encuesta post-compra: {label} («{body[:60]}»).")
+        except Exception:  # noqa: BLE001
+            pass
+        return answer
     agent_origin_code = fields.Char(
         string="Origen (código del anuncio)", index=True, copy=False,
         help="Código corto del anuncio o canal con el que llegó (ej. MAY-SUAV). "
@@ -413,6 +487,7 @@ class CristalAgentNBA(models.Model):
     action_code = fields.Selection(ACTION_SELECTION, string="Acción", required=True, index=True)
     action_label = fields.Char(string="Acción (texto)")
     channel = fields.Selection([('claudio', 'Claudio (WhatsApp)'), ('visit', 'Visita'),
+                                ('template', 'Plantilla WhatsApp (sin Claudio)'),
                                 ('none', 'Ninguna')], string="Canal", default='claudio')
     reason = fields.Text(string="Motivo")
     state = fields.Selection([
@@ -444,6 +519,82 @@ class CristalAgentNBA(models.Model):
         def once(code, reason):
             return None if code in last else (code, reason)
 
+        # v1.57 — transversales: la ruta manda (fecha fija), después el ritual Oro.
+        route = self._route_candidate(partner, s, today, last)
+        if route:
+            return route
+        ritual = self._ritual_candidate(partner, lc, today, last)
+        if ritual:
+            return ritual
+        stage = self._stage_candidate(partner, s, today, config, lc, last, cycle, once)
+        if stage:
+            return stage
+        return self._survey_candidate(partner, s, today, lc, last)
+
+    @api.model
+    def _route_candidate(self, partner, s, today, last):
+        """Cliente de la ruta que no pidió en la última pasada y el camión vuelve en
+        ≤ ROUTE_NUDGE_DAYS días: un aviso por salida, nunca a quien ya pidió o ya
+        recibió el aviso masivo de esa salida."""
+        circuit = partner.truck_circuit_id
+        if not circuit or not s.get('last_order') \
+                or partner.agent_lifecycle not in ('new_customer', 'active', 'at_risk'):
+            return None
+        nxt = circuit.get_next_departure()
+        if not nxt or not (0 <= (nxt.date - today).days <= ROUTE_NUDGE_DAYS):
+            return None
+        Dep = self.env['cristal.agent.route.departure'].sudo()
+        prev = Dep.search([('circuit_id', '=', circuit.id), ('date', '<', nxt.date),
+                           ('state', 'in', ('realizada', 'confirmada'))],
+                          order='date desc', limit=1)
+        if not prev:
+            return None
+        SO = self.env['sale.order'].sudo()
+        if SO.search_count([('partner_id', 'child_of', partner.commercial_partner_id.id),
+                            ('state', '!=', 'cancel'),
+                            ('route_departure_id', 'in', (prev.id, nxt.id))]):
+            return None
+        if partner in nxt.aviso_partner_ids or partner in nxt.rescate_partner_ids:
+            return None
+        done = last.get('a_ruta_proxima')
+        if done and done >= prev.date:
+            return None
+        return ('a_ruta_proxima',
+                f"no pidió en la pasada del {prev.date:%d/%m}; el camión vuelve el {nxt.date:%d/%m}")
+
+    @api.model
+    def _ritual_candidate(self, partner, lc, today, last):
+        if partner.agent_level != 'oro' or lc not in ('new_customer', 'active', 'at_risk') \
+                or today.day > 7:
+            return None
+        prev = last.get('o_ritual')
+        if prev and prev >= today.replace(day=1):
+            return None
+        return ('o_ritual', f"nivel ORO, arranque de {today:%m/%Y}")
+
+    @api.model
+    def _survey_template(self):
+        return self.env['whatsapp.template'].sudo().search(
+            [('template_name', '=', SURVEY_TEMPLATE), ('status', '=', 'approved')], limit=1)
+
+    @api.model
+    def _survey_candidate(self, partner, s, today, lc, last):
+        """Activo (no nuevo: a ese ya se le pregunta en la charla del día 3), entre 7 y 14
+        días después del pedido, como mucho una cada 90 días, solo con plantilla aprobada."""
+        if lc != 'active' or not s.get('last_order'):
+            return None
+        days = (today - s['last_order']).days
+        if not (SURVEY_DAYS[0] <= days <= SURVEY_DAYS[1]):
+            return None
+        prev = last.get('a_encuesta')
+        if prev and (today - prev).days < SURVEY_EVERY_DAYS:
+            return None
+        if not self._survey_template():
+            return None
+        return ('a_encuesta', f"compró hace {days} días")
+
+    @api.model
+    def _stage_candidate(self, partner, s, today, config, lc, last, cycle, once):
         if lc == 'qualified_no_quote':
             since = partner.agent_phase_started_at or partner.create_date
             days = (today - since.date()).days
@@ -584,7 +735,10 @@ class CristalAgentNBA(models.Model):
             elif is_live:
                 vals['state'] = 'planned'
                 act = self._schedule(p, code, label, channel, instr, reason, config, today)
-                if act:
+                if act is True:                 # plantilla: ya salió, no hay actividad
+                    vals['state'] = 'done'
+                    n_planned += 1
+                elif act:
                     vals['activity_id'] = act.id
                     n_planned += 1
                 else:
@@ -597,6 +751,8 @@ class CristalAgentNBA(models.Model):
 
     @api.model
     def _schedule(self, partner, code, label, channel, instr, reason, config, today):
+        if channel == 'template':
+            return self._send_survey(partner, today)
         if channel == 'visit':
             user = config.lifecycle_visit_user_id
             if not user:
@@ -613,6 +769,40 @@ class CristalAgentNBA(models.Model):
             note=(f"{instr}\n\nMotivo: {reason}. Nombre de pila: {_first_name(partner) or '—'}. "
                   f"Un solo mensaje, corto. Si contesta, seguís la charla normal. "
                   f"Con la ventana de 24 h cerrada, send_whatsapp sale por la plantilla sola."))
+
+    @api.model
+    def _send_survey(self, partner, today):
+        """Manda la plantilla de satisfacción. {{1}} nombre (campo o texto libre),
+        {{2}} fecha del último pedido. True si salió, False si no."""
+        template = self._survey_template()
+        if not template:
+            return False
+        last = self.env['sale.order'].sudo().search(
+            [('partner_id', '=', partner.id), ('state', 'in', ('sale', 'done'))],
+            order='date_order desc', limit=1)
+        when = last.date_order.date() if last and last.date_order else today
+        values = {1: _first_name(partner) or partner.name, 2: f"{when:%d/%m}"}
+        free_vars = template.variable_ids.filtered(
+            lambda v: v.field_type == 'free_text' and v.line_type == 'body')
+        variables = []
+        for var in sorted(free_vars, key=lambda v: int(''.join(
+                c for c in (v.name or '0') if c.isdigit()) or 0)):
+            n = int(''.join(c for c in (var.name or '0') if c.isdigit()) or 0)
+            variables.append(str(values.get(n, '')))
+        from ..services.tool_registry import ToolRegistry
+        tool = ToolRegistry.get('send_whatsapp_template')
+        if not tool:
+            return False
+        try:
+            res = tool.execute(env=self.env, run=None, partner_id=partner.id,
+                               template_name=template.template_name, variables=variables)
+        except Exception as e:  # noqa: BLE001
+            _logger.warning("Encuesta a %s no salió: %s", partner.name, e)
+            return False
+        if res.get('error') or res.get('not_sent'):
+            _logger.info("Encuesta a %s no salió: %s", partner.name, res.get('error'))
+            return False
+        return True
 
     # ───────────────────────── Resultado ─────────────────────────
     @api.model
