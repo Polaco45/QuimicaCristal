@@ -7,6 +7,22 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.54.3] — 2026-11-03
+
+### Changed — E-cheqs: ante la duda, se consulta (criterio de Sergio)
+
+Sergio (03/11): mismo criterio que la conciliación de transferencias. Sin facturas
+indicadas, el cheque se imputa solo si coincide (una factura del mismo importe, o las más
+viejas que suman justo) o si la diferencia con una sola factura parece retención (hasta
+10 %). Se sacó el último paso: si no hay coincidencia NO imputa a las más viejas, no
+registra, no manda mail y consulta en «Administración · Agente» (`needs_review`). Con
+facturas indicadas, la diferencia es retención solo si el cheque es menor y hasta un 10 %;
+si no, también consulta. Sergio queda como seguidor del recibo: si el cliente responde
+el mail, le llega. Arreglo: en los avisos del canal la mención a Sergio y el link al
+registro salían como texto HTML (se armaba un str y se sumaba a un Markup, que lo escapa).
+
+---
+
 ## [18.0.1.54.2] — 2026-11-03
 
 ### Changed — El cierre de preventa es el MIÉRCOLES 18 h (el día anterior al jueves)
