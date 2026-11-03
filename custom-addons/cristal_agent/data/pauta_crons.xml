@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v1.58 — Pauta Cristal: contenido automático por salida de la ruta.
+     noupdate="1": si Joaco lo apaga o cambia el horario, una actualización no lo pisa. -->
+<odoo>
+    <data noupdate="1">
+
+        <!-- Todos los días 8:00 hora Argentina = 11:00 UTC: salidas a ≤ 7 días sin contenido. -->
+        <record id="cron_pauta_route_content" model="ir.cron">
+            <field name="name">Cristal Agent: Pauta — contenido de la próxima salida (D-7)</field>
+            <field name="model_id" ref="model_cristal_agent_pauta"/>
+            <field name="state">code</field>
+            <field name="code">model.cron_route_content()</field>
+            <field name="interval_number">1</field>
+            <field name="interval_type">days</field>
+            <field name="nextcall" eval="(DateTime.now() + relativedelta(days=1)).strftime('%Y-%m-%d 11:00:00')"/>
+            <field name="active" eval="True"/>
+        </record>
+
+    </data>
+</odoo>

@@ -24,3 +24,7 @@ access_cristal_agent_weekly_report_user,cristal.agent.weekly.report user,model_c
 access_cristal_agent_weekly_report_manager,cristal.agent.weekly.report manager,model_cristal_agent_weekly_report,base.group_system,1,1,1,1
 access_cristal_agent_nba_user,cristal.agent.nba user,model_cristal_agent_nba,base.group_user,1,1,1,0
 access_cristal_agent_nba_manager,cristal.agent.nba manager,model_cristal_agent_nba,base.group_system,1,1,1,1
+access_cristal_agent_creative_user,cristal.agent.creative user,model_cristal_agent_creative,base.group_user,1,1,1,0
+access_cristal_agent_creative_manager,cristal.agent.creative manager,model_cristal_agent_creative,base.group_system,1,1,1,1
+access_cristal_agent_experiment_user,cristal.agent.experiment user,model_cristal_agent_experiment,base.group_user,1,1,1,0
+access_cristal_agent_experiment_manager,cristal.agent.experiment manager,model_cristal_agent_experiment,base.group_system,1,1,1,1

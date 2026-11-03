@@ -18,3 +18,4 @@ from . import mail_message
 from . import agent_weekly_report
 from . import agent_admin
 from . import agent_lifecycle
+from . import agent_pauta

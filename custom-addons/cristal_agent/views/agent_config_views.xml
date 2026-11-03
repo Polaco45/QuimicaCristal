@@ -290,6 +290,17 @@
                                     <field name="lifecycle_visit_min_ticket" widget="monetary"/>
                                 </group>
                             </group>
+                            <group string="📣 Pauta Cristal (contenido y campañas automáticas)">
+                                <field name="pauta_enabled" widget="boolean_toggle"/>
+                                <field name="pauta_autonomy_level"/>
+                                <field name="pauta_weekly_budget_cap" widget="monetary"/>
+                                <field name="pauta_route_budget" widget="monetary"/>
+                                <field name="pauta_route_lead_days"/>
+                                <field name="pauta_route_promo_qty"/>
+                                <field name="pauta_route_free_from" widget="monetary"/>
+                                <field name="pauta_route_pack_from" widget="monetary"/>
+                                <field name="higgsfield_min_credits"/>
+                            </group>
                             <group string="🏅 Niveles y referidos">
                                 <field name="level_plata_discount"/>
                                 <field name="level_oro_discount"/>

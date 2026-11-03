@@ -637,6 +637,37 @@ class CristalAgentConfig(models.Model):
         string="Ticket mínimo para sugerir visita", default=100000.0,
         digits='Product Price')
 
+    # ─────────── v1.58 — Pauta Cristal (contenido y campañas automáticas) ───────────
+    pauta_enabled = fields.Boolean(
+        string="Pauta automática", default=True,
+        help="Interruptor general del motor de pauta: cron de contenido por salida y "
+             "registro de creativos. Apagado = no genera nada.")
+    pauta_autonomy_level = fields.Selection([
+        ('0', '0 · Solo propone'),
+        ('1', '1 · Ejecuta cambios reversibles ≤ 20 % y publica la ruta recurrente'),
+        ('2', '2 · Además crea creativos nuevos y publica remarketing'),
+    ], string="Nivel de autonomía", default='1',
+        help="Lo lee la rutina semanal de pauta (Claude) para saber qué puede ejecutar "
+             "sin un «dale» en el canal interno.")
+    pauta_weekly_budget_cap = fields.Float(
+        string="Tope semanal de pauta", default=120000.0, digits='Product Price',
+        help="Gasto máximo por semana entre todas las campañas (ruta + Río Cuarto + remarketing).")
+    pauta_route_budget = fields.Float(
+        string="Presupuesto por salida de ruta", default=50000.0, digits='Product Price')
+    pauta_route_lead_days = fields.Integer(
+        string="Días antes de la salida para generar el contenido", default=7)
+    pauta_route_promo_qty = fields.Integer(
+        string="Promo de ruta: bidones que se compran", default=7,
+        help="7 → «7 bidones de 20 L + 1 de regalo». Si hay una oferta activa de la ruta en "
+             "Ofertas, el texto de la oferta manda en la charla; las placas usan este número.")
+    pauta_route_free_from = fields.Float(
+        string="Ruta: envío gratis desde", default=150000.0, digits='Product Price')
+    pauta_route_pack_from = fields.Float(
+        string="Ruta: pack de regalo desde", default=170000.0, digits='Product Price')
+    higgsfield_min_credits = fields.Integer(
+        string="Saldo mínimo de Higgsfield para generar video", default=100,
+        help="Por debajo, la salida sale solo con placas y se avisa.")
+
     # ─────────── Métricas computadas ───────────
     runs_today = fields.Integer(
         string="Ejecuciones hoy",
