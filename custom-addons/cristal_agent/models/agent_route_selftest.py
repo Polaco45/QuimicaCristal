@@ -100,7 +100,7 @@ class CristalAgentRouteSelftest(models.TransientModel):
             return
 
         # Salidas fijas para el caso del 29/09/2026 (idempotente).
-        for circ, d in ((so, date(2026, 10, 14)), (este, date(2026, 10, 28))):
+        for circ, d in ((so, date(2026, 10, 15)), (este, date(2026, 10, 29))):
             dep = Dep.search([('circuit_id', '=', circ.id), ('date', '=', d)], limit=1)
             if not dep:
                 dep = Dep.create({'circuit_id': circ.id, 'date': d})
@@ -161,12 +161,12 @@ class CristalAgentRouteSelftest(models.TransientModel):
         def c_fechas():
             ref = self._utc_from_local(date(2026, 9, 29), 12)
             d = so.get_next_departure(ref)
-            assert d and d.date == date(2026, 10, 14), f"Sampacho: {d.date if d else None}"
+            assert d and d.date == date(2026, 10, 15), f"Sampacho: {d.date if d else None}"
             cl = d.get_cutoff_local()
-            assert (cl.date(), cl.hour, cl.minute) == (date(2026, 10, 13), 18, 0), (  # martes previo (v1.54)
+            assert (cl.date(), cl.hour, cl.minute) == (date(2026, 10, 14), 18, 0), (  # miércoles previo (v1.54.2)
                 f"Cierre Sampacho: {cl}")
             d2 = este.get_next_departure(ref)
-            assert d2 and d2.date == date(2026, 10, 28), f"Ucacha: {d2.date if d2 else None}"
+            assert d2 and d2.date == date(2026, 10, 29), f"Ucacha: {d2.date if d2 else None}"
             p = mk_partner('InfoSampacho', 'Sampacho')
             gi = gri.execute(env=env, run=None, partner_id=p.id)
             assert gi.get('zone') == 'ruta_camion' and gi.get('circuit') == 'Sur-Oeste', gi
@@ -223,20 +223,20 @@ class CristalAgentRouteSelftest(models.TransientModel):
             return "$95.000 → flete → total s/IVA $104.000, sigue con flete"
         self._case(results, "4. Umbrales sin contar el flete", c_sin_flete)
 
-        # 5) Zona horaria: martes 17:59 entra, 18:01 pasa a la siguiente
+        # 5) Zona horaria: miércoles 17:59 entra, 18:01 pasa a la siguiente
         def c_timezone():
             tc = Circuit.create({'name': 'ZZ Autotest TZ', 'sequence': 99,
                                  'first_departure_date': next_dep})
             d1 = Dep.create({'circuit_id': tc.id, 'date': next_dep})
             d2 = Dep.create({'circuit_id': tc.id, 'date': next_dep + timedelta(days=28)})
             cl = d1.get_cutoff_local()
-            assert (cl.weekday(), cl.hour, cl.minute) == (1, 18, 0), f"cierre local {cl}"
+            assert (cl.weekday(), cl.hour, cl.minute) == (2, 18, 0), f"cierre local {cl}"
             cut = d1.get_preventa_cutoff()
             got1 = tc.get_next_departure(cut - timedelta(minutes=1))
             got2 = tc.get_next_departure(cut + timedelta(minutes=1))
             assert got1 == d1, f"17:59 → {got1.date if got1 else None}"
             assert got2 == d2, f"18:01 → {got2.date if got2 else None}"
-            return f"cierre mar {cl.strftime('%d/%m')} 18:00 (Córdoba); 17:59 entra, 18:01 pasa"
+            return f"cierre mié {cl.strftime('%d/%m')} 18:00 (Córdoba); 17:59 entra, 18:01 pasa"
         self._case(results, "5. Cierre de preventa y zona horaria", c_timezone)
 
         # 6) Rescate (Plan B)
@@ -610,7 +610,7 @@ class CristalAgentRouteSelftest(models.TransientModel):
             _b, err = guard("<p>Te lo llevamos el lunes 19/10 a las 11 h.</p>", prc)
             assert err and err['guard'] == 'entrega_rc', err
             _b, err = guard("<p>Pasamos por Sampacho el jueves 12/11; tomamos pedidos "
-                            "hasta el martes 10/11 a las 18 h.</p>", pz)
+                            "hasta el miércoles 11/11 a las 18 h.</p>", pz)
             assert not err, f"bloqueó la fecha de la ruta: {err}"
             _b, err = guard("<p>¿Cuántos litros llevás hoy?</p>", prc)
             assert not err, f"bloqueó una pregunta común: {err}"

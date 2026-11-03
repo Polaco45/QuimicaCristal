@@ -3,7 +3,7 @@
 
 Joaco, 03/11/2026: "a partir de ahora la zona se hace los jueves, incluyendo esta zona
 Norte de esta semana". Acá:
-1. Config: Río Cuarto sin reparto = jueves (3); cierre de preventa martes (1) 18 h.
+1. Config: Río Cuarto sin reparto = jueves (3); cierre de preventa miércoles (2) 18 h.
 2. Circuitos: weekday = jueves; first_departure_date corrido un día.
 3. Salidas: cada salida futura que cae miércoles pasa al jueves siguiente (misma
    salida, mismos pedidos: solo cambia la fecha) y se recalcula el commitment_date de
@@ -29,7 +29,7 @@ KB_ROUTE_REPLACEMENTS = [
     ("desde el miércoles 14/10/2026", "desde el jueves 05/11/2026"),
     ("los MIÉRCOLES,", "los JUEVES,"),
     ("La salida es el MIÉRCOLES; la preventa cierra el LUNES previo a las 18 h.",
-     "La salida es el JUEVES; la preventa cierra el MARTES previo a las 18 h."),
+     "La salida es el JUEVES; la preventa cierra el MIÉRCOLES previo a las 18 h."),
     ("el aviso de rescate sale el lunes y se puede confirmar hasta el MARTES a las 12 h",
      "el aviso de rescate sale el martes y se puede confirmar hasta el MIÉRCOLES a las 12 h"),
     ("NUNCA los MIÉRCOLES (ese día sale el camión de la ruta)",
@@ -38,7 +38,7 @@ KB_ROUTE_REPLACEMENTS = [
     # Texto que Joaco retocó a mano en prod (corregido por RPC el 03/11/2026; queda por si
     # la KB vuelve a ese texto en staging):
     ("la preventa cierra el lunes 18 h previo al miércoles; si la salida está en rescate, el martes 12 h",
-     "la preventa cierra el martes 18 h previo al jueves; si la salida está en rescate, el miércoles 12 h"),
+     "la preventa cierra el miércoles 18 h previo al jueves; si la salida está en rescate, el miércoles 12 h"),
     ("NUNCA los miércoles (el RETIRO en planta el miércoles SÍ se puede",
      "NUNCA los jueves (el RETIRO en planta el jueves SÍ se puede"),
 ]
@@ -57,8 +57,8 @@ def _config(env, config):
     vals = {}
     if config.rc_no_delivery_weekday != THURSDAY:
         vals['rc_no_delivery_weekday'] = THURSDAY
-    if config.route_preventa_cutoff_weekday != 1:
-        vals['route_preventa_cutoff_weekday'] = 1
+    if config.route_preventa_cutoff_weekday != 2:
+        vals['route_preventa_cutoff_weekday'] = 2
     if vals:
         config.write(vals)
         _logger.info("✅ MIGRATION 1.54.0: config %s", vals)
@@ -143,7 +143,7 @@ def _notify(config, moved):
     if not channel:
         return
     body = ("🚚 <b>La ruta del camión pasa a los JUEVES</b> (v1.54). Río Cuarto sin reparto los jueves; "
-            "preventa hasta el martes 18 h; rescate hasta el miércoles 12 h. Salidas movidas: "
+            "preventa hasta el miércoles 18 h; rescate hasta el miércoles 12 h. Salidas movidas: "
             + ("; ".join(moved) if moved else "ninguna") +
             ". Revisar las plantillas de WhatsApp ruta_* (dicen miércoles/lunes/martes).")
     channel.sudo().with_context(from_cristal_agent=True).message_post(

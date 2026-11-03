@@ -140,14 +140,14 @@ class CristalAgentRouteDeparture(models.Model):
 
     def get_preventa_cutoff(self):
         """Cierre para tomar pedidos de esta salida, como datetime naive UTC.
-        - Preventa: el martes (config) a las 18:00 hora Córdoba previo a la salida.
+        - Preventa: el miércoles (config) a las 18:00 hora Córdoba, el día anterior a la salida.
         - Rescate: el día anterior (miércoles) a las 12:00 (lo que promete la plantilla de rescate)."""
         self.ensure_one()
         if self.state == 'rescate':
             day = self.date - timedelta(days=RESCUE_CUTOFF_DAYS_BEFORE)
             return self._local_to_utc(day, RESCUE_CUTOFF_HOUR)
         config = self.env['cristal.agent.config'].sudo().get_active()
-        # Sin `or default`: lunes = 0 y medianoche = 0.0 son valores válidos (hoy martes = 1).
+        # Sin `or default`: lunes = 0 y medianoche = 0.0 son valores válidos (hoy miércoles = 2).
         cutoff_weekday = int(config.route_preventa_cutoff_weekday) % 7 if config else 0
         cutoff_hour = float(config.route_preventa_cutoff_hour) if config else 18.0
         day = self.date - timedelta(days=1)
