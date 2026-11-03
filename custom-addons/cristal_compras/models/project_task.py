@@ -12,8 +12,10 @@ class ProjectTask(models.Model):
     def _message_post_after_hook(self, message, msg_vals):
         """Mail de un proveedor a una bandeja (compras@): las listas se guardan solas."""
         res = super()._message_post_after_hook(message, msg_vals)
-        if message.message_type == 'email' and message.author_id \
-                and message.author_id.commercial_partner_id.supplier_rank > 0:
+        author = message.author_id.commercial_partner_id
+        # Solo proveedores puros, o cualquier proveedor si escribe a la bandeja de Compras.
+        if message.message_type == 'email' and author and author.supplier_rank > 0 \
+                and (author.customer_rank == 0 or 'compras' in (self.project_id.name or '').lower()):
             try:
                 self.env['cristal.compras'].sudo().process_supplier_message(
                     message.author_id, message, 'mail')
