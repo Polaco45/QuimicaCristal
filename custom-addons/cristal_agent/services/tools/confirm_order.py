@@ -57,10 +57,13 @@ class ConfirmOrder(AgentTool):
             ('commercial_partner_id', '=', partner.commercial_partner_id.id)], limit=3)
 
     def _problems(self, env, config, partner, order):
-        from .search_products import is_made_to_order
+        from .search_products import is_made_to_order, is_granel
         problems = []
         if not config.auto_confirm_enabled:
             problems.append("la confirmación automática está apagada")
+        if 'cristal_customer_type' in partner._fields and partner.cristal_customer_type == 'cf':
+            problems.append("el cliente figura como consumidor final (usá confirm_cf_order "
+                            "con una cotización a precio público)")
         if order.partner_id.commercial_partner_id != partner.commercial_partner_id:
             problems.append("la cotización es de otro cliente")
         if order.state not in ('draft', 'sent'):
@@ -87,8 +90,7 @@ class ConfirmOrder(AgentTool):
             lambda l: not l.display_type and l.product_id and not getattr(l, 'is_delivery', False))
         if not lines:
             problems.append("la cotización no tiene productos")
-        granel = lines.filtered(lambda l: is_made_to_order(l.product_id)
-                                and 'granel' in (l.product_id.name or '').lower())
+        granel = lines.filtered(lambda l: is_granel(l.product_id))
         if granel and not order.cristal_bidones_answered:
             problems.append("falta confirmar los bidones de recambio (create_sale_order con bidones_nuevos)")
         for line in lines:

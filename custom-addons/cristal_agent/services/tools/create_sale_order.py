@@ -131,9 +131,8 @@ class CreateSaleOrder(AgentTool):
     # ───────────────────────── Helpers de negocio ─────────────────────────
     def _es_granel(self, product):
         """True si el producto se vende a granel (por litro)."""
-        name = (product.name or '').lower()
-        uom = (product.uom_id.name or '').lower() if product.uom_id else ''
-        return ('granel' in name) or uom in ('l', 'lt', 'litro', 'litros', 'l.')
+        from .search_products import is_granel   # v1.53.1: mira también la variante
+        return is_granel(product)
 
     def _stock_alternatives(self, env, product, qty, limit=3):
         """v1.36: productos del MISMO tipo (categoría) con stock suficiente (o granel,
@@ -216,18 +215,30 @@ class CreateSaleOrder(AgentTool):
             return None
         if len(cands) == 1:
             return cands
-        # Varias variantes del MISMO producto: ¿las palabras definen una sola?
-        if len(cands.mapped('product_tmpl_id')) == 1 and any(variant_label(p) for p in cands):
-            nw = [_norm(w) for w in words]
-            narrowed = cands.filtered(lambda p: any(w and w in _norm(variant_label(p)) for w in nw))
+        # Productos distintos: me quedo con el template ganador (catálogo mayorista y a
+        # pedido primero, como search_products) y recién ahí miro sus variantes.
+        if len(cands.mapped('product_tmpl_id')) > 1:
+            best = cands.sorted(lambda p: (not p.product_tmpl_id.is_mayorista_catalog,
+                                           not is_made_to_order(p), p.name or ''))[0]
+            cands = cands.filtered(lambda p: p.product_tmpl_id == best.product_tmpl_id)
+            if len(cands) == 1:
+                return cands
+        # Varias variantes del MISMO producto: ¿las palabras definen una sola? Se puntúa
+        # por tokens del nombre (incluidos los de 1 carácter: "1 lt" vs "5 lts") que aparecen
+        # en la etiqueta de la variante; gana la única con el máximo.
+        if any(variant_label(p) for p in cands):
+            toks = [t for t in (_norm(w) for w in name.split()) if t]
+
+            def score(p):
+                lab = _norm(variant_label(p))
+                return sum(1 for t in toks if t in lab)
+            best_score = max(score(p) for p in cands)
+            narrowed = cands.filtered(lambda p: score(p) == best_score) if best_score else cands
             if len(narrowed) == 1:
                 return narrowed
-            options = narrowed or cands
             return {'ambiguous': [{'product_id': p.id, 'name': p.display_name}
-                                  for p in options[:10]]}
-        # Productos distintos: catálogo mayorista y a pedido primero (como search_products).
-        return cands.sorted(lambda p: (not p.product_tmpl_id.is_mayorista_catalog,
-                                       not is_made_to_order(p), p.name or ''))[:1]
+                                  for p in narrowed[:10]]}
+        return cands[:1]
 
     # ───────────────────────── Ruta del camión (v1.32) ─────────────────────────
     def _route_context(self, env, config, partner):

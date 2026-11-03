@@ -78,11 +78,19 @@ def _word_domain(word):
 
 def is_made_to_order(product):
     """True si lo fabricamos nosotros: granel (por litro), bases, fraccionado."""
-    name = (product.name or '').lower()
+    # display_name incluye la variante ("Lavandina (granel)"); name es solo el template.
+    name = (product.display_name or product.name or '').lower()
     uom = (product.uom_id.name or '').lower() if product.uom_id else ''
     categ = product.categ_id.complete_name or ''
     return ('granel' in name) or uom in ('l', 'lt', 'litro', 'litros', 'l.') \
         or bool(MADE_TO_ORDER_CATEG.search(categ))
+
+
+def is_granel(product):
+    """True si se vende por litro en bidones (nombre, variante o unidad)."""
+    name = (product.display_name or product.name or '').lower()
+    uom = (product.uom_id.name or '').lower() if product.uom_id else ''
+    return ('granel' in name) or uom in ('l', 'lt', 'litro', 'litros', 'l.')
 
 
 def variant_label(product):
@@ -152,8 +160,9 @@ class SearchProducts(AgentTool):
         compact = _norm(' '.join(distinct or words))
         if len(compact) >= 5:
             pool = Product.search([('sale_ok', '=', True), ('name', 'ilike', compact[:4])],
-                                  limit=300)
-            hits = pool.filtered(lambda p: compact in _norm(p.name) or _norm(p.name) in compact)
+                                  limit=1000)
+            hits = pool.filtered(lambda p: compact in _norm(p.name)
+                                 or (len(_norm(p.name)) >= 5 and _norm(p.name) in compact))
             if hits:
                 return hits[:limit], True
 
