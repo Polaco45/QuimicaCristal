@@ -581,6 +581,18 @@ class CristalAgentConfig(models.Model):
         help="Hasta este consumo mensual el cliente es PLATA (5% off). Por encima → ORO.",
     )
 
+    # ═════════════════ CONFIRMACIÓN AUTOMÁTICA DE PEDIDOS MAYORISTAS (v1.53) ═════════════════
+    auto_confirm_enabled = fields.Boolean(
+        string="Claudio confirma pedidos mayoristas", default=True,
+        help="Si cumple la lista de control (Río Cuarto / Las Higueras o retiro, hasta el monto, "
+             "stock de lo envasado, sin facturas vencidas, dirección, bidones, pago en efectivo o "
+             "transferencia), Claudio confirma el pedido solo. Los de la ruta del camión y los "
+             "que no cumplen siguen yendo a Joaco.")
+    auto_confirm_max_amount = fields.Float(
+        string="Monto máximo que confirma solo (sin IVA)", default=150000.0,
+        digits='Product Price',
+        help="Por encima de este subtotal sin IVA el pedido lo confirma Joaco. 0 = sin tope.")
+
     # ═════════════════ CICLO DE VIDA Y PRÓXIMA MEJOR ACCIÓN (v1.52) ═════════════════
     lifecycle_mode = fields.Selection([
         ('off', 'Apagado'),

@@ -1,6 +1,19 @@
 # -*- coding: utf-8 -*-
-"""Tool: search_products — busca productos en el catálogo."""
+"""Tool: search_products — busca productos en el catálogo.
+
+v1.53 (03/11/2026, caso Florencia S06925 y "bases desod de pisos"):
+- Cada resultado trae el NOMBRE COMPLETO con sus variantes (aroma, tamaño) y el código:
+  antes 14 "Base Limpiador Desodorante (1+80)" iguales y Claudio no sabía cuál era cuál.
+- Lo que fabricamos (granel, bases, fraccionado) es A PEDIDO: se cotiza SIEMPRE aunque el
+  stock diga 0 (antes Claudio decía "sin stock de Vivere Celeste" y frenaba el pedido).
+- Palabras pegadas ("quitasarro", "limpiavidrios") y variantes buscadas por su atributo
+  ("base arpege 1 lt").
+- Orden: catálogo mayorista primero, después granel/a pedido, después lo que tiene stock.
+"""
 import logging
+import re
+import unicodedata
+
 from .base import AgentTool
 from ..tool_registry import ToolRegistry
 
@@ -16,14 +29,17 @@ SYNONYMS = {
     'lavaplatos': ['detergente'], 'platos': ['detergente'],
     'aromatizante': ['perfume', 'aroma'], 'aroma': ['aromatizante', 'perfume'],
     'blanqueador': ['optico', 'blanq'], 'optico': ['blanqueador'],
-    # Pisos: "perfumina/desodorante/limpiador perfumado" → Limpiador Desodorante
+    # Pisos: "perfumina/desodorante/desod/limpiador perfumado" → Limpiador Desod.
     # (NO "Perfume p/ropa", que es para la ropa).
-    'perfumina': ['limpiador desodorante', 'desodorante'],
-    'desodorante': ['limpiador desodorante'],
-    'piso': ['pisos'], 'pisos': ['piso'],
+    'perfumina': ['limpiador desod', 'desod'],
+    'desodorante': ['desod'], 'desod': ['desodorante', 'limpiador desod'],
+    'desinfectante': ['desinf'],
+    'quitasarro': ['quita sarro', 'sarro'], 'sarro': ['quita sarro'],
+    'quitamanchas': ['quitamanchas', 'manchas'],
+    'limpiavidrios': ['limpia vidrios', 'vidrios'], 'vidrios': ['limpia vidrios'],
     'manos': ['mano'], 'jabon': ['jabón'], 'jabón': ['jabon'],
+    'suavizante': ['suav'], 'concentrado': ['base'], 'base': ['base', 'concentrad'],
 }
-
 
 # Palabras que no distinguen un producto (para buscar en el catálogo mayorista
 # por la palabra clave real: "jabón líquido para ropa" → "jabon").
@@ -31,39 +47,73 @@ GENERIC_WORDS = {
     'liquido', 'liquida', 'liquidos', 'liquidas', 'para', 'de', 'del', 'la', 'el',
     'los', 'las', 'x', 'por', 'en', 'con', 'y', 'ropa', 'granel', 'precio',
     'precios', 'litro', 'litros', 'lt', 'lts', 'bidon', 'bidones', 'producto',
-    'productos', 'mayorista', 'que', 'tenes', 'tienen', 'hay',
+    'productos', 'mayorista', 'que', 'tenes', 'tienen', 'hay', 'piso', 'pisos',
+    'un', 'una', 'unos', 'unas', 'al', 'sale', 'cuanto', 'cuánto', 'vale',
 }
+# Rubros de fabricación propia: se producen a pedido, el stock no frena la venta.
+MADE_TO_ORDER_CATEG = re.compile(r'^(Fabricaci[oó]n|Fraccionado)', re.I)
+MAX_LIMIT = 15
 
 
 def _strip_accents(txt):
-    import unicodedata
     txt = unicodedata.normalize('NFKD', txt or '')
     return ''.join(c for c in txt if not unicodedata.combining(c))
 
 
+def _norm(txt):
+    return re.sub(r'[^a-z0-9]', '', _strip_accents(txt or '').lower())
+
+
 def _word_domain(word):
-    """Dominio para una palabra sin importar acentos: 'jabón' → jabón | jabon."""
+    """Dominio para una palabra: nombre, código o valor de variante (aroma, tamaño),
+    sin importar acentos ('jabón' → jabón | jabon)."""
     plain = _strip_accents(word)
-    if plain.lower() == word.lower():
-        return [('name', 'ilike', word)]
-    return ['|', ('name', 'ilike', word), ('name', 'ilike', plain)]
+    variants = [word] if plain.lower() == word.lower() else [word, plain]
+    leaves = []
+    for w in variants:
+        leaves += [('name', 'ilike', w), ('default_code', 'ilike', w),
+                   ('product_template_variant_value_ids.name', 'ilike', w)]
+    return ['|'] * (len(leaves) - 1) + leaves
+
+
+def is_made_to_order(product):
+    """True si lo fabricamos nosotros: granel (por litro), bases, fraccionado."""
+    # display_name incluye la variante ("Lavandina (granel)"); name es solo el template.
+    name = (product.display_name or product.name or '').lower()
+    uom = (product.uom_id.name or '').lower() if product.uom_id else ''
+    categ = product.categ_id.complete_name or ''
+    return ('granel' in name) or uom in ('l', 'lt', 'litro', 'litros', 'l.') \
+        or bool(MADE_TO_ORDER_CATEG.search(categ))
+
+
+def is_granel(product):
+    """True si se vende por litro en bidones (nombre, variante o unidad)."""
+    name = (product.display_name or product.name or '').lower()
+    uom = (product.uom_id.name or '').lower() if product.uom_id else ''
+    return ('granel' in name) or uom in ('l', 'lt', 'litro', 'litros', 'l.')
+
+
+def variant_label(product):
+    vals = product.product_template_variant_value_ids
+    return ', '.join(vals.mapped('name')) if vals else ''
 
 
 @ToolRegistry.register
 class SearchProducts(AgentTool):
     name = "search_products"
     description = (
-        "Busca productos (product.product) en el catálogo. Por nombre, código o id. "
-        "Devuelve nombre, default_code, precio según pricelist (si pasás partner_id), "
-        "stock disponible y unidad de medida. "
-        "Útil para responder consultas tipo '¿tenés blem?' o '¿cuánto sale lavandina 20L?'"
+        "Busca productos (product.product) en el catálogo por nombre, código, aroma o "
+        "tamaño. Devuelve el nombre COMPLETO (con aroma y tamaño si es una variante), código, "
+        "precio de la Lista Mayorista, unidad, si se fabrica a pedido (SIEMPRE cotizable) o "
+        "el stock si es un producto de distribución. Útil para '¿tenés blem?', '¿cuánto sale "
+        "la lavandina?', 'base desodorante arpege 1 litro'."
     )
     input_schema = {
         "type": "object",
         "properties": {
             "query": {
                 "type": "string",
-                "description": "Término de búsqueda (nombre o parte del nombre, código).",
+                "description": "Término de búsqueda (nombre o parte del nombre, código, aroma, tamaño).",
             },
             "partner_id": {
                 "type": "integer",
@@ -74,81 +124,81 @@ class SearchProducts(AgentTool):
         "required": ["query"],
     }
 
+    # ───────────────────────── Búsqueda ─────────────────────────
+    def _search(self, Product, query, limit):
+        """(products, approximate)."""
+        exact = Product.search(['|', ('barcode', '=', query), ('default_code', '=', query)],
+                               limit=limit)
+        if exact:
+            return exact, False
+        words = [w for w in query.split() if len(w) > 1]
+        if not words:
+            return Product.search(['|', ('name', 'ilike', query),
+                                   ('default_code', 'ilike', query)], limit=limit), False
+
+        # 1) Todas las palabras (nombre, código o variante), en cualquier orden.
+        domain = [('sale_ok', '=', True)]
+        for w in words:
+            domain += _word_domain(w)
+        products = Product.search(domain, limit=limit)
+        if products:
+            return products, False
+
+        # 2) Palabras distintivas solamente ("desod de pisos" → "desod").
+        distinct = [w for w in words
+                    if _strip_accents(w).lower() not in GENERIC_WORDS and len(w) > 2]
+        if distinct and len(distinct) < len(words):
+            domain = [('sale_ok', '=', True)]
+            for w in distinct:
+                domain += _word_domain(w)
+            products = Product.search(domain, limit=limit)
+            if products:
+                return products, False
+
+        # 3) Palabras pegadas: "quitasarro" encuentra "Quita Sarro"; "limpiavidrios",
+        #    "Limpia Vidrios". Se compara el nombre sin espacios ni acentos.
+        compact = _norm(' '.join(distinct or words))
+        if len(compact) >= 5:
+            pool = Product.search([('sale_ok', '=', True), ('name', 'ilike', compact[:4])],
+                                  limit=1000)
+            hits = pool.filtered(lambda p: compact in _norm(p.name)
+                                 or (len(_norm(p.name)) >= 5 and _norm(p.name) in compact))
+            if hits:
+                return hits[:limit], True
+
+        # 4) Sinónimos (OR) y, si sigue vacío, la palabra más larga sola.
+        expanded = set(w.lower() for w in (distinct or words))
+        for w in list(expanded):
+            for syn in SYNONYMS.get(_strip_accents(w).lower(), []):
+                expanded.add(syn)
+        terms = [w for w in expanded if len(w) > 2]
+        if terms:
+            leaves = [('name', 'ilike', w) for w in terms]
+            products = Product.search([('sale_ok', '=', True)] + ['|'] * (len(leaves) - 1)
+                                      + leaves, limit=limit)
+            if products:
+                return products, True
+        key = max(distinct or words, key=len)
+        return Product.search([('sale_ok', '=', True), ('name', 'ilike', key)],
+                              limit=limit), True
+
     def _execute(self, env, run=None, query=None, partner_id=None, limit=10, **kwargs):
         if not query:
             return {"error": "query es obligatorio"}
-
         Product = env['product.product'].sudo()
         query = query.strip()
+        limit = max(1, min(int(limit or 10), MAX_LIMIT))
 
-        # Estrategia 1: match exacto por código de barras o código interno
-        exact = Product.search([
-            '|',
-            ('barcode', '=', query),
-            ('default_code', '=', query),
-        ], limit=int(limit or 10))
+        products, approximate = self._search(Product, query, limit * 3)
 
-        # Estrategia 2: búsqueda por palabras separadas — TODAS deben aparecer
-        # en el name (en cualquier orden). Esto resuelve casos como "Ariel granel"
-        # que no haría match con "Detergente Ariel a Granel 200L" con ilike directo.
-        approximate = False
-        words = [w for w in query.split() if len(w) > 1]
-        if exact:
-            products = exact
-        elif words:
-            # v1.34: sin importar acentos ("jabón" encuentra "Jabon B/E Ariel").
-            word_domain = []
-            for w in words:
-                word_domain += _word_domain(w)
-            products = Product.search(word_domain, limit=int(limit or 10))
-        else:
-            # query de 1 letra: usar ilike directo
-            products = Product.search([
-                '|', ('name', 'ilike', query),
-                ('default_code', 'ilike', query),
-            ], limit=int(limit or 10))
+        # Orden: catálogo mayorista → a pedido (granel/fabricación) → con stock → resto.
+        def rank(p):
+            mto = is_made_to_order(p)
+            has_stock = (not p.is_storable) or (p.qty_available or 0.0) > 0
+            return (not p.product_tmpl_id.is_mayorista_catalog, not mto, not has_stock,
+                    p.name or '')
+        products = products.sorted(rank)[:limit]
 
-        # Estrategia 3 — FALLBACK INTERPRETATIVO. Si el match exacto de TODAS las
-        # palabras no dio nada, relajamos para no fallar por diferencias de
-        # wording (ej: cliente pide "perfume textil" y el producto es "Perfume
-        # p/ropa"). (a) expandimos con sinónimos y buscamos con OR; (b) si sigue
-        # vacío, buscamos por la palabra más significativa sola. Marcamos los
-        # resultados como aproximados para que el bot elija el que corresponde.
-        if not exact and not products and words:
-            approximate = True
-            expanded = set(w.lower() for w in words)
-            for w in list(expanded):
-                for syn in SYNONYMS.get(w, []):
-                    expanded.add(syn)
-            terms = [w for w in expanded if len(w) > 2]
-            if terms:
-                or_domain = ['|'] * (len(terms) - 1) + [('name', 'ilike', w) for w in terms]
-                products = Product.search(
-                    [('sale_ok', '=', True)] + or_domain, limit=int(limit or 10))
-            if not products:
-                key = max(words, key=len)
-                products = Product.search(
-                    [('sale_ok', '=', True), ('name', 'ilike', key)], limit=int(limit or 10))
-
-        # v1.34 — CATÁLOGO MAYORISTA PRIMERO. Caso real: "jabón líquido" no traía
-        # los jabones de ropa a granel ("Jabon B/E Ariel/Skip a granel": ninguno
-        # dice "líquido") y Claudio les inventó el precio del detergente. Ahora,
-        # con las palabras distintivas (sin "líquido", "para", "ropa"...), se
-        # buscan los productos del catálogo mayorista y van adelante.
-        if not exact and words:
-            distinct = [w for w in words
-                        if _strip_accents(w).lower() not in GENERIC_WORDS and len(w) > 2]
-            if distinct:
-                cat_domain = [('sale_ok', '=', True),
-                              ('product_tmpl_id.is_mayorista_catalog', '=', True)]
-                for w in distinct:
-                    cat_domain += _word_domain(w)
-                catalog = Product.search(cat_domain, limit=int(limit or 10))
-                if catalog:
-                    products = (catalog | products)[:int(limit or 10) + len(catalog)]
-
-        # Pricelist: este bot es mayorista, así que el precio que cotizamos es el
-        # de 'Lista Mayorista'. Si no existe, caemos a la del partner / list_price.
         pricelist = env['product.pricelist'].sudo().search(
             [('name', '=', 'Lista Mayorista')], limit=1)
         if not pricelist and partner_id:
@@ -156,74 +206,81 @@ class SearchProducts(AgentTool):
             if partner.exists() and partner.property_product_pricelist:
                 pricelist = partner.property_product_pricelist
 
-        results = []
+        results, sin_precio = [], []
         for p in products:
             price = p.list_price
             if pricelist:
                 try:
-                    price_info = pricelist._get_product_price(p, 1.0)
-                    price = price_info if isinstance(price_info, (int, float)) else p.list_price
+                    pi = pricelist._get_product_price(p, 1.0)
+                    price = pi if isinstance(pi, (int, float)) else p.list_price
                 except Exception:
                     price = p.list_price
-
-            qty_available = 0.0
+            mto = is_made_to_order(p)
             try:
-                qty_available = p.qty_available or 0.0
+                qty = p.qty_available or 0.0
             except Exception:
-                pass
-
+                qty = 0.0
+            if price <= 1.0:
+                sin_precio.append(p.display_name)
             results.append({
                 'id': p.id,
-                'name': p.name,
+                'name': p.display_name,
+                'variant': variant_label(p),
                 'default_code': p.default_code or '',
                 'price': round(price, 2),
                 'pricelist': pricelist.name if pricelist else 'list_price',
-                'qty_available': qty_available,
                 'uom': p.uom_id.name if p.uom_id else '',
+                'a_pedido': mto,
+                'disponible': ('se fabrica a pedido: SIEMPRE se puede cotizar' if mto
+                               else ('sin seguimiento de stock' if not p.is_storable
+                                     else f'{qty:g} en stock')),
+                'qty_available': None if mto else qty,
                 'is_mayorista_catalog': bool(p.product_tmpl_id.is_mayorista_catalog),
+                'sin_precio': price <= 1.0,
             })
 
-        # Mensaje útil para el bot
-        msg = None
+        msg = []
         if not results:
-            msg = (
-                f"No encontré productos que matcheen '{query}'. "
-                f"OJO: NO le digas al cliente 'no tenemos'. "
-                f"ESCALA a Joaco con escalate_to_joaco preguntando si tenemos este producto "
-                f"(puede existir con otro nombre, o haber que crearlo)."
-            )
+            msg.append(
+                f"No encontré productos que matcheen '{query}'. OJO: NO le digas al cliente "
+                f"'no tenemos'. Probá otra palabra (sin marca, en singular) y, si sigue sin "
+                f"aparecer, decile que ese producto no está en la lista, ofrecé lo más parecido "
+                f"y escalá a Joaco UNA vez con todas las consultas juntas.")
         elif approximate:
-            msg = (
-                f"No hubo match EXACTO de '{query}', pero estos productos se parecen "
-                f"(búsqueda relajada por sinónimos/palabra clave). ELEGÍ el que "
-                f"claramente es lo que pidió el cliente (ej: 'perfume textil' = "
-                f"'Perfume p/ropa', 'lavavajilla' = 'Detergente') y ofrecéselo. "
-                f"NO escales ni digas 'no tenemos' por una diferencia de palabras."
-            )
-
-        # v1.33 — Bidones: apenas aparece granel, recordarlo (reclamo real: clientes
-        # que fueron a retirar sin saber lo del recambio de bidones).
+            msg.append(
+                f"No hubo match EXACTO de '{query}'; estos se parecen (sinónimos/palabra "
+                f"clave). ELEGÍ el que claramente es lo que pidió y ofrecéselo. NO escales ni "
+                f"digas 'no tenemos' por una diferencia de palabras.")
+        if any(r['a_pedido'] for r in results):
+            msg.append(
+                "A PEDIDO: los productos marcados a_pedido=true (granel, bases, fraccionado) "
+                "los fabricamos nosotros: se cotizan y se venden SIEMPRE, aunque figure 0 de "
+                "stock. NUNCA digas que no hay stock de un producto a pedido.")
+        if len({r['name'].split('(')[0] for r in results}) < len(results) \
+                or any(r['variant'] for r in results):
+            msg.append(
+                "VARIANTES: hay productos con el mismo nombre y distinto aroma o tamaño "
+                "(campo variant). Antes de cotizar confirmá con el cliente CUÁL (ej. 'Arpege, "
+                "1 lt') y pasá ese product_id exacto a create_sale_order.")
+        if sin_precio:
+            msg.append(
+                f"SIN PRECIO CARGADO (precio ≤ $1, no lo digas): {', '.join(sin_precio[:4])}. "
+                f"Para esos consultá a Joaco el precio; no inventes ni uses otro.")
         if any('granel' in (r['name'] or '').lower() for r in results):
             config = env['cristal.agent.config'].sudo().get_active()
             price = config.bidon_price if config else 3500.0
             price_txt = '${:,.0f}'.format(price).replace(',', '.')
-            reminder = (
-                "BIDONES: el granel va en bidones de 20 L con recambio: por cada bidón "
-                "lleno el cliente entrega uno vacío de 20 L con tapa (si se lo enviamos, "
-                "al recibir el pedido; si retira, en la planta). Si no tiene vacíos para "
-                f"canjear, cada bidón nuevo sale {price_txt}. Decíselo SIEMPRE cuando "
-                "hables de granel, aunque todavía no cotices.")
-            msg = (msg + " " + reminder) if msg else reminder
-
-        # v1.34 — Precios: SOLO los de esta lista, del producto correcto (caso real:
-        # a Ariel y Skip les puso el precio del detergente porque no los encontró).
+            msg.append(
+                "BIDONES: el granel va en bidones de 20 L con recambio: por cada bidón lleno "
+                "el cliente entrega uno vacío de 20 L con tapa (si se lo enviamos, al recibir "
+                "el pedido; si retira, en la planta). Si no tiene vacíos para canjear, cada "
+                f"bidón nuevo sale {price_txt}. Decíselo SIEMPRE cuando hables de granel.")
         if results:
-            rule = ("PRECIOS: decí SOLO precios de productos que aparecen en ESTA lista, "
-                    "con ESTE precio. Si el cliente pide un producto que no está acá (ej: "
-                    "una marca), buscalo de nuevo con esa palabra (ej: 'ariel', 'skip'); "
-                    "NUNCA le pongas el precio de otro producto. Ofrecé primero los del "
-                    "catálogo mayorista (is_mayorista_catalog=true).")
-            msg = (msg + " " + rule) if msg else rule
+            msg.append(
+                "PRECIOS: decí SOLO precios de productos que aparecen en ESTA lista, con ESTE "
+                "precio. Si el cliente pide una marca que no está (Lysoform, Poett, Ultra, "
+                "Ala…), NO escales: ofrecé el equivalente nuestro de la lista. Ofrecé primero "
+                "los del catálogo mayorista (is_mayorista_catalog=true).")
 
         return {
             "ok": True,
@@ -231,5 +288,5 @@ class SearchProducts(AgentTool):
             "products": results,
             "approximate": approximate,
             "search_terms": query.split(),
-            "message_for_bot": msg,
+            "message_for_bot": ' '.join(msg) or None,
         }

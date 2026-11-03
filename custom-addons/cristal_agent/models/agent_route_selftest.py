@@ -1448,3 +1448,87 @@ class CristalAgentRouteSelftest(models.TransientModel):
             return ("sugiere lo que compró antes y no pidió · no sugiere lo ya cotizado · "
                     "informa cuánto falta para el mínimo · no toca la cotización")
         self._case(results, "45. suggest_products (cross-sell con datos)", c_sugerencias)
+
+        # ═════════════════ v1.53 — Productos a pedido, variantes y confirmación ═════════════════
+        # 46) search_products: palabras pegadas, a pedido (granel) y nombre con variante
+        def c_busqueda_v153():
+            sp = ToolRegistry.get('search_products')
+            granel = env['product.product'].sudo().create({
+                'name': 'ZZ Quita Sarro Test a granel', 'type': 'consu', 'list_price': 500.0,
+                'is_storable': True, 'sale_ok': True, 'taxes_id': [(6, 0, [])],
+                'uom_id': product.uom_id.id})
+            r = sp.execute(env=env, run=None, query='zz quitasarro')
+            ids = [x['id'] for x in r.get('products') or []]
+            assert granel.id in ids, r
+            hit = next(x for x in r['products'] if x['id'] == granel.id)
+            assert hit['a_pedido'] is True and hit['qty_available'] is None, hit
+            assert 'a pedido' in hit['disponible'].lower(), hit
+            assert 'A PEDIDO' in (r.get('message_for_bot') or ''), r.get('message_for_bot')
+            assert hit['name'].startswith('ZZ Quita Sarro Test') and 'variant' in hit, hit
+            r2 = sp.execute(env=env, run=None, query='zz quita sarro test')
+            assert granel.id in [x['id'] for x in r2['products']] and not r2['approximate'], r2
+            return ("'zz quitasarro' encuentra 'ZZ Quita Sarro Test a granel' · marcado a pedido, sin "
+                    "stock que lo frene · nombre completo con variante")
+        self._case(results, "46. search_products: pegadas, a pedido, variantes", c_busqueda_v153)
+
+        # 47) create_sale_order: una línea ambigua (aroma) no se carga; con el aroma, sí
+        def c_variantes():
+            Attr = env['product.attribute'].sudo()
+            attr = Attr.create({'name': 'ZZ Aroma Test', 'create_variant': 'always'})
+            v1 = env['product.attribute.value'].sudo().create({'name': 'Lavandatest', 'attribute_id': attr.id})
+            v2 = env['product.attribute.value'].sudo().create({'name': 'Pinotest', 'attribute_id': attr.id})
+            tmpl = env['product.template'].sudo().create({
+                'name': 'ZZ Base Test (1+80)', 'type': 'consu', 'list_price': 7000.0,
+                'is_storable': False, 'sale_ok': True, 'taxes_id': [(6, 0, [])],
+                'attribute_line_ids': [(0, 0, {'attribute_id': attr.id, 'value_ids': [(6, 0, [v1.id, v2.id])]})]})
+            assert len(tmpl.product_variant_ids) == 2, tmpl.product_variant_ids
+            p = mk_lc('Variantes', 'Rio Cuarto')
+            r = cso.execute(env=env, run=None, partner_id=p.id,
+                            lines=[{'product_name': 'ZZ Base Test', 'qty': 2}])
+            probs = ' '.join(r.get('problems') or [])
+            assert 'varias variantes' in probs and 'Lavandatest' in probs and 'Pinotest' in probs, r
+            assert not r.get('order_id') or not any(
+                l.product_id.product_tmpl_id == tmpl for l in SaleOrder.browse(r['order_id']).order_line), \
+                "cargó una variante al azar"
+            r2 = cso.execute(env=env, run=None, partner_id=p.id,
+                             lines=[{'product_name': 'ZZ Base Test Pinotest', 'qty': 2}])
+            assert r2.get('order_id'), r2
+            lines = SaleOrder.browse(r2['order_id']).order_line.filtered(lambda l: l.product_id.product_tmpl_id == tmpl)
+            assert len(lines) == 1 and 'Pinotest' in lines.product_id.display_name, lines.mapped('product_id.display_name')
+            return "nombre sin aroma → no carga y lista las opciones · con el aroma → carga la variante correcta"
+        self._case(results, "47. Variantes: ambigua no se carga", c_variantes)
+
+        # 48) confirm_order: confirma solo lo que cumple la lista de control
+        def c_confirm_order():
+            co = ToolRegistry.get('confirm_order')
+            cfg.write({'auto_confirm_enabled': True, 'auto_confirm_max_amount': 150000.0})
+            p = mk_lc('Confirma OK', 'Rio Cuarto')
+            p.street = 'Calle Falsa 123'
+            oid = quote(p, 60000)['order_id']
+            r = co.execute(env=env, run=None, partner_id=p.id, order_id=oid, payment='efectivo')
+            assert r.get('confirmed') and SaleOrder.browse(oid).state == 'sale', r
+            p2 = mk_lc('Confirma monto', 'Rio Cuarto')
+            p2.street = 'Calle Falsa 456'
+            o2 = quote(p2, 200000)['order_id']
+            r = co.execute(env=env, run=None, partner_id=p2.id, order_id=o2, payment='transferencia')
+            assert r.get('not_confirmed') and any('supera' in x for x in r['problems']), r
+            p3 = mk_lc('Confirma sin dirección', 'Rio Cuarto')
+            o3 = quote(p3, 60000)['order_id']
+            r = co.execute(env=env, run=None, partner_id=p3.id, order_id=o3, payment='efectivo')
+            assert r.get('not_confirmed') and any('dirección' in x for x in r['problems']), r
+            p4 = mk_lc('Confirma ruta', 'Sampacho')
+            p4.write({'agent_zone': 'ruta_camion', 'truck_circuit_id': so.id, 'street': 'Ruta 8'})
+            o4 = cso.execute(env=env, run=None, partner_id=p4.id,
+                             lines=[{'product_id': product.id, 'qty': 1, 'price_unit': 90000}])['order_id']
+            r = co.execute(env=env, run=None, partner_id=p4.id, order_id=o4, payment='efectivo')
+            assert r.get('not_confirmed'), r
+            r = co.execute(env=env, run=None, partner_id=p.id, order_id=oid, payment='cheque')
+            assert r.get('not_confirmed'), r
+            cfg.auto_confirm_enabled = False
+            o5 = quote(mk_lc('Confirma apagado', 'Rio Cuarto'), 60000)['order_id']
+            r = co.execute(env=env, run=None, partner_id=SaleOrder.browse(o5).partner_id.id, order_id=o5, payment='efectivo')
+            assert r.get('tool_disabled') or r.get('not_confirmed'), r
+            cfg.auto_confirm_enabled = True
+            return ("Río Cuarto con dirección y $60.000 → confirmado · $200.000 → no · sin dirección → no · "
+                    "ruta del camión → no · cheque → no · apagado → no")
+        self._case(results, "48. confirm_order: lista de control", c_confirm_order)

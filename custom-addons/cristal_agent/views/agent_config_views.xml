@@ -290,6 +290,11 @@
                                     <field name="lifecycle_visit_min_ticket" widget="monetary"/>
                                 </group>
                             </group>
+                            <group string="🛒 Confirmación automática de pedidos mayoristas">
+                                <field name="auto_confirm_enabled" widget="boolean_toggle"/>
+                                <field name="auto_confirm_max_amount" widget="monetary"
+                                       invisible="not auto_confirm_enabled"/>
+                            </group>
                         </page>
 
                         <page string="🔄 Stages CRM mapeo">
