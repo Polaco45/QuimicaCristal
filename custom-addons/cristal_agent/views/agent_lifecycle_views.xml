@@ -185,6 +185,12 @@
                                decoration-danger="agent_lifecycle in ('lost', 'no_contact')"/>
                         <field name="agent_lifecycle_reason"/>
                         <field name="agent_lifecycle_date"/>
+                        <field name="agent_survey_answer" widget="badge"
+                               decoration-success="agent_survey_answer == 'bien'"
+                               decoration-warning="agent_survey_answer == 'regular'"
+                               decoration-danger="agent_survey_answer == 'mal'"/>
+                        <field name="agent_survey_answer_date" invisible="not agent_survey_answer"/>
+                        <field name="agent_survey_answer_text" invisible="not agent_survey_answer"/>
                     </group>
                     <group string="📣 Origen y referidos">
                         <field name="agent_referral_credit_pct"/>

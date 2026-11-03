@@ -227,6 +227,12 @@ class WhatsAppMessage(models.Model):
                 when=wa_message.create_date)
         except Exception as e:
             _logger.warning("No se pudo captar el origen de %s: %s", partner.name, e)
+        # v1.57 — Respuesta a la encuesta post-compra (botón o texto corto).
+        try:
+            if hasattr(partner, 'agent_capture_survey'):
+                partner.agent_capture_survey(plain_body, when=wa_message.create_date)
+        except Exception as e:  # noqa: BLE001
+            _logger.warning("No se pudo registrar la encuesta de %s: %s", partner.name, e)
 
         # 7) Actualizar timestamp de último inbound
         partner.sudo().write({'agent_last_inbound_at': fields.Datetime.now()})
