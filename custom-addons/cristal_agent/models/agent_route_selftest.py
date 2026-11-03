@@ -1498,6 +1498,44 @@ class CristalAgentRouteSelftest(models.TransientModel):
             return "nombre sin aroma → no carga y lista las opciones · con el aroma → carga la variante correcta"
         self._case(results, "47. Variantes: ambigua no se carga", c_variantes)
 
+        # 49) Variantes numeradas: "lampazo 7" / "nº 15" / "5 lts" (caso Milagro y Hernán, 02/11)
+        def c_variantes_numeradas():
+            sp = ToolRegistry.get('search_products')
+            attr = env['product.attribute'].sudo().create({'name': 'ZZ Numero Test', 'create_variant': 'always'})
+            vals = {n: env['product.attribute.value'].sudo().create({'name': n, 'attribute_id': attr.id})
+                    for n in ('Nº5', 'Nº7', 'Nº15')}
+            tmpl = env['product.template'].sudo().create({
+                'name': 'ZZ Lampazo Test', 'type': 'consu', 'list_price': 4000.0,
+                'is_storable': False, 'sale_ok': True, 'taxes_id': [(6, 0, [])],
+                'attribute_line_ids': [(0, 0, {'attribute_id': attr.id,
+                                               'value_ids': [(6, 0, [v.id for v in vals.values()])]})]})
+            by_name = {p.product_template_variant_value_ids.name: p for p in tmpl.product_variant_ids}
+            assert set(by_name) == {'Nº5', 'Nº7', 'Nº15'}, by_name
+            r = sp.execute(env=env, run=None, query='zz lampazo test 7')
+            assert r['products'] and r['products'][0]['id'] == by_name['Nº7'].id, r['products'][:3]
+            assert 'Nº7' in r['products'][0]['name'] and r['products'][0]['variant'] == 'Nº7', r['products'][0]
+            r = sp.execute(env=env, run=None, query='zz lampazo test nº 15')
+            assert r['products'] and r['products'][0]['id'] == by_name['Nº15'].id, r['products'][:3]
+            p = mk_lc('Variantes numeradas', 'Rio Cuarto')
+            r = cso.execute(env=env, run=None, partner_id=p.id,
+                            lines=[{'product_name': 'ZZ Lampazo Test numero 5', 'qty': 1}])
+            assert r.get('order_id'), r
+            line = SaleOrder.browse(r['order_id']).order_line.filtered(lambda l: l.product_id.product_tmpl_id == tmpl)
+            assert len(line) == 1 and line.product_id == by_name['Nº5'], line.mapped('product_id.display_name')
+            r = cso.execute(env=env, run=None, partner_id=p.id,
+                            lines=[{'product_name': 'ZZ Lampazo Test', 'qty': 1}])
+            assert 'varias variantes' in ' '.join(r.get('problems') or []), r
+            tmpl2 = env['product.template'].sudo().create({
+                'name': 'ZZ Bidon Test', 'type': 'consu', 'list_price': 900.0, 'is_storable': False,
+                'sale_ok': True, 'taxes_id': [(6, 0, [])], 'default_code': 'ZZ0468'})
+            r = sp.execute(env=env, run=None, query='ZZ0468')
+            assert r['products'] and r['products'][0]['id'] == tmpl2.product_variant_id.id, r['products'][:2]
+            r = sp.execute(env=env, run=None, query='468')
+            assert any(x['id'] == tmpl2.product_variant_id.id for x in r['products']), r['products'][:3]
+            return ("'lampazo 7' → Nº7 primero · 'nº 15' → Nº15 · 'numero 5' carga la Nº5 (no la Nº15) · "
+                    "sin número → pregunta · '468' encuentra el código ZZ0468")
+        self._case(results, "49. Variantes numeradas y códigos", c_variantes_numeradas)
+
         # 48) confirm_order: confirma solo lo que cumple la lista de control
         def c_confirm_order():
             co = ToolRegistry.get('confirm_order')

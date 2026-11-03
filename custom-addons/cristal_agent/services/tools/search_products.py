@@ -49,7 +49,14 @@ GENERIC_WORDS = {
     'precios', 'litro', 'litros', 'lt', 'lts', 'bidon', 'bidones', 'producto',
     'productos', 'mayorista', 'que', 'tenes', 'tienen', 'hay', 'piso', 'pisos',
     'un', 'una', 'unos', 'unas', 'al', 'sale', 'cuanto', 'cuánto', 'vale',
+    'nº', 'n°', 'no', 'num', 'nro', 'numero', 'número', 'tamaño', 'tamano', 'medida',
 }
+
+
+def distinct_tokens(words):
+    """Palabras que distinguen un producto: sin genéricas; los números se conservan."""
+    return [w for w in words
+            if (w.isdigit() or len(w) > 2) and _strip_accents(w).lower() not in GENERIC_WORDS]
 # Rubros de fabricación propia: se producen a pedido, el stock no frena la venta.
 MADE_TO_ORDER_CATEG = re.compile(r'^(Fabricaci[oó]n|Fraccionado)', re.I)
 MAX_LIMIT = 15
@@ -64,9 +71,30 @@ def _norm(txt):
     return re.sub(r'[^a-z0-9]', '', _strip_accents(txt or '').lower())
 
 
+NUM_TOKEN_RE = re.compile(r'^(?:n[º°o.]?\s*)?(\d+)$', re.I)   # "7", "nº7", "n°7", "N7"
+
+
+def query_tokens(query):
+    """Palabras útiles de una consulta: las de 2+ letras y los NÚMEROS sueltos (un "7"
+    o un "5" distinguen la variante: Lampazo Nº7, Bidón 5 lts)."""
+    out = []
+    for w in (query or '').split():
+        m = NUM_TOKEN_RE.match(w)
+        if m:
+            out.append(m.group(1))
+        elif len(w) > 1:
+            out.append(w)
+    return out
+
+
 def _word_domain(word):
     """Dominio para una palabra: nombre, código o valor de variante (aroma, tamaño),
-    sin importar acentos ('jabón' → jabón | jabon)."""
+    sin importar acentos ('jabón' → jabón | jabon). Un número corto ("7", "15") solo
+    se busca en las variantes y en el nombre, nunca en el código (DA0467 tiene un 7)."""
+    if word.isdigit() and len(word) <= 2:
+        leaves = [('product_template_variant_value_ids.name', 'ilike', word),
+                  ('name', 'ilike', word)]
+        return ['|'] * (len(leaves) - 1) + leaves
     plain = _strip_accents(word)
     variants = [word] if plain.lower() == word.lower() else [word, plain]
     leaves = []
@@ -74,6 +102,22 @@ def _word_domain(word):
         leaves += [('name', 'ilike', w), ('default_code', 'ilike', w),
                    ('product_template_variant_value_ids.name', 'ilike', w)]
     return ['|'] * (len(leaves) - 1) + leaves
+
+
+def variant_score(product, tokens):
+    """Cuántos tokens de la consulta coinciden con la variante del producto. Un valor
+    exacto ("7" = "Nº7", "5lts" = "5 lts") vale 3; contenido ("5" dentro de "Nº15"), 1."""
+    vals = [_norm(v) for v in product.product_template_variant_value_ids.mapped('name')]
+    label = ''.join(vals)
+    score = 0
+    for t in tokens:
+        if not t:
+            continue
+        if any(v == t or v == 'n' + t or v.lstrip('n') == t for v in vals):
+            score += 3
+        elif t in label:
+            score += 1
+    return score
 
 
 def is_made_to_order(product):
@@ -131,7 +175,7 @@ class SearchProducts(AgentTool):
                                limit=limit)
         if exact:
             return exact, False
-        words = [w for w in query.split() if len(w) > 1]
+        words = query_tokens(query)
         if not words:
             return Product.search(['|', ('name', 'ilike', query),
                                    ('default_code', 'ilike', query)], limit=limit), False
@@ -144,9 +188,9 @@ class SearchProducts(AgentTool):
         if products:
             return products, False
 
-        # 2) Palabras distintivas solamente ("desod de pisos" → "desod").
-        distinct = [w for w in words
-                    if _strip_accents(w).lower() not in GENERIC_WORDS and len(w) > 2]
+        # 2) Palabras distintivas solamente ("desod de pisos" → "desod"; "lampazo numero 7"
+        #    → "lampazo 7").
+        distinct = distinct_tokens(words)
         if distinct and len(distinct) < len(words):
             domain = [('sale_ok', '=', True)]
             for w in distinct:
@@ -191,12 +235,15 @@ class SearchProducts(AgentTool):
 
         products, approximate = self._search(Product, query, limit * 3)
 
-        # Orden: catálogo mayorista → a pedido (granel/fabricación) → con stock → resto.
+        # Orden: la variante que nombró ("7", "5 lts", "arpege") → catálogo mayorista →
+        # a pedido (granel/fabricación) → con stock → resto.
+        toks = [_norm(w) for w in query_tokens(query)]
+
         def rank(p):
             mto = is_made_to_order(p)
             has_stock = (not p.is_storable) or (p.qty_available or 0.0) > 0
-            return (not p.product_tmpl_id.is_mayorista_catalog, not mto, not has_stock,
-                    p.name or '')
+            return (-variant_score(p, toks), not p.product_tmpl_id.is_mayorista_catalog,
+                    not mto, not has_stock, p.name or '')
         products = products.sorted(rank)[:limit]
 
         pricelist = env['product.pricelist'].sudo().search(

@@ -187,13 +187,14 @@ class CreateSaleOrder(AgentTool):
         alcanza para elegir entre variantes del mismo producto ("Base Limpiador
         Desodorante 1+80" tiene 14: aroma × tamaño), devuelve {'ambiguous': [...]} con
         las opciones en vez de cargar la primera que aparece (caso S06925)."""
-        from .search_products import _word_domain, _norm, variant_label, is_made_to_order
+        from .search_products import (_word_domain, _norm, variant_label, is_made_to_order,
+                                      query_tokens, variant_score, distinct_tokens)
         Product = env['product.product'].sudo()
         if ln.get('product_id'):
             product = Product.browse(int(ln['product_id']))
             return product if product.exists() else None
         name = (ln.get('product_name') or '').strip()
-        words = [w for w in name.split() if len(w) > 1]
+        words = query_tokens(name)
         if not words:
             return None
 
@@ -205,6 +206,11 @@ class CreateSaleOrder(AgentTool):
 
         catalog = [('product_tmpl_id.is_mayorista_catalog', '=', True)]
         cands = search(catalog, words) or search([], words)
+        if not cands:
+            # Sin las genéricas ("numero", "de", "lts"): "Lampazo numero 7" → "Lampazo 7".
+            distinct = distinct_tokens(words)
+            if distinct and len(distinct) < len(words):
+                cands = search(catalog, distinct) or search([], distinct)
         if not cands:
             # Fallback interpretativo: la palabra más significativa sola ("perfume
             # textil" no matchea "Perfume p/ropa" con todas, pero sí con "perfume").
@@ -227,11 +233,10 @@ class CreateSaleOrder(AgentTool):
         # por tokens del nombre (incluidos los de 1 carácter: "1 lt" vs "5 lts") que aparecen
         # en la etiqueta de la variante; gana la única con el máximo.
         if any(variant_label(p) for p in cands):
-            toks = [t for t in (_norm(w) for w in name.split()) if t]
+            toks = [t for t in (_norm(w) for w in query_tokens(name)) if t]
 
             def score(p):
-                lab = _norm(variant_label(p))
-                return sum(1 for t in toks if t in lab)
+                return variant_score(p, toks)
             best_score = max(score(p) for p in cands)
             narrowed = cands.filtered(lambda p: score(p) == best_score) if best_score else cands
             if len(narrowed) == 1:
