@@ -161,26 +161,31 @@ class SaleOrder(models.Model):
             return
         config = self.env['cristal.agent.config'].sudo().get_active()
         credit = partner.agent_referral_credit_pct or 0.0
-        if credit and any(abs((l.discount or 0.0) - credit) < 0.01
-                          for l in self.order_line.filtered('product_id')):
-            partner.write({'agent_referral_credit_pct': 0.0,
-                           'agent_referral_credit_note': False})
-            partner.append_agent_observation(f"🎁 Crédito por referido usado en {self.name}.")
-        referrer = partner.agent_referred_by_id.sudo()
-        if not referrer or partner.agent_referral_rewarded:
-            return
         others = self.env['sale.order'].sudo().search_count([
             ('partner_id', '=', partner.id), ('state', 'in', ('sale', 'done')),
             ('id', '!=', self.id)])
+        used = any(abs((l.discount or 0.0) - credit) < 0.01
+                   for l in self.order_line.filtered('product_id')) if credit else False
+        # El crédito se consume si se usó o si era para el primer pedido y ya pasó
+        # (p. ej. el referido usó el 20 % de primera compra, que es mejor).
+        if credit and (used or (partner.agent_referred_by_id and not others)):
+            partner.write({'agent_referral_credit_pct': 0.0,
+                           'agent_referral_credit_note': False})
+            partner.append_agent_observation(
+                f"🎁 Crédito por referido {'usado' if used else 'vencido (usó otro descuento)'} en {self.name}.")
+        referrer = partner.agent_referred_by_id.sudo()
+        if not referrer or partner.agent_referral_rewarded:
+            return
         if others:
             partner.agent_referral_rewarded = True   # no era su primera compra
             return
-        month_start = fields.Date.today().replace(day=1)
+        today = fields.Date.today()
+        month_start = today.replace(day=1)
         rewarded_this_month = self.env['res.partner'].sudo().search_count([
             ('agent_referred_by_id', '=', referrer.id), ('agent_referral_rewarded', '=', True),
-            ('write_date', '>=', fields.Datetime.to_datetime(month_start))])
+            ('agent_referral_rewarded_date', '>=', month_start)])
         cap = config.referral_max_per_month if config else 3
-        partner.agent_referral_rewarded = True
+        partner.write({'agent_referral_rewarded': True, 'agent_referral_rewarded_date': today})
         if cap and rewarded_this_month >= cap:
             referrer.append_agent_observation(
                 f"Referido {partner.name} hizo su primera compra ({self.name}), pero ya se "

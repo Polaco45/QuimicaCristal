@@ -273,17 +273,22 @@ class CreateSaleOrder(AgentTool):
         carrier = env['delivery.carrier'].sudo().browse(
             self.CF_CARRIER_ID if is_cf else self.MAY_CARRIER_ID).exists()
         if not carrier:
+            _logger.warning("Método de envío %s no existe o está archivado: cotización sin envío",
+                            self.CF_CARRIER_ID if is_cf else self.MAY_CARRIER_ID)
             return None
         try:
-            order.order_line.filtered(lambda l: getattr(l, 'is_delivery', False)).unlink()
-            rate = carrier.rate_shipment(order) or {}
-            price = float(rate.get('price', 0.0)) if rate.get('success') else float(carrier.fixed_price or 0.0)
-            order.set_delivery_line(carrier, price)
+            with env.cr.savepoint():
+                order.order_line.filtered(lambda l: getattr(l, 'is_delivery', False)).unlink()
+                rate = carrier.rate_shipment(order) or {}
+                price = float(rate.get('price', 0.0)) if rate.get('success') \
+                    else float(carrier.fixed_price or 0.0)
+                order.set_delivery_line(carrier, price)
         except Exception as e:  # noqa: BLE001 — el envío nunca frena la cotización
             _logger.warning("No pude poner la línea de envío en %s: %s", order.name, e)
             return None
+        # Misma base que usa Odoo para el envío gratis: total CON IVA sin la línea de envío.
         base = sum(order.order_line.filtered(
-            lambda l: not getattr(l, 'is_delivery', False)).mapped('price_subtotal'))
+            lambda l: not getattr(l, 'is_delivery', False)).mapped('price_total'))
         return {'price': price, 'free_from': float(carrier.amount or 0.0) if carrier.free_over else 0.0,
                 'base': base, 'fixed': float(carrier.fixed_price or 0.0)}
 
@@ -846,11 +851,14 @@ class CreateSaleOrder(AgentTool):
                     credit = float(getattr(partner, 'agent_referral_credit_pct', 0.0) or 0.0)
                     if credit > pct:
                         pct, why = credit, 'crédito por referido'
-                    if pct > 0:
-                        order.order_line.filtered(
-                            lambda l: l.product_id.id not in fixed_price_pids
-                            and not getattr(l, 'is_delivery', False)
-                        ).write({'discount': pct})
+                    # Un 20 % vigente en un borrador reutilizado manda: no se pisa.
+                    keeps_first = any((l.discount or 0.0) >= 15.0 for l in order.order_line
+                                      if l.product_id.id not in fixed_price_pids)
+                    target = order.order_line.filtered(
+                        lambda l: l.product_id.id not in fixed_price_pids
+                        and not getattr(l, 'is_delivery', False) and (l.discount or 0.0) < 15.0)
+                    if pct > 0 and target and not keeps_first:
+                        target.write({'discount': pct})
                         auto_discount = (pct, why)
 
                 # Forzar el precio fijo de promo por si Odoo lo recomputó desde el
@@ -875,6 +883,10 @@ class CreateSaleOrder(AgentTool):
                 if is_pickup:
                     order.order_line.filtered(
                         lambda l: l.product_id == self._freight_product(env, config)).unlink()
+                    # v1.56: tampoco envío a domicilio (borrador reutilizado que pasó a retiro).
+                    order.order_line.filtered(lambda l: getattr(l, 'is_delivery', False)).unlink()
+                    if not is_cf and 'carrier_id' in order._fields and order.carrier_id:
+                        order.carrier_id = False
                     order.write({'cristal_delivery_mode': 'retiro',
                                  'route_departure_id': False, 'commitment_date': False})
                     if is_cf and 'carrier_id' in order._fields:
@@ -888,7 +900,8 @@ class CreateSaleOrder(AgentTool):
                     # v1.55 — Río Cuarto / Las Higueras con envío: la línea de envío a
                     # domicilio la pone la cotización sola ($6.500, sin cargo desde el monto
                     # del método). Caso Jorge S06972 (03/11): salió sin envío.
-                    if route_ctx and route_ctx.get('kind') == 'rio_cuarto':
+                    # Solo mayorista: el envío de consumidor final lo pone la regla #73.
+                    if route_ctx and route_ctx.get('kind') == 'rio_cuarto' and not is_cf:
                         shipping = self._apply_home_delivery(env, order, is_cf)
 
                 # ── Ruta del camión: mínimo, flete, fecha de entrega, salida, etiqueta ──
@@ -1079,7 +1092,7 @@ class CreateSaleOrder(AgentTool):
                 result['shipping_note'] = "ENVÍO A DOMICILIO SIN CARGO (supera el monto): decíselo."
         # v1.55 — Sugerencias de cross-sell ya resueltas (antes dependía de que Claudio
         # llamara suggest_products; con Jorge no lo hizo).
-        if True:
+        if order.order_line:
             try:
                 sp = ToolRegistry.get('suggest_products')
                 sug = sp._execute(env=env, run=run, partner_id=partner.id, order_id=order.id,
@@ -1087,7 +1100,7 @@ class CreateSaleOrder(AgentTool):
                 if sug.get('suggestions'):
                     top = sug['suggestions'][:2]
                     result['sugerencias'] = top
-                    result['upsell_note'] = (
+                    result['cross_sell_note'] = (
                         "SUBÍ EL TICKET — ofrecé UNA de estas en una línea, con el precio tal "
                         "cual, sin presionar: " + ' | '.join(s['text'] for s in top)
                         + (". Si acepta, sumala a ESTA cotización (create_sale_order con la lista "
