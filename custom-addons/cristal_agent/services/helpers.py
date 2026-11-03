@@ -227,15 +227,15 @@ def fmt_day(d):
 
 def rc_no_delivery_day(env):
     """Día sin reparto en Río Cuarto (sale el camión de la ruta), de la config.
-    v1.35: la ruta pasó de jueves a miércoles; los textos salen de acá."""
+    v1.54: la ruta volvió al jueves (v1.35-1.53 fue miércoles); los textos salen de acá."""
     config = env['cristal.agent.config'].sudo().get_active()
-    return WEEKDAYS_ES[int(config.rc_no_delivery_weekday) % 7] if config else 'miércoles'
+    return WEEKDAYS_ES[int(config.rc_no_delivery_weekday) % 7] if config else 'jueves'
 
 
 def route_weekday(env):
     """Día de salida del camión (el de los circuitos activos)."""
     circuit = env['cristal.agent.circuit'].sudo().search([('active', '=', True)], limit=1)
-    return WEEKDAYS_ES[int(circuit.weekday)] if circuit and circuit.weekday else 'miércoles'
+    return WEEKDAYS_ES[int(circuit.weekday)] if circuit and circuit.weekday else 'jueves'
 
 
 def date_context_ar(env, now=None):

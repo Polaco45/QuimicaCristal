@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Salidas de la ruta del camión — un registro por salida (miércoles desde v1.35) de cada circuito.
+Salidas de la ruta del camión — un registro por salida (jueves; miércoles entre v1.35 y v1.53) de cada circuito.
 
 Las salidas NO se calculan al vuelo: se generan como registros (`generate_upcoming`)
 para poder darles estado (preventa / rescate / confirmada / postergada / realizada),
@@ -25,8 +25,8 @@ _logger = logging.getLogger(__name__)
 
 DEFAULT_TZ = 'America/Argentina/Cordoba'
 BATCH_SIZE = 25
-# El rescate (Plan B) cierra el día anterior a la salida (martes) a las 12 h: así lo dice la plantilla
-# 'ruta_camion_rescate_lunes' ("Si nos confirma hasta mañana martes a las 12 h").
+# El rescate (Plan B) cierra el día anterior a la salida (miércoles) a las 12 h: así lo dice la plantilla
+# 'ruta_camion_rescate_lunes' ("Si nos confirma hasta mañana miércoles a las 12 h").
 RESCUE_CUTOFF_DAYS_BEFORE = 1
 RESCUE_CUTOFF_HOUR = 12
 DEFAULT_PAYMENT_TEXT = 'transferencia anticipada o efectivo contra entrega'
@@ -140,14 +140,14 @@ class CristalAgentRouteDeparture(models.Model):
 
     def get_preventa_cutoff(self):
         """Cierre para tomar pedidos de esta salida, como datetime naive UTC.
-        - Preventa: el lunes (config) a las 18:00 hora Córdoba previo a la salida.
-        - Rescate: el día anterior (martes) a las 12:00 (lo que promete la plantilla de rescate)."""
+        - Preventa: el martes (config) a las 18:00 hora Córdoba previo a la salida.
+        - Rescate: el día anterior (miércoles) a las 12:00 (lo que promete la plantilla de rescate)."""
         self.ensure_one()
         if self.state == 'rescate':
             day = self.date - timedelta(days=RESCUE_CUTOFF_DAYS_BEFORE)
             return self._local_to_utc(day, RESCUE_CUTOFF_HOUR)
         config = self.env['cristal.agent.config'].sudo().get_active()
-        # Sin `or default`: lunes = 0 y medianoche = 0.0 son valores válidos.
+        # Sin `or default`: lunes = 0 y medianoche = 0.0 son valores válidos (hoy martes = 1).
         cutoff_weekday = int(config.route_preventa_cutoff_weekday) % 7 if config else 0
         cutoff_hour = float(config.route_preventa_cutoff_hour) if config else 18.0
         day = self.date - timedelta(days=1)
