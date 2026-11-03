@@ -104,6 +104,21 @@
               groups="base.group_system"
               action="action_cristal_agent_route_selftest"/>
 
+    <menuitem id="menu_pauta_root"
+              name="📣 Pauta"
+              parent="menu_mayorista_root"
+              sequence="58"/>
+    <menuitem id="menu_pauta_creativos"
+              name="Creativos"
+              parent="menu_pauta_root"
+              sequence="10"
+              action="action_cristal_agent_creative"/>
+    <menuitem id="menu_pauta_experimentos"
+              name="Experimentos"
+              parent="menu_pauta_root"
+              sequence="20"
+              action="action_cristal_agent_experiment"/>
+
     <menuitem id="menu_mayorista_ofertas"
               name="🎁 Ofertas activas"
               parent="menu_mayorista_root"

@@ -1767,6 +1767,44 @@ class CristalAgentRouteSelftest(models.TransientModel):
             return "ORO el día 3 → ritual · ya hecho este mes → no · día 20 → no · PLATA → no"
         self._case(results, "55. Ritual mensual ORO", c_ritual_oro)
 
+        # ═════════════════ v1.58 — Pauta Cristal: contenido por salida ═════════════════
+        # 56) Placas por ángulo + copys + guion para una salida a 7 días, idempotente
+        def c_pauta_contenido():
+            Dep = env['cristal.agent.route.departure'].sudo()
+            Pauta = env['cristal.agent.pauta']
+            Creative = env['cristal.agent.creative'].sudo()
+            zc = Circuit.create({'name': 'ZZ Autotest Pauta', 'sequence': 95,
+                                 'first_departure_date': today_ar})
+            for n in ('La Carlota', 'Ucacha', 'Chazón'):
+                env['cristal.agent.circuit.town'].sudo().create({'name': f'ZZ {n}', 'circuit_id': zc.id})
+            dep = Dep.create({'circuit_id': zc.id, 'date': today_ar + timedelta(days=7),
+                              'state': 'preventa'})
+            cfg.write({'pauta_enabled': True, 'pauta_route_lead_days': 7,
+                       'pauta_route_promo_qty': 7, 'pauta_route_free_from': 150000.0})
+            ctx = Pauta.route_context(dep, cfg)
+            assert 'ZZ La Carlota' in ctx['pueblos'] and ctx['promo_l1'] == '7 BIDONES DE 20 L', ctx
+            assert '150.000' in ctx['condiciones'], ctx['condiciones']
+            created = Pauta.generate_route_content(dep, config=cfg)
+            assert len(created) == 5, f"{len(created)} creativos (esperaba 5)"
+            for c in created:
+                assert c.attachment_id and c.attachment_id.public and c.attachment_id.file_size > 20000, \
+                    (c.angle, c.attachment_id.file_size)
+                assert c.body and 'ZZ La Carlota' in c.body and c.headline, c.angle
+                assert c.name.startswith('[RUTA-ZZ-AUTOTEST-PAUTA] ' + c.angle), c.name
+            urg = created.filtered(lambda c: c.angle == 'URGENCIA')
+            assert urg.activate_on == today_ar + timedelta(days=5), urg.activate_on
+            assert created.filtered(lambda c: c.angle == 'REGALO').script, "sin guion"
+            # Idempotente: el cron no repite
+            n_before = Creative.search_count([('departure_id', '=', dep.id)])
+            assert Pauta.cron_route_content() is True
+            assert Creative.search_count([('departure_id', '=', dep.id)]) == n_before, "duplicó creativos"
+            cfg.pauta_enabled = False
+            assert Pauta.cron_route_content() is False, "con la pauta apagada igual corrió"
+            cfg.pauta_enabled = True
+            return ("salida a 7 días → 5 placas públicas por ángulo (> 20 KB), copy y título por ángulo, "
+                    "guion en REGALO, URGENCIA programada a D-2 · cron idempotente · interruptor")
+        self._case(results, "56. Pauta: contenido por salida", c_pauta_contenido)
+
         # 48) confirm_order: confirma solo lo que cumple la lista de control
         def c_confirm_order():
             co = ToolRegistry.get('confirm_order')
