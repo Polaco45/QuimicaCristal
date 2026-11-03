@@ -262,6 +262,31 @@ class CreateSaleOrder(AgentTool):
             return {'kind': 'maybe', 'canonical': canonical, 'candidate': info['candidate']}
         return {'kind': 'fuera_zona', 'canonical': canonical}
 
+    MAY_CARRIER_ID = 1   # "Envío a Domicilio" mayorista: $6.500, sin cargo desde $65.000
+
+    def _apply_home_delivery(self, env, order, is_cf):
+        """Río Cuarto / Las Higueras con envío: deja UNA línea de envío a domicilio con el
+        precio del método de entrega (gratis si pasa el monto configurado). Devuelve
+        {'price', 'free_from', 'base'} o None si no hay método."""
+        if 'carrier_id' not in order._fields:
+            return None
+        carrier = env['delivery.carrier'].sudo().browse(
+            self.CF_CARRIER_ID if is_cf else self.MAY_CARRIER_ID).exists()
+        if not carrier:
+            return None
+        try:
+            order.order_line.filtered(lambda l: getattr(l, 'is_delivery', False)).unlink()
+            rate = carrier.rate_shipment(order) or {}
+            price = float(rate.get('price', 0.0)) if rate.get('success') else float(carrier.fixed_price or 0.0)
+            order.set_delivery_line(carrier, price)
+        except Exception as e:  # noqa: BLE001 — el envío nunca frena la cotización
+            _logger.warning("No pude poner la línea de envío en %s: %s", order.name, e)
+            return None
+        base = sum(order.order_line.filtered(
+            lambda l: not getattr(l, 'is_delivery', False)).mapped('price_subtotal'))
+        return {'price': price, 'free_from': float(carrier.amount or 0.0) if carrier.free_over else 0.0,
+                'base': base, 'fixed': float(carrier.fixed_price or 0.0)}
+
     def _freight_product(self, env, config):
         if config.route_freight_product_id:
             return config.route_freight_product_id
@@ -724,6 +749,7 @@ class CreateSaleOrder(AgentTool):
         # mínimo, se hace rollback y NO queda nada creado (ni orden ni oportunidad).
         # Así el subtotal sin IVA sale del cálculo real de Odoo, no de una simulación.
         route_block = None
+        shipping = None   # v1.55: línea de envío a domicilio (Río Cuarto / Las Higueras)
         try:
             with env.cr.savepoint():
                 Lead = env['crm.lead'].sudo()
@@ -840,6 +866,11 @@ class CreateSaleOrder(AgentTool):
                             order.carrier_id = pickup_carrier
                 else:
                     order.cristal_delivery_mode = 'envio'
+                    # v1.55 — Río Cuarto / Las Higueras con envío: la línea de envío a
+                    # domicilio la pone la cotización sola ($6.500, sin cargo desde el monto
+                    # del método). Caso Jorge S06972 (03/11): salió sin envío.
+                    if route_ctx and route_ctx.get('kind') == 'rio_cuarto':
+                        shipping = self._apply_home_delivery(env, order, is_cf)
 
                 # ── Ruta del camión: mínimo, flete, fecha de entrega, salida, etiqueta ──
                 if route_ctx and route_ctx['kind'] == 'circuit' and not is_pickup:
@@ -881,7 +912,9 @@ class CreateSaleOrder(AgentTool):
         # 4) Mínimo de compra (piso duro + upsell). En RUTA el mínimo ya se validó en
         #    el savepoint (sobre subtotal de productos sin IVA ni flete): no se repite.
         is_route = bool(route_block)
-        total = order.amount_total
+        # El mínimo se mide sobre los PRODUCTOS (sin la línea de envío a domicilio).
+        total = sum(order.order_line.filtered(
+            lambda l: not getattr(l, 'is_delivery', False)).mapped('price_total'))
         line_details = [{
             'product': l.product_id.display_name,
             'qty': l.product_uom_qty,
@@ -1004,6 +1037,37 @@ class CreateSaleOrder(AgentTool):
         }
 
         result['delivery_mode'] = 'retiro' if is_pickup else 'envio'
+        # v1.55 — Envío a domicilio (Río Cuarto / Las Higueras) y gancho para el envío gratis.
+        if shipping:
+            falta = shipping['free_from'] - shipping['base'] if shipping['free_from'] else 0.0
+            if shipping['price'] > 0:
+                result['envio'] = {'precio': shipping['price'], 'gratis_desde': shipping['free_from'],
+                                   'falta_para_gratis': round(max(falta, 0.0), 2)}
+                result['shipping_note'] = (
+                    f"ENVÍO A DOMICILIO: {_fmt_money(shipping['price'])} (ya está en la cotización "
+                    f"y en el total). Es SIN CARGO desde {_fmt_money(shipping['free_from'])} en "
+                    f"productos: le faltan {_fmt_money(max(falta, 0.0))}. Usalo de gancho para "
+                    f"sumar un producto (ver sugerencias).")
+            else:
+                result['envio'] = {'precio': 0.0, 'gratis_desde': shipping['free_from'], 'falta_para_gratis': 0.0}
+                result['shipping_note'] = "ENVÍO A DOMICILIO SIN CARGO (supera el monto): decíselo."
+        # v1.55 — Sugerencias de cross-sell ya resueltas (antes dependía de que Claudio
+        # llamara suggest_products; con Jorge no lo hizo).
+        if True:
+            try:
+                sp = ToolRegistry.get('suggest_products')
+                sug = sp._execute(env=env, run=run, partner_id=partner.id, order_id=order.id,
+                                  limit=3) if sp else {}
+                if sug.get('suggestions'):
+                    top = sug['suggestions'][:2]
+                    result['sugerencias'] = top
+                    result['upsell_note'] = (
+                        "SUBÍ EL TICKET — ofrecé UNA de estas en una línea, con el precio tal "
+                        "cual, sin presionar: " + ' | '.join(s['text'] for s in top)
+                        + (". Si acepta, sumala a ESTA cotización (create_sale_order con la lista "
+                           "completa)."))
+            except Exception as e:  # noqa: BLE001
+                _logger.warning("suggest_products dentro de create_sale_order falló: %s", e)
         # 5) Ruta del camión: condiciones de envío + escalamiento a Joaco
         if is_cf:
             result['cf_note'] = (
