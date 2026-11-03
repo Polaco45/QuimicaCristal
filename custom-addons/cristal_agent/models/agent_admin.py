@@ -259,16 +259,16 @@ class CristalAgentAdmin(models.AbstractModel):
         """Avisa en el canal "Administración · Agente", mencionando a Sergio."""
         channel = self._admin_channel()
         sergio = self.env['res.partner'].sudo().browse(SERGIO_PARTNER_ID).exists()
-        body = ""
+        # Todo como Markup: sumarle un str a un Markup lo escapa (la mención salía como texto).
+        body = Markup("")
         if sergio:
-            body += (f'<a href="#" data-oe-id="{sergio.id}" data-oe-model="res.partner" '
-                     f'class="o_mail_redirect">@{html_escape(sergio.name.split()[0])}</a> ')
-        body += html_escape(message)
+            body += Markup('<a href="#" data-oe-id="%s" data-oe-model="res.partner" '
+                           'class="o_mail_redirect">@%s</a> ') % (sergio.id, sergio.name.split()[0])
+        body += message
         if record:
-            body += (f' <a href="/odoo/{record._name}/{record.id}">'
-                     f'{html_escape(record.display_name)}</a>')
+            body += Markup(' <a href="/odoo/%s/%s">%s</a>') % (record._name, record.id, record.display_name)
         channel.sudo().message_post(
-            body=Markup(f"<p>{body}</p>"), message_type="comment", subtype_xmlid="mail.mt_comment",
+            body=Markup("<p>%s</p>") % body, message_type="comment", subtype_xmlid="mail.mt_comment",
             author_id=self.env.ref('base.partner_root').id,
             partner_ids=sergio.ids)
         return True
