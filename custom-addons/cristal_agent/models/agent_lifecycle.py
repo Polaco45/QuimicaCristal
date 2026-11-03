@@ -167,6 +167,23 @@ class ResPartnerLifecycle(models.Model):
     agent_nba_ids = fields.One2many('cristal.agent.nba', 'partner_id',
                                     string="Acciones automáticas")
     agent_nba_count = fields.Integer(compute='_compute_agent_nba_count')
+    # v1.56 — Referidos: crédito pendiente (%) que se aplica solo en la próxima cotización.
+    agent_referral_credit_pct = fields.Float(
+        string="Crédito por referido (%)", copy=False,
+        help="Descuento pendiente por recomendar (o por venir recomendado). Lo aplica "
+             "create_sale_order y se consume al confirmar el pedido.")
+    agent_referral_credit_note = fields.Char(string="Motivo del crédito", copy=False)
+    agent_referral_rewarded = fields.Boolean(
+        string="Referido ya premiado", copy=False,
+        help="Quien lo recomendó ya recibió su crédito por la primera compra de este cliente.")
+
+    def agent_grant_referral_credit(self, pct, note):
+        """Deja (o sube a) `pct` el crédito por referido, con su motivo."""
+        for p in self.sudo():
+            if pct > (p.agent_referral_credit_pct or 0.0):
+                p.write({'agent_referral_credit_pct': pct,
+                         'agent_referral_credit_note': (note or '')[:250]})
+                p.append_agent_observation(f"🎁 Crédito por referido {pct:g}%: {note}")
 
     def _compute_agent_nba_count(self):
         counts = {p.id: n for p, n in self.env['cristal.agent.nba']._read_group(

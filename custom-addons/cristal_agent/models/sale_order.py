@@ -148,3 +148,53 @@ class SaleOrder(models.Model):
                 [('partner_id', '=', self.partner_id.id)], limit=1)
             if mem:
                 mem.last_cadence_step_executed = 999
+        # v1.56 — Referidos: el crédito usado se consume; la primera compra de un referido
+        # le da su crédito a quien lo recomendó (y Claudio le avisa).
+        try:
+            self._cristal_referral_on_confirm()
+        except Exception as e:  # noqa: BLE001
+            _logger.warning("referidos al confirmar %s: %s", self.name, e)
+
+    def _cristal_referral_on_confirm(self):
+        partner = self.partner_id.sudo()
+        if not partner or 'agent_referral_credit_pct' not in partner._fields:
+            return
+        config = self.env['cristal.agent.config'].sudo().get_active()
+        credit = partner.agent_referral_credit_pct or 0.0
+        if credit and any(abs((l.discount or 0.0) - credit) < 0.01
+                          for l in self.order_line.filtered('product_id')):
+            partner.write({'agent_referral_credit_pct': 0.0,
+                           'agent_referral_credit_note': False})
+            partner.append_agent_observation(f"🎁 Crédito por referido usado en {self.name}.")
+        referrer = partner.agent_referred_by_id.sudo()
+        if not referrer or partner.agent_referral_rewarded:
+            return
+        others = self.env['sale.order'].sudo().search_count([
+            ('partner_id', '=', partner.id), ('state', 'in', ('sale', 'done')),
+            ('id', '!=', self.id)])
+        if others:
+            partner.agent_referral_rewarded = True   # no era su primera compra
+            return
+        month_start = fields.Date.today().replace(day=1)
+        rewarded_this_month = self.env['res.partner'].sudo().search_count([
+            ('agent_referred_by_id', '=', referrer.id), ('agent_referral_rewarded', '=', True),
+            ('write_date', '>=', fields.Datetime.to_datetime(month_start))])
+        cap = config.referral_max_per_month if config else 3
+        partner.agent_referral_rewarded = True
+        if cap and rewarded_this_month >= cap:
+            referrer.append_agent_observation(
+                f"Referido {partner.name} hizo su primera compra ({self.name}), pero ya se "
+                f"premiaron {rewarded_this_month} referidos este mes (tope {cap}).")
+            return
+        pct = float(config.referral_discount if config else 5.0) or 5.0
+        referrer.agent_grant_referral_credit(
+            pct, f"{partner.name} (recomendado por usted) hizo su primera compra {self.name}")
+        if config and config.bot_user_id:
+            referrer.activity_schedule(
+                'mail.mail_activity_data_todo', date_deadline=fields.Date.today(),
+                user_id=config.bot_user_id.id,
+                summary=f"[NBA] Premio por referido: {partner.name} compró",
+                note=(f"{partner.name}, que vino recomendado por este cliente, hizo su primera "
+                      f"compra ({self.name}). Avisale en una línea, cordial: gracias por la "
+                      f"recomendación, su próximo pedido lleva {pct:g}% de descuento (se aplica "
+                      f"solo al cotizar). Un solo mensaje, sin presionar a que compre ya."))

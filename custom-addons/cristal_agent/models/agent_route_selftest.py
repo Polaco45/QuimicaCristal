@@ -1579,6 +1579,67 @@ class CristalAgentRouteSelftest(models.TransientModel):
                     "envío · sugerencias en la misma respuesta")
         self._case(results, "50. Envío a domicilio RC y sugerencias en la cotización", c_envio_rc)
 
+        # 51) Beneficio por nivel: PLATA 5 % / ORO 10 % solos; el 20 % de primera compra manda
+        def c_niveles():
+            cfg.write({'level_plata_discount': 5.0, 'level_oro_discount': 10.0})
+            p = mk_lc('Nivel plata', 'Rio Cuarto')
+            p.write({'agent_level': 'plata', 'street': 'Calle Nivel 1'})
+            _confirmed(p, 40, amount=60000)   # ya compró: no hay 20 % de primera compra
+            r = cso.execute(env=env, run=None, partner_id=p.id, delivery_mode='retiro',
+                            lines=[{'product_id': product.id, 'qty': 1, 'price_unit': 60000}])
+            assert r.get('order_id') and r.get('auto_discount', {}).get('percent') == 5.0, r.get('auto_discount')
+            lines = SaleOrder.browse(r['order_id']).order_line.filtered(lambda l: l.product_id == product)
+            assert lines and all(abs(l.discount - 5.0) < 0.01 for l in lines), lines.mapped('discount')
+            assert 'nivel PLATA' in (r.get('auto_discount_note') or ''), r.get('auto_discount_note')
+            p.agent_level = 'oro'
+            r = cso.execute(env=env, run=None, partner_id=p.id, delivery_mode='retiro',
+                            lines=[{'product_id': product.id, 'qty': 2, 'price_unit': 60000}])
+            lines = SaleOrder.browse(r['order_id']).order_line.filtered(lambda l: l.product_id == product)
+            assert all(abs(l.discount - 10.0) < 0.01 for l in lines), lines.mapped('discount')
+            p2 = mk_lc('Nivel primera compra', 'Rio Cuarto')
+            p2.write({'agent_level': 'plata', 'street': 'Calle Nivel 2'})
+            r = cso.execute(env=env, run=None, partner_id=p2.id, discount_percent=20, delivery_mode='retiro',
+                            lines=[{'product_id': product.id, 'qty': 1, 'price_unit': 60000}])
+            lines = SaleOrder.browse(r['order_id']).order_line.filtered(lambda l: l.product_id == product)
+            assert all(abs(l.discount - 20.0) < 0.01 for l in lines) and not r.get('auto_discount'), \
+                (lines.mapped('discount'), r.get('auto_discount'))
+            return "PLATA → 5 % solo · ORO → 10 % · con 20 % de primera compra no se acumula"
+        self._case(results, "51. Beneficio por nivel en la cotización", c_niveles)
+
+        # 52) Referidos: registro, crédito del referido, premio a quien recomendó al confirmar
+        def c_referidos():
+            cfg.write({'referral_discount': 5.0, 'referral_max_per_month': 3})
+            viejo = mk_lc('Referidor', 'Rio Cuarto')
+            viejo.street = 'Calle Ref 1'
+            _confirmed(viejo, 20, amount=60000)
+            nuevo = mk_lc('Referido', 'Rio Cuarto')
+            nuevo.street = 'Calle Ref 2'
+            rr = ToolRegistry.get('register_referral')
+            r = rr.execute(env=env, run=None, partner_id=nuevo.id, referrer_partner_id=viejo.id)
+            assert r.get('ok') and nuevo.agent_referred_by_id == viejo, r
+            assert abs(nuevo.agent_referral_credit_pct - 5.0) < 0.01, nuevo.agent_referral_credit_pct
+            r = rr.execute(env=env, run=None, partner_id=nuevo.id, referrer_name='ZZ Autotest Referidor')
+            assert r.get('ok') and r['referrer']['partner_id'] == viejo.id, r
+            q = cso.execute(env=env, run=None, partner_id=nuevo.id, delivery_mode='retiro',
+                            lines=[{'product_id': product.id, 'qty': 1, 'price_unit': 60000}])
+            assert q.get('auto_discount', {}).get('reason') == 'crédito por referido', q.get('auto_discount')
+            o = SaleOrder.browse(q['order_id'])
+            acts_before = env['mail.activity'].sudo().search_count(
+                [('res_model', '=', 'res.partner'), ('res_id', '=', viejo.id)])
+            o.action_confirm()
+            assert not nuevo.agent_referral_credit_pct and nuevo.agent_referral_rewarded, \
+                (nuevo.agent_referral_credit_pct, nuevo.agent_referral_rewarded)
+            assert abs(viejo.agent_referral_credit_pct - 5.0) < 0.01, viejo.agent_referral_credit_pct
+            acts = env['mail.activity'].sudo().search([('res_model', '=', 'res.partner'), ('res_id', '=', viejo.id)])
+            assert len(acts) == acts_before + 1 and any('Premio por referido' in (a.summary or '') for a in acts), \
+                acts.mapped('summary')
+            q2 = cso.execute(env=env, run=None, partner_id=viejo.id, delivery_mode='retiro',
+                             lines=[{'product_id': product.id, 'qty': 1, 'price_unit': 60000}])
+            assert q2.get('auto_discount', {}).get('percent') == 5.0, q2.get('auto_discount')
+            return ("registro por id y por nombre · 5 % al referido en su primer pedido · al confirmar, "
+                    "crédito y aviso a quien recomendó · el crédito se usa en su próxima cotización")
+        self._case(results, "52. Referidos", c_referidos)
+
         # 48) confirm_order: confirma solo lo que cumple la lista de control
         def c_confirm_order():
             co = ToolRegistry.get('confirm_order')

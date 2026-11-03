@@ -186,7 +186,10 @@
                         <field name="agent_lifecycle_reason"/>
                         <field name="agent_lifecycle_date"/>
                     </group>
-                    <group string="📣 Origen">
+                    <group string="📣 Origen y referidos">
+                        <field name="agent_referral_credit_pct"/>
+                        <field name="agent_referral_credit_note" invisible="not agent_referral_credit_pct"/>
+                        <field name="agent_referral_rewarded" invisible="not agent_referred_by_id"/>
                         <field name="agent_origin_code"/>
                         <field name="agent_origin_date"/>
                         <field name="agent_origin_text"/>

@@ -750,6 +750,7 @@ class CreateSaleOrder(AgentTool):
         # Así el subtotal sin IVA sale del cálculo real de Odoo, no de una simulación.
         route_block = None
         shipping = None   # v1.55: línea de envío a domicilio (Río Cuarto / Las Higueras)
+        auto_discount = None   # v1.56: (porcentaje, motivo) por nivel o referido
         try:
             with env.cr.savepoint():
                 Lead = env['crm.lead'].sudo()
@@ -833,6 +834,24 @@ class CreateSaleOrder(AgentTool):
                     order.order_line.filtered(
                         lambda l: l.product_id.id not in fixed_price_pids
                     ).write({'discount': float(discount_percent)})
+                elif not is_cf and order.order_line:
+                    # v1.56 — Beneficio por nivel (PLATA −5 %, ORO −10 %) o crédito por
+                    # referido (5 %): se aplican solos cuando no hay 20 % de primera compra
+                    # ni precio de promo cerrado. Joaco (03/11/2026): "avanza con todo esto".
+                    pct, why = 0.0, None
+                    if partner.agent_level == 'oro':
+                        pct, why = float(config.level_oro_discount or 10.0), 'nivel ORO'
+                    elif partner.agent_level == 'plata':
+                        pct, why = float(config.level_plata_discount or 5.0), 'nivel PLATA'
+                    credit = float(getattr(partner, 'agent_referral_credit_pct', 0.0) or 0.0)
+                    if credit > pct:
+                        pct, why = credit, 'crédito por referido'
+                    if pct > 0:
+                        order.order_line.filtered(
+                            lambda l: l.product_id.id not in fixed_price_pids
+                            and not getattr(l, 'is_delivery', False)
+                        ).write({'discount': pct})
+                        auto_discount = (pct, why)
 
                 # Forzar el precio fijo de promo por si Odoo lo recomputó desde el
                 # pricelist al setear product/pricelist (última palabra sobre esas líneas).
@@ -1037,6 +1056,13 @@ class CreateSaleOrder(AgentTool):
         }
 
         result['delivery_mode'] = 'retiro' if is_pickup else 'envio'
+        if auto_discount:
+            pct, why = auto_discount
+            result['auto_discount'] = {'percent': pct, 'reason': why}
+            result['auto_discount_note'] = (
+                f"DESCUENTO AUTOMÁTICO: {pct:g}% por {why}, ya aplicado en la cotización y en el "
+                f"total. Decíselo en una línea ('su precio ya lleva el {pct:g}% por {why}'). No "
+                f"sumes ningún otro descuento.")
         # v1.55 — Envío a domicilio (Río Cuarto / Las Higueras) y gancho para el envío gratis.
         if shipping:
             falta = shipping['free_from'] - shipping['base'] if shipping['free_from'] else 0.0

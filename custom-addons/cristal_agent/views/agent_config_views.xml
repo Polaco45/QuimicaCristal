@@ -290,6 +290,12 @@
                                     <field name="lifecycle_visit_min_ticket" widget="monetary"/>
                                 </group>
                             </group>
+                            <group string="🏅 Niveles y referidos">
+                                <field name="level_plata_discount"/>
+                                <field name="level_oro_discount"/>
+                                <field name="referral_discount"/>
+                                <field name="referral_max_per_month"/>
+                            </group>
                             <group string="🛒 Confirmación automática de pedidos mayoristas">
                                 <field name="auto_confirm_enabled" widget="boolean_toggle"/>
                                 <field name="auto_confirm_max_amount" widget="monetary"
