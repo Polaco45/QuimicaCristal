@@ -20,25 +20,31 @@ confirma al cliente que el camión pasa. Por eso solo se suma lo que el camión 
 Se reasignaron 9 contactos a su circuito y se actualizó la KB 102 (lista de localidades por circuito).
 Las placas y campañas que genera el cron D-7 ya los incluyen.
 
-## Grupo 2 — Extensiones cortas (20-35 km), a decidir
-Suman kilómetros al recorrido: solo convienen si el chofer las acepta o con pedido mínimo.
-| Pueblo | Ramal | Distancia | Contactos |
-|---|---|---|---|
-| Almafuerte | Norte (RN36, después de Los Cóndores) | ~32 km pasando Berrotarán | 2 / 3 |
-| Embalse | Norte (RN36 + RP5) | 27 km | 2 / 2 |
-| Alpa Corral | Norte (sierra, desde Elena) | 33 km | 2 / 3 |
-| Las Albahacas | Sur-Oeste (desde Achiras) | 32 km | 1 / 2 |
-| La Cautiva | Sur-Oeste (desde Vicuña Mackenna) | 29 km | 2 / 2 |
-| Washington | Sur-Oeste (entre Moldes y Vicuña Mackenna) | 21 km | 1 nuevo |
-| Pascanas | Este (después de Chazón) | 23 km | 1 / 1 |
+## Regla de zona (Joaco, 04/11/2026)
+Ningún pueblo del recorrido puede quedar a más de **120 km de Río Cuarto en línea recta**
+(centro -33.1232, -64.3493; distancia haversine). Lo que pase ese radio es fuera de zona, aunque
+quede cerca de un ramal. Antes de sumar cualquier pueblo nuevo, medirlo.
 
-## Grupo 3 — Corredores nuevos (> 35 km), decisión de negocio
-| Corredor | Pueblos | Contactos | Cómo |
+## Grupo 2 — Extensiones cortas (20-35 km) · APLICADO 04/11 (menos Pascanas)
+Todos como desvío opcional. Se reasignaron 19 contactos y se actualizó la KB 102.
+| Pueblo | Ramal | Desvío | Km a Río Cuarto | Estado |
+|---|---|---|---|---|
+| Almafuerte | Norte (RN36, después de Los Cóndores) | ~32 km pasando Berrotarán | 104 | Sumado (town 39) |
+| Embalse | Norte (RN36 + RP5) | 27 km | 102 | Sumado (town 40) |
+| Alpa Corral | Norte (sierra, desde Elena) | 33 km | 59 | Sumado (town 41) |
+| Las Albahacas | Sur-Oeste (desde Achiras) | 32 km | 53 | Sumado (town 42) |
+| La Cautiva | Sur-Oeste (desde Vicuña Mackenna) | 29 km | 98 | Sumado (town 43) |
+| Washington | Sur-Oeste (entre Moldes y Vicuña Mackenna) | 21 km | 89 | Sumado (town 44) |
+| Pascanas | Este (después de Chazón) | 23 km | **122** | **Descartado por la regla de 120 km** |
+
+## Grupo 3 — Corredores nuevos, filtrados por la regla de 120 km
+| Corredor | Pueblos | Km a Río Cuarto | Estado |
 |---|---|---|---|
-| Norte → Río Tercero | Almafuerte, Río Tercero (ciudad grande) | 6 / 10 | Extender Norte A por RN36 (~45 km más). |
-| Este → Canals | Canals, Viamonte | 5 / 6 | Extender Este B por RN8 pasando La Carlota (~45 km). |
-| Sur-Este → Laboulaye | General Levalle, Laboulaye, Rio Bamba | 8 / 11 | Sur-Este es el circuito más chico (33 contactos): sumarle el corredor RN7 lo fortalece (~70 km más). |
-| Sur profundo (RN35) | Del Campillo, Nicolás Bruzzone, Mattaldi, Jovita, Villa Valeria, Huinca Renancó, Villa Huidobro | ~17 / 22 | Está a 140-190 km: sería un 5.º circuito y la rotación pasaría a cada 5 semanas. |
+| Norte → Río Tercero | Río Tercero (ciudad grande, 4 / 7 contactos) | 108 | Entra en el radio. A decidir. |
+| Sur-Este → RN7 | General Levalle, Rio Bamba | 106 / 118 | Entran en el radio. A decidir; fortalecen al Sur-Este. |
+| Sur-Este → Laboulaye | Laboulaye | 143 | Fuera de zona. |
+| Este → Canals | Canals, Viamonte | 145 / 135 | Fuera de zona. |
+| Sur profundo (RN35) | Del Campillo, Mattaldi, Jovita, Villa Valeria, Huinca Renancó, Villa Huidobro | 140-192 | Fuera de zona: se descarta el 5.º circuito. |
 
 Fuera de alcance (Córdoba capital, CABA, otras provincias, Villa María/Río Tercero norte lejano por otros
 ramales, etc.) quedan como fuera de zona.

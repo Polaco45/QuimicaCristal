@@ -53,6 +53,24 @@
             <field name="optional" eval="True"/>
             <field name="circuit_id" ref="circuit_sur_oeste"/>
         </record>
+        <!-- 04/11/2026: extensiones cortas (20-35 km del recorrido, ≤ 120 km de Río Cuarto) -->
+        <record id="town_las_albahacas" model="cristal.agent.circuit.town">
+            <field name="name">Las Albahacas</field>
+            <field name="aliases">Albahacas</field>
+            <field name="optional" eval="True"/>
+            <field name="circuit_id" ref="circuit_sur_oeste"/>
+        </record>
+        <record id="town_washington" model="cristal.agent.circuit.town">
+            <field name="name">Washington</field>
+            <field name="optional" eval="True"/>
+            <field name="circuit_id" ref="circuit_sur_oeste"/>
+        </record>
+        <record id="town_la_cautiva" model="cristal.agent.circuit.town">
+            <field name="name">La Cautiva</field>
+            <field name="aliases">Cautiva</field>
+            <field name="optional" eval="True"/>
+            <field name="circuit_id" ref="circuit_sur_oeste"/>
+        </record>
         <record id="town_coronel_moldes" model="cristal.agent.circuit.town">
             <field name="name">Coronel Moldes</field>
             <field name="aliases">Moldes</field>
@@ -140,6 +158,24 @@
         <record id="town_los_condores" model="cristal.agent.circuit.town">
             <field name="name">Los Cóndores</field>
             <field name="aliases">Los Condores, Condores</field>
+            <field name="optional" eval="True"/>
+            <field name="circuit_id" ref="circuit_norte"/>
+        </record>
+        <!-- 04/11/2026: extensiones cortas (20-35 km del recorrido, ≤ 120 km de Río Cuarto) -->
+        <record id="town_almafuerte" model="cristal.agent.circuit.town">
+            <field name="name">Almafuerte</field>
+            <field name="optional" eval="True"/>
+            <field name="circuit_id" ref="circuit_norte"/>
+        </record>
+        <record id="town_embalse" model="cristal.agent.circuit.town">
+            <field name="name">Embalse</field>
+            <field name="aliases">Villa del Embalse, Embalse de Río Tercero</field>
+            <field name="optional" eval="True"/>
+            <field name="circuit_id" ref="circuit_norte"/>
+        </record>
+        <record id="town_alpa_corral" model="cristal.agent.circuit.town">
+            <field name="name">Alpa Corral</field>
+            <field name="aliases">Alpacorral, Alpa</field>
             <field name="optional" eval="True"/>
             <field name="circuit_id" ref="circuit_norte"/>
         </record>
