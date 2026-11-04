@@ -8,6 +8,7 @@ Corre los criterios de aceptación de la ruta sobre los datos reales de la base
 Autotest) y muestra el resultado caso por caso. tests/test_route.py corre los
 mismos casos, así hay una sola fuente de verdad.
 """
+import json
 import logging
 from datetime import date, datetime, time, timedelta
 
@@ -1804,6 +1805,57 @@ class CristalAgentRouteSelftest(models.TransientModel):
             return ("salida a 7 días → 5 placas públicas por ángulo (> 20 KB), copy y título por ángulo, "
                     "guion en REGALO, URGENCIA programada a D-2 · cron idempotente · interruptor")
         self._case(results, "56. Pauta: contenido por salida", c_pauta_contenido)
+
+        # ═════════════════ v1.59 — orgánico mensual y revisión mensual ═════════════════
+        # 57) Calendario orgánico del mes siguiente: martes y viernes, placas públicas, idempotente
+        def c_pauta_organico():
+            Pauta = env['cristal.agent.pauta']
+            Creative = env['cristal.agent.creative'].sudo()
+            ms, nxt = Pauta._month_bounds(today_ar)
+            target, after = Pauta._month_bounds(nxt)
+            Creative.search([('format', '=', 'organico'), ('planned_date', '>=', target),
+                             ('planned_date', '<', after)]).unlink()
+            dates = Pauta._organic_dates(target)
+            assert 8 <= len(dates) <= 10 and all(d.weekday() in (1, 4) for d in dates), dates
+            created = Pauta.generate_organic_month(target, config=cfg)
+            assert len(created) == len(dates), f"{len(created)} posteos (esperaba {len(dates)})"
+            for c in created:
+                assert c.format == 'organico' and c.planned_date in dates, (c.name, c.planned_date)
+                assert c.attachment_id.public and c.attachment_id.file_size > 20000, c.name
+                assert '#QuímicaCristal' in (c.body or '') and c.name.startswith('[ORGANICO] '), c.name
+            angles = set(created.mapped('angle'))
+            assert len(angles) >= 3, angles
+            assert not Pauta.generate_organic_month(target, config=cfg), "duplicó posteos"
+            assert Pauta.cron_organic_content(force=True) is True
+            spec_angle, spec, body = Pauta.organic_spec('PRODUCTO', {'mes': 'X', 'mes_min': 'x',
+                                                                    'clientes': 0, 'salidas': []})
+            assert spec_angle == 'FABRICA', "PRODUCTO sin oferta debería caer en FABRICA"
+            return (f"{len(created)} posteos martes/viernes con placa pública y texto, "
+                    f"ángulos {', '.join(sorted(angles))} · idempotente · sin oferta → FABRICA")
+        self._case(results, "57. Pauta: orgánico mensual", c_pauta_organico)
+
+        # 58) Revisión mensual: arma, guarda snapshot y recomienda con reglas fijas
+        def c_monthly_review():
+            Review = env['cristal.agent.monthly.review'].sudo()
+            prev_month = (today_ar.replace(day=1) - timedelta(days=1)).replace(day=1)
+            Review.search([('month', '=', prev_month)]).unlink()
+            r = Review.build(prev_month, post=False)
+            assert r and 'Revisión mensual' in (r.body_html or ''), r.body_html
+            data = json.loads(r.snapshot)
+            assert {'sales', 'funnel', 'nba', 'route', 'claudio'} <= set(data), list(data)
+            assert r.recommendations, "sin recomendaciones"
+            fake = json.loads(r.snapshot)
+            fake['nba']['by_action'] = {'c_promo': {'label': 'Promo', 'reached': 40, 'reached_conv': 2,
+                                                    'holdout': 10, 'holdout_conv': 3, 'amount': 0}}
+            fake['route'] = [{'name': 'ZZ', 'date': '2026-11-05', 'state': 'realizada',
+                              'orders': 1, 'amount': 0}]
+            rec = Review.recommend(fake, prev={'stages': {}, 'sales': {'amount': 0}})
+            assert any('no vende más' in x for x in rec), rec
+            assert any('ZZ' in x for x in rec), rec
+            r2 = Review.build(prev_month, post=False)
+            assert r2 == r, "duplicó la revisión del mes"
+            return "arma HTML + snapshot, regla de control y de salida flojas, una sola por mes"
+        self._case(results, "58. Revisión mensual", c_monthly_review)
 
         # 48) confirm_order: confirma solo lo que cumple la lista de control
         def c_confirm_order():

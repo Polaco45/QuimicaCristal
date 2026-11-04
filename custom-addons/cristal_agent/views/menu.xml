@@ -78,6 +78,11 @@
               parent="menu_mayorista_lifecycle_root"
               sequence="20"
               action="action_cristal_agent_nba"/>
+    <menuitem id="menu_mayorista_monthly_review"
+              name="Revisión mensual"
+              parent="menu_mayorista_lifecycle_root"
+              sequence="30"
+              action="action_cristal_agent_monthly_review"/>
 
     <!-- 🚚 Ruta del camión mayorista (v1.32) -->
     <menuitem id="menu_ruta_camion_root"

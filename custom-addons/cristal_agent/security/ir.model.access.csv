@@ -28,3 +28,5 @@ access_cristal_agent_creative_user,cristal.agent.creative user,model_cristal_age
 access_cristal_agent_creative_manager,cristal.agent.creative manager,model_cristal_agent_creative,base.group_system,1,1,1,1
 access_cristal_agent_experiment_user,cristal.agent.experiment user,model_cristal_agent_experiment,base.group_user,1,1,1,0
 access_cristal_agent_experiment_manager,cristal.agent.experiment manager,model_cristal_agent_experiment,base.group_system,1,1,1,1
+access_cristal_agent_monthly_review_user,cristal.agent.monthly.review user,model_cristal_agent_monthly_review,base.group_user,1,0,0,0
+access_cristal_agent_monthly_review_manager,cristal.agent.monthly.review manager,model_cristal_agent_monthly_review,base.group_system,1,1,1,1

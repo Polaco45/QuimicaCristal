@@ -7,6 +7,7 @@
         <field name="arch" type="xml">
             <list decoration-success="state == 'active'" decoration-muted="state == 'done'">
                 <field name="departure_date"/>
+                <field name="planned_date" optional="show"/>
                 <field name="zone"/>
                 <field name="angle"/>
                 <field name="format"/>
@@ -39,6 +40,8 @@
                             <field name="version"/>
                             <field name="state"/>
                             <field name="activate_on"/>
+                            <field name="planned_date"/>
+                            <field name="metricool_id"/>
                         </group>
                         <group string="Archivo y Meta">
                             <field name="attachment_id"/>
@@ -85,6 +88,7 @@
                 <field name="departure_id"/>
                 <filter name="placa" string="Placas" domain="[('format', '=', 'placa')]"/>
                 <filter name="video" string="Videos" domain="[('format', '=', 'video')]"/>
+                <filter name="organico" string="Orgánico" domain="[('format', '=', 'organico')]"/>
                 <filter name="live" string="Activos" domain="[('state', '=', 'active')]"/>
                 <group expand="0" string="Agrupar por">
                     <filter name="g_angle" string="Ángulo" context="{'group_by': 'angle'}"/>
@@ -168,5 +172,48 @@
         <field name="name">Experimentos de pauta</field>
         <field name="res_model">cristal.agent.experiment</field>
         <field name="view_mode">list,form</field>
+    </record>
+
+    <!-- v1.59 — Revisión mensual del mayorista -->
+    <record id="view_cristal_agent_monthly_review_list" model="ir.ui.view">
+        <field name="name">cristal.agent.monthly.review.list</field>
+        <field name="model">cristal.agent.monthly.review</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="month"/>
+                <field name="name"/>
+                <field name="posted"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_cristal_agent_monthly_review_form" model="ir.ui.view">
+        <field name="name">cristal.agent.monthly.review.form</field>
+        <field name="model">cristal.agent.monthly.review</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <h1><field name="name"/></h1>
+                    <group>
+                        <field name="month"/>
+                        <field name="posted"/>
+                    </group>
+                    <field name="body_html" readonly="1"/>
+                    <group string="Recomendaciones">
+                        <field name="recommendations" nolabel="1" colspan="2"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_cristal_agent_monthly_review" model="ir.actions.act_window">
+        <field name="name">Revisión mensual</field>
+        <field name="res_model">cristal.agent.monthly.review</field>
+        <field name="view_mode">list,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">Todavía no hay revisiones</p>
+            <p>El día 1 de cada mes se arma sola la revisión del mes anterior y se publica en el canal interno.</p>
+        </field>
     </record>
 </odoo>

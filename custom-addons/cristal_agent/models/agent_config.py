@@ -667,6 +667,16 @@ class CristalAgentConfig(models.Model):
     higgsfield_min_credits = fields.Integer(
         string="Saldo mínimo de Higgsfield para generar video", default=100,
         help="Por debajo, la salida sale solo con placas y se avisa.")
+    # v1.59 — orgánico mensual y revisión mensual
+    pauta_organic_enabled = fields.Boolean(
+        string="Contenido orgánico mensual", default=True,
+        help="Desde el día indicado arma el calendario del mes siguiente (martes y viernes) "
+             "y la rutina semanal lo sube a Metricool para revisión.")
+    pauta_organic_day = fields.Integer(
+        string="Día del mes para armar el orgánico del mes siguiente", default=25)
+    monthly_review_enabled = fields.Boolean(
+        string="Revisión mensual automática", default=True,
+        help="El día 1 publica en el canal interno la revisión del mes anterior.")
 
     # ─────────── Métricas computadas ───────────
     runs_today = fields.Integer(

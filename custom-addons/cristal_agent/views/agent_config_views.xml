@@ -300,6 +300,9 @@
                                 <field name="pauta_route_free_from" widget="monetary"/>
                                 <field name="pauta_route_pack_from" widget="monetary"/>
                                 <field name="higgsfield_min_credits"/>
+                                <field name="pauta_organic_enabled" widget="boolean_toggle"/>
+                                <field name="pauta_organic_day"/>
+                                <field name="monthly_review_enabled" widget="boolean_toggle"/>
                             </group>
                             <group string="🏅 Niveles y referidos">
                                 <field name="level_plata_discount"/>
