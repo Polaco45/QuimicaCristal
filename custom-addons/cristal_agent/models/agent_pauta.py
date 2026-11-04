@@ -35,7 +35,13 @@ FORMAT_SELECTION = [
     ('story', 'Story 9:16'),
     ('video', 'Video a cámara'),
     ('carrusel', 'Carrusel'),
+    ('organico', 'Orgánico (Instagram / Facebook)'),
 ]
+# v1.59 — calendario orgánico: martes y viernes; rotación de ángulos del mes.
+ORGANIC_WEEKDAYS = (1, 4)
+ORGANIC_ROTATION = ('LOGISTICA', 'FABRICA', 'PRODUCTO', 'MARGEN', 'PRUEBA_SOCIAL',
+                    'PRODUCTO', 'FABRICA', 'MARGEN', 'PRODUCTO', 'PRUEBA_SOCIAL')
+ORGANIC_HASHTAGS = "#QuímicaCristal #RíoCuarto #ProductosDeLimpieza #Mayorista #VentaPorMayor"
 ROUTE_ANGLES = ('REGALO', 'LOGISTICA', 'FABRICA', 'MARGEN', 'URGENCIA')
 MESES = ['', 'ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO',
          'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE']
@@ -83,9 +89,13 @@ class CristalAgentCreative(models.Model):
         ('draft_ad', 'Anuncio en borrador'),
         ('active', 'Activo'),
         ('paused', 'Pausado'),
+        ('scheduled', 'Programado en Metricool'),
         ('done', 'Terminado'),
     ], string="Estado", default='generated', index=True)
     activate_on = fields.Date(string="Activar el", help="URGENCIA: D-2 de la salida.")
+    planned_date = fields.Date(string="Publicar el", index=True,
+                               help="Orgánico: fecha del posteo en Instagram/Facebook.")
+    metricool_id = fields.Char(string="Metricool id", copy=False)
     # Resultados (los completa el analista semanal a D+7)
     spend = fields.Float(string="Gasto", digits=(12, 0))
     conversations = fields.Integer(string="Conversaciones")
@@ -276,4 +286,222 @@ class CristalAgentPauta(models.AbstractModel):
                           "generarlo con Higgsfield si hay saldo (docs/guion-video-ruta.md)."))
             except Exception as e:  # noqa: BLE001
                 _logger.warning("Actividad de video falló: %s", e)
+        return True
+
+    # ───────────────────────── v1.59 — Orgánico mensual (E5) ─────────────────────────
+    @api.model
+    def _month_bounds(self, month_start):
+        ms = month_start.replace(day=1)
+        nxt = (ms + timedelta(days=32)).replace(day=1)
+        return ms, nxt
+
+    @api.model
+    def _organic_dates(self, month_start):
+        ms, nxt = self._month_bounds(month_start)
+        days = (nxt - ms).days
+        return [ms + timedelta(days=i) for i in range(days)
+                if (ms + timedelta(days=i)).weekday() in ORGANIC_WEEKDAYS]
+
+    @api.model
+    def _organic_offers(self, ref_date):
+        offers = self.env['cristal.agent.offer'].sudo().search(
+            [('active', '=', True), ('offer_type', 'in', ('bundle', 'bonus'))],
+            order='priority desc, id')
+        return offers.filtered(lambda o: not o.valid_until or o.valid_until >= ref_date)
+
+    @api.model
+    def _organic_buyers(self):
+        """Negocios mayoristas que compraron alguna vez (número real para PRUEBA_SOCIAL)."""
+        may = self.env['res.partner.category'].sudo().search([('name', '=', 'Mayorista')], limit=1)
+        if not may:
+            return 0
+        groups = self.env['sale.order'].sudo()._read_group(
+            [('partner_id.commercial_partner_id.category_id', 'in', may.ids),
+             ('state', 'in', ('sale', 'done'))], ['partner_id'])
+        return len({p.commercial_partner_id.id for p, in groups})
+
+    @api.model
+    def _organic_departures(self, month_start):
+        """Salidas del mes: las cargadas, y para los circuitos sin salida cargada, la fecha
+        que les toca por la rotación (cada N semanas desde la primera salida)."""
+        ms, nxt = self._month_bounds(month_start)
+        Dep = self.env['cristal.agent.route.departure'].sudo()
+        circuits = self.env['cristal.agent.circuit'].sudo().search([])
+        out = {}
+        for d in Dep.search([('date', '>=', ms), ('date', '<', nxt), ('state', '!=', 'postergada')]):
+            out[(d.circuit_id.id, d.date)] = (d.date, d.circuit_id.name)
+        period = 7 * max(len(circuits), 1)
+        for c in circuits:
+            if any(k[0] == c.id for k in out) or not c.first_departure_date:
+                continue
+            d = c.first_departure_date
+            while d < ms:
+                d += timedelta(days=period)
+            while d < nxt:
+                out[(c.id, d)] = (d, c.name)
+                d += timedelta(days=period)
+        return sorted(out.values())
+
+    @staticmethod
+    def _two_lines(text, max_chars=20):
+        words = (text or '').split()
+        if len(' '.join(words)) <= max_chars or len(words) < 2:
+            return ' '.join(words)
+        best = None
+        for i in range(1, len(words)):
+            a, b = ' '.join(words[:i]), ' '.join(words[i:])
+            score = max(len(a), len(b))
+            if best is None or score < best[0]:
+                best = (score, a, b)
+        return f"{best[1]}|{best[2]}"
+
+    @api.model
+    def organic_spec(self, angle, ctx, offer=None):
+        """Textos de la placa (para services/placa.render) y del posteo de un ángulo.
+        Devuelve (ángulo efectivo, spec, texto del posteo)."""
+        cierre = 'ESCRIBINOS POR WHATSAPP'
+        if angle == 'LOGISTICA':
+            sal = ctx['salidas']
+            half = (len(sal) + 1) // 2
+            pueblos = ' · '.join(s[0] for s in sal[:half]) + (
+                '|' + ' · '.join(s[0] for s in sal[half:]) if sal[half:] else '')
+            spec = dict(base='joaco_camion', dia=f"SALIDAS DE {ctx['mes']}",
+                        titulo='EL CAMIÓN SALE|TODOS LOS JUEVES', pueblos=pueblos,
+                        promo='TE LO DEJAMOS|EN TU NEGOCIO',
+                        detalle='Pueblos de la zona, hasta 120 km de Río Cuarto',
+                        condiciones='Pedidos hasta el miércoles a las 18 h', cierre=cierre)
+            body = (f"🚚 En {ctx['mes_min']} el camión de Química Cristal sale todos los jueves:\n"
+                    + '\n'.join(f"• {s[1]}" for s in sal)
+                    + "\n\nSi tenés un negocio en la zona, pedís por WhatsApp hasta el miércoles "
+                      "a las 18 h y te lo dejamos en el local 👇")
+        elif angle == 'PRUEBA_SOCIAL':
+            n = ctx['clientes']
+            spec = dict(base='camion_cargado', dia='CLIENTES DE QUÍMICA CRISTAL',
+                        titulo=f"+{n} NEGOCIOS|YA NOS COMPRAN", pueblos='',
+                        promo='DIRECTO DE FÁBRICA|A TU LOCAL',
+                        detalle='Almacenes, kioscos, lavaderos y revendedores de la zona',
+                        condiciones='Bidones de 20 L a precio de fábrica', cierre=cierre)
+            body = (f"🤝 Más de {n} negocios de Río Cuarto y la zona ya compran directo de "
+                    "fábrica en Química Cristal: almacenes, kioscos, lavaderos y revendedores.\n\n"
+                    "Precio de fábrica, bidones de 20 L y te lo llevamos al negocio.\n\n"
+                    "¿Querés la lista de precios? Escribinos por WhatsApp 👇")
+        elif angle == 'PRODUCTO' and offer:
+            desc = ' '.join((offer.description or '').split())
+            short = desc if len(desc) <= 90 else desc[:87].rsplit(' ', 1)[0] + '…'
+            spec = dict(base='pallet_regalo', dia=f"COMBO DE {ctx['mes']}",
+                        titulo=self._two_lines((offer.name or 'Combo del mes').upper()),
+                        pueblos='', promo='ARMADO PARA|TU NEGOCIO', detalle=short,
+                        condiciones='Precio de fábrica · pedilo por WhatsApp', cierre=cierre)
+            body = (f"🎁 {offer.name}\n\n{desc}\n\n"
+                    "Lo armamos para tu negocio a precio de fábrica. Pedilo por WhatsApp 👇")
+        elif angle == 'MARGEN':
+            spec = dict(base='camion_cargado', dia='PARA REVENDEDORES',
+                        titulo='COMPRÁS A GRANEL|GANÁS POR LITRO', pueblos='',
+                        promo='FRACCIONÁS|Y REVENDÉS',
+                        detalle='Bidones de 20 L a precio de fábrica, directo al negocio',
+                        condiciones='Jabón, suavizante, lavandina, cloro, detergente', cierre=cierre)
+            body = ("💰 Comprás a granel en bidones de 20 L, fraccionás en tu local y ganás por "
+                    "litro.\n\nJabón líquido, suavizante, lavandina, cloro, detergente y "
+                    "desengrasante, hechos en nuestra fábrica de Río Cuarto.\n\n"
+                    "Pedí la lista de precios por WhatsApp 👇")
+        else:  # FABRICA (y PRODUCTO sin oferta)
+            angle = 'FABRICA'
+            spec = dict(base='joaco_deposito', dia='FÁBRICA EN RÍO CUARTO',
+                        titulo='SOMOS FÁBRICA|SIN INTERMEDIARIOS', pueblos='',
+                        promo='PRECIO DE FÁBRICA|PARA TU NEGOCIO',
+                        detalle='Jabón, suavizante, lavandina, cloro, detergente y desengrasante',
+                        condiciones='Bidones de 20 L · lista de precios por WhatsApp', cierre=cierre)
+            body = ("🏭 Somos fábrica: hacemos nuestros productos en Río Cuarto hace más de 20 "
+                    "años.\n\nSi tenés un almacén, kiosco, lavadero o revendés productos de "
+                    "limpieza, comprás directo y sin intermediarios.\n\n"
+                    "Escribinos por WhatsApp y te pasamos la lista de precios 👇")
+        return angle, spec, f"{body}\n\n{ORGANIC_HASHTAGS}"
+
+    @api.model
+    def generate_organic_month(self, month_start, config=None):
+        """Calendario orgánico de un mes: una placa por martes y viernes, rotando ángulos,
+        con su texto. Idempotente por fecha. Devuelve los creativos creados."""
+        from ..services import placa
+        ms, nxt = self._month_bounds(month_start)
+        Creative = self.env['cristal.agent.creative'].sudo()
+        Att = self.env['ir.attachment'].sudo()
+        offers = list(self._organic_offers(ms))
+        buyers = (self._organic_buyers() // 10) * 10
+        sal = self._organic_departures(ms)
+        ctx = {
+            'mes': MESES[ms.month], 'mes_min': MESES[ms.month].lower(), 'clientes': buyers,
+            'salidas': [(f"{DIAS_ABR[d.weekday()]} {d.day} {(name or '').upper()}",
+                         f"{DIAS_MIN[d.weekday()]} {d.day}/{d.month}: {name}") for d, name in sal],
+        }
+        created = Creative.browse()
+        oi = 0
+        for i, day in enumerate(self._organic_dates(ms)):
+            angle = ORGANIC_ROTATION[i % len(ORGANIC_ROTATION)]
+            offer = None
+            if angle == 'PRODUCTO':
+                if offers:
+                    offer = offers[oi % len(offers)]
+                    oi += 1
+                else:
+                    angle = 'MARGEN' if i % 2 else 'FABRICA'
+            if angle == 'PRUEBA_SOCIAL' and buyers < 20:
+                angle = 'MARGEN'
+            if angle == 'LOGISTICA' and not sal:
+                angle = 'FABRICA'
+            if Creative.search_count([('format', '=', 'organico'), ('planned_date', '=', day)]):
+                continue
+            angle, spec, body = self.organic_spec(angle, ctx, offer)
+            try:
+                data = placa.render(**spec)
+            except Exception as e:  # noqa: BLE001
+                _logger.exception("Placa orgánica %s del %s falló: %s", angle, day, e)
+                continue
+            version = Creative.search_count([('format', '=', 'organico'), ('angle', '=', angle)]) + 1
+            att = Att.create({'name': f"organico_{day:%Y%m%d}_{angle.lower()}_v{version}.jpg",
+                              'raw': data, 'mimetype': 'image/jpeg', 'public': True,
+                              'description': f"Orgánico {angle} · {day:%d/%m} · Pauta Cristal"})
+            created |= Creative.create({
+                'name': f"[ORGANICO] {angle} | placa v{version} | {day:%d/%m}",
+                'zone': 'ORGANICO', 'angle': angle, 'format': 'organico', 'version': version,
+                'attachment_id': att.id, 'body': body, 'planned_date': day,
+                'headline': offer.name if offer else False, 'state': 'generated',
+                'notes': f"Oferta: {offer.name} (id {offer.id})" if offer else False,
+            })
+        return created
+
+    @api.model
+    def cron_organic_content(self, force=False):
+        """Todos los días: desde el día `pauta_organic_day` arma el calendario orgánico del
+        mes siguiente si todavía no existe, y avisa en el canal interno. La rutina semanal
+        de pauta lo sube a Metricool para revisión."""
+        config = self.env['cristal.agent.config'].sudo().get_active()
+        if not config or not config.pauta_enabled or not config.pauta_organic_enabled:
+            _logger.info("cron_organic_content: orgánico apagado")
+            return False
+        today = fields.Date.context_today(config)
+        if not force and today.day < (config.pauta_organic_day or 25):
+            return False
+        ms, nxt = self._month_bounds(today)
+        target, after = self._month_bounds(nxt)
+        Creative = self.env['cristal.agent.creative'].sudo()
+        expected = len(self._organic_dates(target))
+        have = Creative.search_count([('format', '=', 'organico'), ('planned_date', '>=', target),
+                                      ('planned_date', '<', after)])
+        if have >= expected:
+            return True
+        created = self.generate_organic_month(target, config=config)
+        if created and config.internal_channel_id:
+            from markupsafe import Markup, escape
+            lines = Markup('').join(
+                Markup("<li>%s · %s: <a href='%s'>placa</a></li>")
+                % (f"{c.planned_date:%d/%m}", c.angle, c.public_url) for c in created)
+            html = (Markup("<p>📅 <b>Contenido orgánico de %s listo</b> (%s posteos, martes y "
+                           "viernes).</p><ul>%s</ul><p>La rutina semanal los sube a Metricool "
+                           "para revisión; nada se publica sin tu OK.</p>")
+                    % (escape(MESES[target.month].lower()), len(created), lines))
+            try:
+                config.internal_channel_id.sudo().with_context(from_cristal_agent=True).message_post(
+                    body=html, message_type='comment', subtype_xmlid='mail.mt_comment')
+            except Exception as e:  # noqa: BLE001
+                _logger.warning("Aviso de orgánico al canal falló: %s", e)
         return True

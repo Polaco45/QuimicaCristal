@@ -16,5 +16,29 @@
             <field name="active" eval="True"/>
         </record>
 
+        <!-- v1.59 — 8:15 AR: desde el día 25, calendario orgánico del mes siguiente. -->
+        <record id="cron_pauta_organic_content" model="ir.cron">
+            <field name="name">Cristal Agent: Pauta — contenido orgánico del mes siguiente</field>
+            <field name="model_id" ref="model_cristal_agent_pauta"/>
+            <field name="state">code</field>
+            <field name="code">model.cron_organic_content()</field>
+            <field name="interval_number">1</field>
+            <field name="interval_type">days</field>
+            <field name="nextcall" eval="(DateTime.now() + relativedelta(days=1)).strftime('%Y-%m-%d 11:15:00')"/>
+            <field name="active" eval="True"/>
+        </record>
+
+        <!-- v1.59 — 9:00 AR: revisión mensual del mayorista (día 1; reintenta si falló). -->
+        <record id="cron_monthly_review" model="ir.cron">
+            <field name="name">Cristal Agent: Revisión mensual del mayorista</field>
+            <field name="model_id" ref="model_cristal_agent_monthly_review"/>
+            <field name="state">code</field>
+            <field name="code">model.cron_monthly_review()</field>
+            <field name="interval_number">1</field>
+            <field name="interval_type">days</field>
+            <field name="nextcall" eval="(DateTime.now() + relativedelta(days=1)).strftime('%Y-%m-%d 12:00:00')"/>
+            <field name="active" eval="True"/>
+        </record>
+
     </data>
 </odoo>
