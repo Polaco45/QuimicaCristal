@@ -1831,6 +1831,13 @@ class CristalAgentRouteSelftest(models.TransientModel):
             spec_angle, spec, body = Pauta.organic_spec('PRODUCTO', {'mes': 'X', 'mes_min': 'x',
                                                                     'clientes': 0, 'salidas': []})
             assert spec_angle == 'FABRICA', "PRODUCTO sin oferta debería caer en FABRICA"
+            offer = env['cristal.agent.offer'].sudo().create({
+                'name': 'ZZ Combo Test', 'offer_type': 'bundle',
+                'description': 'Combo test: 1 caja de jabón + 1 caja de cloro. Precio: lista del día '
+                               '(Claudio lo cotiza con create_sale_order).'})
+            _a, _s, body = Pauta.organic_spec('PRODUCTO', {'mes': 'X', 'mes_min': 'x', 'clientes': 0,
+                                                           'salidas': []}, offer)
+            assert 'Claudio' not in body and 'Precio' not in body and 'cloro.' in body, body
             return (f"{len(created)} posteos martes/viernes con placa pública y texto, "
                     f"ángulos {', '.join(sorted(angles))} · idempotente · sin oferta → FABRICA")
         self._case(results, "57. Pauta: orgánico mensual", c_pauta_organico)

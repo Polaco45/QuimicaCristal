@@ -396,7 +396,11 @@ class CristalAgentPauta(models.AbstractModel):
                     "Precio de fábrica, bidones de 20 L y te lo llevamos al negocio.\n\n"
                     "¿Querés la lista de precios? Escribinos por WhatsApp 👇")
         elif angle == 'PRODUCTO' and offer:
+            import re
+            # Solo la primera oración es pública: el resto de la descripción de la oferta
+            # trae instrucciones internas para Claudio (precio, a quién ofrecerla, etc.).
             desc = ' '.join((offer.description or '').split())
+            desc = re.split(r'\.\s', desc)[0].rstrip('.') + '.' if desc else ''
             short = desc.split(':')[0] if ':' in desc[:70] else desc
             short = short if len(short) <= 60 else short[:57].rsplit(' ', 1)[0] + '…'
             spec = dict(base='pallet_regalo', dia=f"COMBO DE {ctx['mes']}",
