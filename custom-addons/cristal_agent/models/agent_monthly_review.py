@@ -124,7 +124,7 @@ class CristalAgentMonthlyReview(models.Model):
 
         # Pauta: ángulos con resultados cargados por la rutina semanal
         Creative = self.env['cristal.agent.creative'].sudo()
-        crs = Creative.search([('create_date', '>=', a - timedelta(days=31)), ('create_date', '<', b)])
+        crs = Creative.search([('create_date', '>=', a), ('create_date', '<', b)])
         angles = {}
         for c in crs:
             row = angles.setdefault(c.angle, {'pieces': 0, 'with_results': 0, 'spend': 0.0,
@@ -259,16 +259,22 @@ class CristalAgentMonthlyReview(models.Model):
             review.write(vals)
         else:
             review = self.create(vals)
-        if post and not review.posted:
-            config = self.env['cristal.agent.config'].sudo().get_active()
-            if config and config.internal_channel_id:
-                try:
-                    config.internal_channel_id.sudo().with_context(from_cristal_agent=True).message_post(
-                        body=html, message_type='comment', subtype_xmlid='mail.mt_comment')
-                    review.posted = True
-                except Exception as e:  # noqa: BLE001
-                    _logger.warning("Revisión mensual al canal falló: %s", e)
+        if post:
+            review._post()
         return review
+
+    def _post(self):
+        config = self.env['cristal.agent.config'].sudo().get_active()
+        for review in self.filtered(lambda r: not r.posted):
+            if not (config and config.internal_channel_id):
+                return False
+            try:
+                config.internal_channel_id.sudo().with_context(from_cristal_agent=True).message_post(
+                    body=review.body_html, message_type='comment', subtype_xmlid='mail.mt_comment')
+                review.posted = True
+            except Exception as e:  # noqa: BLE001
+                _logger.warning("Revisión mensual al canal falló: %s", e)
+        return True
 
     @api.model
     def cron_monthly_review(self):
@@ -279,7 +285,10 @@ class CristalAgentMonthlyReview(models.Model):
             return False
         today = fields.Date.context_today(config)
         prev_month = (today.replace(day=1) - timedelta(days=1)).replace(day=1)
-        if self.search_count([('month', '=', prev_month), ('posted', '=', True)]):
+        existing = self.search([('month', '=', prev_month)], limit=1)
+        if existing:
+            # Ya armada (con los números al cierre): solo reintenta publicarla.
+            existing._post()
             return True
         self.build(prev_month)
         return True
