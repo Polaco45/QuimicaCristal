@@ -36,3 +36,7 @@ author_id 2 (OdooBot). Si falla, devolvé el texto como resultado de la tarea.
 
 Reglas: no inventes números; si un dato no está, decilo. No propongas subir el gasto
 semanal total más de 20 %. Nunca propongas envíos masivos de WhatsApp.
+
+Agregado 04/11/2026: agrupá los anuncios por su nombre "[ZONA] ÁNGULO | formato vN | salida DD/MM"
+(ángulo, formato y zona), marcá fatiga (frecuencia > 3,5) y no propongas superar $120.000 por semana
+ni usar Audience Network.
