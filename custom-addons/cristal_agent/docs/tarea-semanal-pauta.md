@@ -44,9 +44,10 @@ ni usar Audience Network.
 Agregado 04/11/2026 (v1.59) — orgánico, resultados y aprendizaje:
 A) ORGÁNICO: si el conector de Odoo expone `cristal.agent.creative`, buscá los creativos con
    format = 'organico', state = 'generated' y planned_date entre hoy y dentro de 8 días. Para cada
-   uno creá en Metricool un posteo PARA REVISIÓN (createScheduledPostForReview, nunca publicar
-   directo) en Instagram y Facebook, fecha planned_date a las 11:00 (America/Argentina/Cordoba),
-   texto = body, imagen = public_url. Después escribí en el creativo metricool_id y
+   uno creá en Metricool un BORRADOR (createScheduledPost con draft = true; el plan gratuito de
+   Metricool no tiene flujo de revisión; nunca publicar directo) en Instagram y Facebook, blogId
+   7443703, fecha planned_date a las 11:00 (America/Buenos_Aires), instagramData.isAiGenerated =
+   true (las fotos base son IA), texto = body, imagen = public_url. Después escribí en el creativo metricool_id y
    state = 'scheduled'. Si el modelo no está expuesto, decilo en una línea del informe.
 B) RESULTADOS: para cada creativo con meta_ad_id y sin results_date (o con results_date de hace
    más de 7 días), cargá desde Meta los últimos 7 días: spend, conversations,
