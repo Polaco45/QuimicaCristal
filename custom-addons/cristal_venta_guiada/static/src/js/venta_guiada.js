@@ -10,7 +10,10 @@ import { PaymentScreen } from "@point_of_sale/app/screens/payment_screen/payment
 
 // Venta guiada: cada producto que se carga en un ticket de consumidor final
 // muestra una tarjeta con UNA sugerencia (combo, tamaño mayor o complemento).
-// La tarjeta no bloquea: si el vendedor sigue cargando, se reemplaza sola.
+// Las demás tarjetas no bloquean: si el vendedor sigue cargando, se reemplazan solas.
+// La de COMBO es obligatoria (Joaco, 04/11/2026: "que lo tenga que ofrecer sí o sí"):
+// mientras está abierta, lo que se escanea o toca queda en espera y se carga apenas el
+// vendedor contesta "lo lleva" o "no quiso"; tampoco se puede cobrar sin contestar.
 
 const KIND_TITLE = {
     combo: "Combo",
@@ -37,7 +40,8 @@ function isLoose(line) {
 
 patch(PosStore.prototype, {
     async setup() {
-        this.cristalVg = { card: null, queue: [] };
+        // held: productos cargados mientras la tarjeta de combo esperaba respuesta.
+        this.cristalVg = { card: null, queue: [], held: [] };
         return await super.setup(...arguments);
     },
 
@@ -83,7 +87,41 @@ patch(PosStore.prototype, {
         return this.env.utils.formatCurrency(amount);
     },
 
+    // Tarjeta de combo de este ticket esperando respuesta (bloquea la carga y el cobro).
+    cristalVgPending(order) {
+        const card = this.cristalVg?.card;
+        return card && card.kind === "combo" && order && card.orderUuid === order.uuid ? card : null;
+    },
+
+    cristalVgWarnPending() {
+        this.notification?.add(_t("Primero ofrecé el combo y marcá qué contestó el cliente."), {
+            type: "warning",
+        });
+    },
+
+    // Carga lo que quedó en espera mientras la tarjeta de combo estaba abierta.
+    async cristalVgReplayHeld() {
+        const held = this.cristalVg.held || [];
+        this.cristalVg.held = [];
+        for (const item of held) {
+            if (item.orderUuid !== this.get_order()?.uuid) {
+                continue;
+            }
+            await this.addLineToCurrentOrder(...item.args);
+        }
+    },
+
+    cristalVgAnswerSeconds(card) {
+        return card?.shownAt ? Math.round((Date.now() - card.shownAt) / 100) / 10 : 0;
+    },
+
     async addLineToCurrentOrder(vals, opts = {}, configure = true) {
+        const order = this.get_order();
+        if (configure && !opts.cristalVgSkip && this.cristalVgPending(order)) {
+            this.cristalVg.held.push({ orderUuid: order.uuid, args: [...arguments] });
+            this.cristalVgWarnPending();
+            return;
+        }
         const line = await super.addLineToCurrentOrder(...arguments);
         if (configure && !opts.cristalVgSkip && line) {
             try {
@@ -178,6 +216,7 @@ patch(PosStore.prototype, {
             return;
         }
         this.cristalVgState(order).shown.push(card.key);
+        card.shownAt = Date.now();
         this.cristalVg.card = card;
         this.cristalVgLog(order, { trigger_product_id: card.triggerId, product_id: card.productId, kind: card.kind });
     },
@@ -303,6 +342,10 @@ patch(PosStore.prototype, {
             // Odoo abre su elección de aromas/colores; si se cancela, no se toca nada.
             const comboLine = await this.addLineToCurrentOrder({ product_id: product }, { cristalVgSkip: true });
             if (!comboLine) {
+                if (card.kind === "combo") {
+                    // Canceló la elección de aromas: la tarjeta sigue esperando respuesta.
+                    this.cristalVg.card = card;
+                }
                 return;
             }
             if (card.kind === "checkout") {
@@ -325,7 +368,11 @@ patch(PosStore.prototype, {
                 kind: card.kind,
                 accepted: true,
                 amount: card.amount,
+                answer_seconds: this.cristalVgAnswerSeconds(card),
             });
+            if (card.kind === "combo") {
+                await this.cristalVgReplayHeld();
+            }
             return;
         }
         this.cristalVgLog(order, {
@@ -334,6 +381,7 @@ patch(PosStore.prototype, {
             kind: card.kind,
             accepted: true,
             amount: card.amount,
+            answer_seconds: this.cristalVgAnswerSeconds(card),
         });
         if (card.kind === "qty") {
             // "Llevando N": se sube la cantidad de esa línea; la lista de precios baja el precio.
@@ -360,19 +408,30 @@ patch(PosStore.prototype, {
         }
     },
 
-    cristalVgDismiss() {
+    async cristalVgDismiss() {
         const card = this.cristalVg.card;
         const order = this.get_order();
         this.cristalVg.card = null;
         if (!card || !order) {
             return;
         }
+        // Queda registrado el "no" y cuánto tardó en contestarlo.
+        this.cristalVgLog(order, {
+            trigger_product_id: card.triggerId,
+            product_id: card.productId,
+            kind: card.kind,
+            declined: true,
+            answer_seconds: this.cristalVgAnswerSeconds(card),
+        });
         if (card.kind === "checkout") {
             this.cristalVgState(order).checkoutDone = true;
             return;
         }
         // Dijo que no: baja un escalón (combo → tamaño → complemento).
         this.cristalVgNext(order);
+        if (card.kind === "combo") {
+            await this.cristalVgReplayHeld();
+        }
     },
 
     // Promo de caja (2 por $X): al final, en la pantalla de cobro, a todos los tickets.
@@ -405,6 +464,11 @@ patch(PosStore.prototype, {
 
     async pay() {
         const order = this.get_order();
+        if (this.cristalVgPending(order)) {
+            // El combo es obligatorio: no se cobra sin contestar.
+            this.cristalVgWarnPending();
+            return;
+        }
         if (order && !order.is_empty() && this.cristalVgConfig()) {
             // No frena el cobro: la tarjeta aparece en la pantalla de pago.
             this.cristalVg.queue = [];
@@ -429,12 +493,16 @@ export class VentaGuiadaCard extends Component {
         return card && card.orderUuid === this.pos.get_order()?.uuid ? card : null;
     }
 
+    get heldCount() {
+        return this.pos.cristalVg?.held?.length || 0;
+    }
+
     async accept() {
         await this.pos.cristalVgAccept();
     }
 
-    dismiss() {
-        this.pos.cristalVgDismiss();
+    async dismiss() {
+        await this.pos.cristalVgDismiss();
     }
 }
 

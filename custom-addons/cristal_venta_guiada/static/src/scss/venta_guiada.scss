@@ -4,3 +4,12 @@
     -webkit-line-clamp: unset;
     overflow-wrap: anywhere;
 }
+
+// Tarjeta de combo obligatoria: late hasta que el vendedor contesta.
+.cristal-vg-mandatory {
+    animation: cristal-vg-pulse 1.6s ease-in-out infinite;
+}
+@keyframes cristal-vg-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(25, 135, 84, 0.55); }
+    50% { box-shadow: 0 0 0 8px rgba(25, 135, 84, 0); }
+}

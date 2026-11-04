@@ -29,6 +29,9 @@ class CristalVgEvent(models.Model):
         ('qty', 'Llevando N'),
     ], string='Tipo')
     accepted = fields.Boolean(string='Aceptada')
+    # Combo obligatorio (Joaco, 04/11/2026): el vendedor tiene que contestar si lo ofreció.
+    declined = fields.Boolean(string='Ofrecida, no quiso')
+    answer_seconds = fields.Float(string='Segundos hasta responder', digits=(16, 1))
     amount = fields.Float(string='Monto sumado')
     channel = fields.Selection([('pos', 'Caja'), ('web', 'Web')], string='Canal', default='pos', index=True)
 
@@ -104,15 +107,22 @@ class CristalVgEvent(models.Model):
                 'kind': ev.get('kind') if ev.get('kind') in kinds else False,
                 'channel': ev.get('channel') or 'pos',
             }
-            if ev.get('accepted'):
+            if ev.get('accepted') or ev.get('declined'):
+                # La respuesta marca el evento "mostrado" del mismo ticket y producto.
                 shown = self.search([
                     ('order_uuid', '=', vals['order_uuid']),
                     ('product_id', '=', vals['product_id']),
                     ('accepted', '=', False),
+                    ('declined', '=', False),
                 ], limit=1)
+                if ev.get('accepted'):
+                    answer = {'accepted': True, 'amount': ev.get('amount') or 0.0}
+                else:
+                    answer = {'declined': True}
+                answer['answer_seconds'] = ev.get('answer_seconds') or 0.0
                 if shown:
-                    shown.write({'accepted': True, 'amount': ev.get('amount') or 0.0})
+                    shown.write(answer)
                     continue
-                vals.update(accepted=True, amount=ev.get('amount') or 0.0)
+                vals.update(answer)
             self.create(vals)
         return True
