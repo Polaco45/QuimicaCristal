@@ -40,3 +40,18 @@ semanal total más de 20 %. Nunca propongas envíos masivos de WhatsApp.
 Agregado 04/11/2026: agrupá los anuncios por su nombre "[ZONA] ÁNGULO | formato vN | salida DD/MM"
 (ángulo, formato y zona), marcá fatiga (frecuencia > 3,5) y no propongas superar $120.000 por semana
 ni usar Audience Network.
+
+Agregado 04/11/2026 (v1.59) — orgánico, resultados y aprendizaje:
+A) ORGÁNICO: si el conector de Odoo expone `cristal.agent.creative`, buscá los creativos con
+   format = 'organico', state = 'generated' y planned_date entre hoy y dentro de 8 días. Para cada
+   uno creá en Metricool un posteo PARA REVISIÓN (createScheduledPostForReview, nunca publicar
+   directo) en Instagram y Facebook, fecha planned_date a las 11:00 (America/Argentina/Cordoba),
+   texto = body, imagen = public_url. Después escribí en el creativo metricool_id y
+   state = 'scheduled'. Si el modelo no está expuesto, decilo en una línea del informe.
+B) RESULTADOS: para cada creativo con meta_ad_id y sin results_date (o con results_date de hace
+   más de 7 días), cargá desde Meta los últimos 7 días: spend, conversations,
+   cost_per_conversation y results_date = hoy.
+C) EXPERIMENTOS: cada propuesta que hagas va como un `cristal.agent.experiment` (name = hipótesis,
+   action, metric, value_before, evaluate_on = hoy + 7). Los experimentos con evaluate_on vencido:
+   completá value_after, verdict (win / lose / neutral) y notes con el aprendizaje en una línea.
+   Abrí el informe con los aprendizajes de las últimas 8 semanas que sigan vigentes.

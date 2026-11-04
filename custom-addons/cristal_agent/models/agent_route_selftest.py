@@ -1811,6 +1811,7 @@ class CristalAgentRouteSelftest(models.TransientModel):
         def c_pauta_organico():
             Pauta = env['cristal.agent.pauta']
             Creative = env['cristal.agent.creative'].sudo()
+            cfg.write({'pauta_enabled': True, 'pauta_organic_enabled': True})
             ms, nxt = Pauta._month_bounds(today_ar)
             target, after = Pauta._month_bounds(nxt)
             Creative.search([('format', '=', 'organico'), ('planned_date', '>=', target),

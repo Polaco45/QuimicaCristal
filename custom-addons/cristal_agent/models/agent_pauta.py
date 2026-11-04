@@ -326,11 +326,12 @@ class CristalAgentPauta(models.AbstractModel):
         que les toca por la rotación (cada N semanas desde la primera salida)."""
         ms, nxt = self._month_bounds(month_start)
         Dep = self.env['cristal.agent.route.departure'].sudo()
-        circuits = self.env['cristal.agent.circuit'].sudo().search([])
+        circuits = self.env['cristal.agent.circuit'].sudo().search([('active', '=', True)])
         out = {}
-        for d in Dep.search([('date', '>=', ms), ('date', '<', nxt), ('state', '!=', 'postergada')]):
+        for d in Dep.search([('date', '>=', ms), ('date', '<', nxt), ('state', '!=', 'postergada'),
+                             ('circuit_id', 'in', circuits.ids)]):
             out[(d.circuit_id.id, d.date)] = (d.date, d.circuit_id.name)
-        period = 7 * max(len(circuits), 1)
+        period = 28  # misma rotación que route.departure.generate_upcoming
         for c in circuits:
             if any(k[0] == c.id for k in out) or not c.first_departure_date:
                 continue
@@ -365,12 +366,15 @@ class CristalAgentPauta(models.AbstractModel):
             half = (len(sal) + 1) // 2
             pueblos = ' · '.join(s[0] for s in sal[:half]) + (
                 '|' + ' · '.join(s[0] for s in sal[half:]) if sal[half:] else '')
+            titulo = ('EL CAMIÓN SALE|TODOS LOS JUEVES' if ctx.get('solo_jueves', True)
+                      else 'EL CAMIÓN SALE|CADA SEMANA')
             spec = dict(base='joaco_camion', dia=f"SALIDAS DE {ctx['mes']}",
-                        titulo='EL CAMIÓN SALE|TODOS LOS JUEVES', pueblos=pueblos,
+                        titulo=titulo, pueblos=pueblos,
                         promo='TE LO DEJAMOS|EN TU NEGOCIO',
                         detalle='Pueblos de la zona, hasta 120 km de Río Cuarto',
                         condiciones='Pedidos hasta el miércoles a las 18 h', cierre=cierre)
-            body = (f"🚚 En {ctx['mes_min']} el camión de Química Cristal sale todos los jueves:\n"
+            body = (f"🚚 En {ctx['mes_min']} el camión de Química Cristal sale "
+                    f"{'todos los jueves' if ctx.get('solo_jueves', True) else 'cada semana'}:\n"
                     + '\n'.join(f"• {s[1]}" for s in sal)
                     + "\n\nSi tenés un negocio en la zona, pedís por WhatsApp hasta el miércoles "
                       "a las 18 h y te lo dejamos en el local 👇")
@@ -430,6 +434,7 @@ class CristalAgentPauta(models.AbstractModel):
         sal = self._organic_departures(ms)
         ctx = {
             'mes': MESES[ms.month], 'mes_min': MESES[ms.month].lower(), 'clientes': buyers,
+            'solo_jueves': all(d.weekday() == 3 for d, _n in sal),
             'salidas': [(f"{DIAS_ABR[d.weekday()]} {d.day} {(name or '').upper()}",
                          f"{DIAS_MIN[d.weekday()]} {d.day}/{d.month}: {name}") for d, name in sal],
         }
