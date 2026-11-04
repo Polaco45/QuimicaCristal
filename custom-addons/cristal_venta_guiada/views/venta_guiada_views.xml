@@ -60,7 +60,7 @@
         <field name="name">cristal.vg.event.list</field>
         <field name="model">cristal.vg.event</field>
         <field name="arch" type="xml">
-            <list create="0" edit="0" decoration-success="accepted">
+            <list create="0" edit="0" decoration-success="accepted" decoration-muted="declined">
                 <field name="date"/>
                 <field name="user_id"/>
                 <field name="config_id" optional="hide"/>
@@ -68,6 +68,8 @@
                 <field name="product_id"/>
                 <field name="kind"/>
                 <field name="accepted"/>
+                <field name="declined" optional="show"/>
+                <field name="answer_seconds" optional="show" avg="Promedio"/>
                 <field name="amount" sum="Total"/>
             </list>
         </field>
