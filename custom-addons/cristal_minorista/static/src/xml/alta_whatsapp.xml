@@ -10,8 +10,8 @@
         </div>
         <div t-if="visible" class="cristal-alta d-flex flex-column gap-2 rounded-3 border border-2 border-success bg-success-subtle p-2 mt-2">
             <div class="lh-sm">
-                <div class="small fw-bolder text-uppercase opacity-75">WhatsApp del cliente</div>
-                <div class="fw-bold">"¿Te avisamos por WhatsApp cuando se te esté por terminar algo y cuando haya promos?"</div>
+                <div class="small fw-bolder text-uppercase opacity-75">Celular del cliente</div>
+                <div class="fw-bold">"¿Me pasás tu celular?"</div>
             </div>
             <div class="d-flex gap-2">
                 <input type="tel" class="form-control form-control-lg" t-att-placeholder="phonePlaceholder"
@@ -21,8 +21,8 @@
             </div>
             <div t-if="state.error" class="text-danger fw-bold" t-esc="state.error"/>
             <div class="d-flex gap-2">
-                <button class="btn btn-success btn-lg flex-grow-1" t-att-disabled="state.busy" t-on-click="accept">Sí, anotar</button>
-                <button class="btn btn-light" t-on-click="skip">No quiere</button>
+                <button class="btn btn-success btn-lg flex-grow-1" t-att-disabled="state.busy" t-on-click="accept">Anotar</button>
+                <button class="btn btn-light" t-on-click="skip">No lo da</button>
             </div>
         </div>
     </t>

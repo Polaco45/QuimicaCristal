@@ -86,8 +86,8 @@ class CristalMinoristaReport(models.AbstractModel):
         parts.append(
             f"<p><b>1 · Captación</b><br/>Ventas a consumidor final: {len(now_rows)} por "
             f"{_money(total)}{_delta(total, total_prev)}.<br/>Por origen: {origin_txt or '—'}.<br/>"
-            f"Clientes anotados para avisos: {optins} esta semana ({optin_local} en la caja); "
-            f"{allowed} en total.{self._optin_goal_txt(allowed)}</p>")
+            f"Celulares tomados: {optins} esta semana ({optin_local} en la caja); "
+            f"{allowed} clientes reciben avisos (todos con WhatsApp salvo bajas).{self._optin_goal_txt(allowed)}</p>")
 
         # 2 · Conversión (Claudio)
         quotes = self.env['sale.order'].sudo().search([
@@ -137,13 +137,17 @@ class CristalMinoristaReport(models.AbstractModel):
         return ''.join(parts)
 
     def _optin_goal_txt(self, allowed):
-        """Cuánto falta para que se prendan solos los flujos de marketing."""
-        Param = self.env['ir.config_parameter'].sudo()
-        if Param.get_param('cristal_fidelizacion.marketing_auto_enabled'):
+        """Si las promociones (segunda compra, reactivación) están prendidas. Desde el
+        04/11/2026 ya no se prenden solas por cantidad de clientes que aceptaron."""
+        flows = self.env['cristal.fid.flow'].sudo().search([('category', '=', 'marketing')])
+        on = flows.filtered('send_enabled')
+        if not flows:
+            return ""
+        if on == flows:
             return " Segunda compra y reactivación: prendidos."
-        threshold = int(Param.get_param('cristal_fidelizacion.marketing_optin_threshold') or 50)
-        return (f" Faltan {max(threshold - allowed, 0)} para {threshold}: ahí se prenden solos "
-                f"segunda compra y reactivación.")
+        if not on:
+            return " Segunda compra y reactivación: apagados (se prenden a mano)."
+        return f" Promociones prendidas: {', '.join(on.mapped('name'))}."
 
     def _ladder_txt(self):
         """Orden de la escalera y aceptación por escalón, caja y web (últimos 30 días)."""

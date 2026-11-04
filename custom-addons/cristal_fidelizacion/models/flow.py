@@ -20,7 +20,7 @@ class CristalFidFlow(models.Model):
     description = fields.Text(string='Qué hace')
     category = fields.Selection([('utility', 'Servicio (ligado a una compra)'),
                                  ('marketing', 'Promoción')], required=True,
-                                help='Las promociones solo van a quien aceptó recibirlas.')
+                                help='Las promociones van a todos los que tienen WhatsApp, salvo a los que pidieron la baja.')
     send_enabled = fields.Boolean(string='Enviar de verdad',
                                   help='Apagado: el flujo corre en modo prueba y solo registra a quién '
                                        'le habría escrito. Prenderlo recién con la plantilla aprobada.')

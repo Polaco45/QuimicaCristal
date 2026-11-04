@@ -12,6 +12,7 @@ MARKETING_GAP_DAYS = 7     # máximo 1 promoción por semana por cliente
 ANY_GAP_DAYS = 3           # y nunca dos mensajes automáticos en 3 días
 CONVERSION_DAYS = 14
 REPOSITION_LEAD_DAYS = 4   # avisar 4 días antes de que se le termine
+AUTO_ENABLE_MARKETING = False  # ver _auto_enable_marketing
 
 
 def _clean_name(product):
@@ -230,6 +231,11 @@ class CristalFidEngine(models.AbstractModel):
         cuando hay suficientes clientes con permiso: no tiene sentido mandarlos a 8
         personas. Umbral en el parámetro cristal_fidelizacion.marketing_optin_threshold.
         Se hace una sola vez; después Joaco los maneja a mano."""
+        # APAGADO (Joaco, 04/11/2026): las promos ya no esperan a que haya N clientes que
+        # aceptaron; van a todos los que tienen WhatsApp salvo los dados de baja. Prender
+        # segunda compra / reactivación es una decisión a mano (Enviar de verdad en el flujo).
+        if not AUTO_ENABLE_MARKETING:
+            return False
         Param = self.env['ir.config_parameter'].sudo()
         if Param.get_param('cristal_fidelizacion.marketing_auto_enabled'):
             return False
