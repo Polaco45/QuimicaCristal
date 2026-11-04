@@ -47,6 +47,12 @@
             <field name="optional" eval="True"/>
             <field name="circuit_id" ref="circuit_sur_oeste"/>
         </record>
+        <!-- 04/11/2026: desvío corto entre Sampacho y Coronel Moldes -->
+        <record id="town_bulnes" model="cristal.agent.circuit.town">
+            <field name="name">Bulnes</field>
+            <field name="optional" eval="True"/>
+            <field name="circuit_id" ref="circuit_sur_oeste"/>
+        </record>
         <record id="town_coronel_moldes" model="cristal.agent.circuit.town">
             <field name="name">Coronel Moldes</field>
             <field name="aliases">Moldes</field>
@@ -124,6 +130,19 @@
             <field name="name">Chucul</field>
             <field name="circuit_id" ref="circuit_norte"/>
         </record>
+        <!-- 04/11/2026: pueblos de paso sumados (desvío ≤ 20 km de la RN36) -->
+        <record id="town_rio_de_los_sauces" model="cristal.agent.circuit.town">
+            <field name="name">Río de los Sauces</field>
+            <field name="aliases">Rio de los Sauces, Los Sauces, Rio Sauces</field>
+            <field name="optional" eval="True"/>
+            <field name="circuit_id" ref="circuit_norte"/>
+        </record>
+        <record id="town_los_condores" model="cristal.agent.circuit.town">
+            <field name="name">Los Cóndores</field>
+            <field name="aliases">Los Condores, Condores</field>
+            <field name="optional" eval="True"/>
+            <field name="circuit_id" ref="circuit_norte"/>
+        </record>
 
         <!-- ═══════════ ESTE (1ra salida jue 12/11/2026) ═══════════ -->
         <record id="circuit_este" model="cristal.agent.circuit">
@@ -155,6 +174,12 @@
         </record>
         <record id="town_ucacha" model="cristal.agent.circuit.town">
             <field name="name">Ucacha</field>
+            <field name="circuit_id" ref="circuit_este"/>
+        </record>
+        <!-- 04/11/2026: de paso entre Chazón y La Carlota -->
+        <record id="town_santa_eufemia" model="cristal.agent.circuit.town">
+            <field name="name">Santa Eufemia</field>
+            <field name="aliases">Sta Eufemia, Sta. Eufemia</field>
             <field name="circuit_id" ref="circuit_este"/>
         </record>
         <record id="town_bengolea" model="cristal.agent.circuit.town">
