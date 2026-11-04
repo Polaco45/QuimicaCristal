@@ -53,7 +53,7 @@ class CristalAgentMonthlyReview(models.Model):
 
     @api.model
     def collect(self, month_start):
-        ms = month_start.replace(day=1)
+        ms = fields.Date.to_date(month_start).replace(day=1)
         me = (ms + timedelta(days=32)).replace(day=1)
         a, b = self._utc(ms), self._utc(me)
         Partner = self.env['res.partner'].sudo()
@@ -245,7 +245,7 @@ class CristalAgentMonthlyReview(models.Model):
     # ───────────────────────── Ejecución ─────────────────────────
     @api.model
     def build(self, month_start, post=True):
-        ms = month_start.replace(day=1)
+        ms = fields.Date.to_date(month_start).replace(day=1)
         prev_rec = self.search([('month', '<', ms)], order='month desc', limit=1)
         prev = json.loads(prev_rec.snapshot) if prev_rec and prev_rec.snapshot else None
         data = self.collect(ms)
