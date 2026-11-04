@@ -54,6 +54,17 @@ idempotente), 58 revisión mensual (arma el HTML, guarda snapshot, recomendacion
 6. Tarea semanal: prompt con orgánico + experimentos + resultados por creativo.
 7. Doc del plan, memoria.
 
+## Estado de ejecución (04/11/2026)
+- Revisión independiente del código: 5 defectos corregidos (rotación fija de 28 días, solo
+  circuitos activos, título según el día real, la revisión mensual no se rearma con números
+  de otro día, ángulos solo del mes, autotest con el orgánico encendido).
+- Los aprendizajes de pauta NO van a la base de conocimiento (Claudio la usa para hablar con
+  clientes): quedan en `cristal.agent.experiment` (veredicto + nota).
+- Reseñas: link https://g.page/r/CZqgcXl_eCQ-EAI/review cargado en la KB 110.
+- Conector: habilitar `cristal.agent.creative` y `cristal.agent.experiment` en «MCP Model
+  Access» lo tiene que hacer Joaco (el permiso de la sesión no lo deja hacer por RPC). Sin eso,
+  la tarea semanal no puede subir el orgánico ni registrar experimentos; lo avisa en el informe.
+
 ## Qué NO hace
 Nada se publica solo: el orgánico queda para revisión en Metricool y el remarketing en
 pausa. No hay envíos masivos de WhatsApp. No se toca el presupuesto de campañas activas.
