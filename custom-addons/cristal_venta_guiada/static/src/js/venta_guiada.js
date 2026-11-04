@@ -34,6 +34,19 @@ function baseName(product) {
     return cleanName(product).replace(/\s*\([^)]*\)\s*$/, "").trim().toLowerCase();
 }
 
+// Mismo producto en otra variante: misma plantilla, o mismo nombre sin el paréntesis final
+// (Cabo de madera 1.20 / 1.60 son plantillas distintas con el mismo nombre base).
+function cristalVgSameFamily(a, b) {
+    if (!a || !b) {
+        return false;
+    }
+    const ta = a.product_tmpl_id?.id;
+    if (ta && ta === b.product_tmpl_id?.id) {
+        return true;
+    }
+    return baseName(a) === baseName(b);
+}
+
 function isLoose(line) {
     return !line.combo_parent_id && !line.combo_line_ids?.length;
 }
@@ -176,10 +189,21 @@ patch(PosStore.prototype, {
                 });
             }
         }
+        // Nada que ya esté en el ticket, ni otra variante (medida, aroma, color) de algo que ya
+        // lleva: con desodorante de limón no se ofrece el de lavanda (Joaco, 04/11/2026).
+        // El "tamaño mayor" sí es del mismo producto que se acaba de cargar: para ese se mira
+        // el resto del ticket.
+        const others = order.lines.filter((l) => l.product_id && l.product_id.id !== product.id);
         const inCart = new Set(order.lines.map((l) => l.product_id?.id));
-        const suggestions = (this.cristalVgConfig().suggestions?.[product.id] || []).filter(
-            ([pid]) => this.models["product.product"].get(pid) && !inCart.has(pid)
-        );
+        const hasFamily = (lines, p) =>
+            lines.some((l) => cristalVgSameFamily(l.product_id, p));
+        const suggestions = (this.cristalVgConfig().suggestions?.[product.id] || []).filter(([pid, kind]) => {
+            const p = this.models["product.product"].get(pid);
+            if (!p || inCart.has(pid)) {
+                return false;
+            }
+            return !hasFamily(kind === "size" ? others : order.lines, p);
+        });
         const size = suggestions.find(([, kind]) => kind === "size");
         const other = suggestions.find(([, kind]) => kind !== "size");
         for (const [pid, kind, text] of [size, other].filter(Boolean)) {

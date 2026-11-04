@@ -18,6 +18,10 @@ SIZE_RE = re.compile(r'(\d+(?:[.,]\d+)?)\s*(lts?|l|cc|ml)\b\.?', re.I)
 CLASS_BOOST = {'ESTANCADO': 1.4, 'BAJA': 1.2, 'MEDIA': 1.0, 'ALTA': 1.0, 'QUIEBRE': 0.6}
 # Productos de impulso por defecto cuando un rubro no tiene historia.
 DEFAULT_IMPULSE_CATEG = ('Distribución / Esponjas', 'Fabricación / Limpiador Desinf Desod')
+# Respaldo por rubro (sugerir "algo del rubro afín" sin dato del producto): apagado.
+CATEGORY_FALLBACK = False
+# Tickets juntos mínimos para que un par cuente como complemento.
+COMPLEMENT_MIN_TICKETS = 5
 
 
 def _fmt(amount):
@@ -201,10 +205,11 @@ class CristalVgSuggestion(models.Model):
         for pid, p in info.items():
             cands = []   # (kind, product_info, text, reason, score)
 
-            # 1) El tamaño SIGUIENTE con mejor precio por litro (mismo aroma; si no, otro aroma).
+            # 1) El tamaño SIGUIENTE con mejor precio por litro, del MISMO aroma/color.
             #    Joaco (30/10/2026): de 1 L se ofrece el de 5, de 5 el de 10; saltar de 1 a 10 es mucho.
+            #    Joaco (04/11/2026): cambiarle el aroma es "random"; si no hay en su aroma, nada.
             if p['liters'] and p['liquid']:
-                for key in ('fam', 'base_fam'):
+                for key in ('fam',):
                     bigger = sorted(
                         (q for q in info.values() if q['product'].id != pid and q[key] == p[key]
                          and q['liters'] and q['liters'] > p['liters'] and sellable(q)
@@ -219,11 +224,14 @@ class CristalVgSuggestion(models.Model):
                                       10.0))
                         break
 
-            # 2) Complementos según los tickets
+            # 2) Complementos según los tickets. Solo de OTRO rubro (los del mismo rubro son
+            #    sustitutos: esponja de acero → lana de acero, jabón azul → jabón premium) y con
+            #    historia suficiente (con 2-3 tickets el lift sale enorme por casualidad).
             comps = []
             for qid, both in pair[pid].items():
                 q = info.get(qid)
-                if not sellable(q) or q['base_fam'] == p['base_fam'] or both < 2:
+                if (not sellable(q) or q['base_fam'] == p['base_fam'] or q['categ'] == p['categ']
+                        or both < COMPLEMENT_MIN_TICKETS):
                     continue
                 lift = both * total / (n[pid] * n[qid])
                 if lift < 1.5:
@@ -238,8 +246,10 @@ class CristalVgSuggestion(models.Model):
                               f"{both} tickets juntos, {round(conf * 100)}% de los que llevan este, lift {lift:.1f}",
                               score))
 
-            # 3) Respaldo por rubro afín: el mejor producto de impulso de ese rubro
-            if len(cands) < 2:
+            # 3) Respaldo por rubro afín: APAGADO (Joaco, 04/11/2026). Eran 1.507 de 1.952
+            #    sugerencias sin relación real con el producto ("muy random"); si un producto no
+            #    tiene una buena sugerencia, no se muestra nada.
+            if CATEGORY_FALLBACK and len(cands) < 2:
                 affine = []
                 for d, both in cat_pair[p['categ']].items():
                     if both < 3:
