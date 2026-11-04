@@ -334,13 +334,15 @@ def _build_partner_context(env, partner):
             f"si vuelve a pedir productos, llamá mark_opt_out(undo=true).")
 
     # v1.44 — Permiso para avisos por WhatsApp (campos de cristal_minorista, si está)
+    # Joaco, 04/11/2026: ya no se pide permiso; los avisos y promos le llegan a todos y el que
+    # no quiere se da de baja. Por eso nunca se muestra "todavía no se le preguntó" (la regla
+    # del prompt solo pregunta en ese caso) y set_promo_consent queda solo para la baja.
     if 'cristal_mkt_optin' in partner._fields:
         if partner.cristal_mkt_optout:
-            lines.append("- avisos por WhatsApp: NO quiere promos (no se lo preguntes).")
-        elif partner.cristal_mkt_optin:
-            lines.append("- avisos por WhatsApp: ya aceptó (no se lo preguntes).")
+            lines.append("- avisos por WhatsApp: pidió la baja de promos (no le ofrezcas promos por iniciativa propia).")
         else:
-            lines.append("- avisos por WhatsApp: todavía no se le preguntó.")
+            lines.append("- avisos por WhatsApp: le llegan (NO le preguntes si los quiere; si pide no "
+                         "recibir más promos, set_promo_consent(accepted=false)).")
 
     # v1.47 — Último mensaje automático de fidelización (cristal_fidelizacion, si está)
     if 'cristal.fid.touch' in partner.env:

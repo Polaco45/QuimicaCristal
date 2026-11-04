@@ -54,11 +54,12 @@ class ResPartner(models.Model):
 
     @api.model
     def _load_pos_data_fields(self, config_id):
-        return super()._load_pos_data_fields(config_id) + ['cristal_mkt_optin', 'cristal_mkt_optout']
+        return super()._load_pos_data_fields(config_id) + ['cristal_mkt_optin', 'cristal_mkt_optout', 'cristal_wa_key']
 
     @api.model
     def cristal_pos_identify(self, phone, name=None, partner_id=None):
-        """Alta desde la caja: el cliente deja su WhatsApp y acepta recibir avisos.
+        """Alta desde la caja: el cliente deja su WhatsApp (ya no se le pregunta por promos:
+        le llegan a todos; el que no quiere, se da de baja desde el mensaje).
 
         Si el ticket ya tiene un cliente real, se le anota el celular (si no tenía) y el
         consentimiento. Si es anónimo, se busca por WhatsApp o se crea uno nuevo, sin

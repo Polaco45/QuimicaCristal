@@ -97,6 +97,7 @@ class ResPartner(models.Model):
                                         help='Sigue recibiendo avisos de sus pedidos, no promociones.')
     cristal_mkt_optout_date = fields.Datetime(string='Fecha de baja de promociones')
     cristal_mkt_allowed = fields.Boolean(string='Se le pueden mandar promociones',
+                                         help='Todo cliente con WhatsApp, salvo que haya pedido la baja (Joaco, 04/11/2026: se le manda a todos; el que no quiere, se da de baja).',
                                          compute='_compute_cristal_mkt_allowed', store=True, index=True)
 
     # ── Comportamiento de compra (lo recalcula el proceso nocturno) ──
@@ -159,11 +160,11 @@ class ResPartner(models.Model):
                 kind = 'cf'
             partner.cristal_customer_type = kind
 
-    @api.depends('cristal_mkt_optin', 'cristal_mkt_optout', 'cristal_wa_key')
+    @api.depends('cristal_mkt_optout', 'cristal_wa_key')
     def _compute_cristal_mkt_allowed(self):
+        # Ya no hace falta aceptar: alcanza con tener WhatsApp y no haberse dado de baja.
         for partner in self:
-            partner.cristal_mkt_allowed = bool(
-                partner.cristal_mkt_optin and not partner.cristal_mkt_optout and partner.cristal_wa_key)
+            partner.cristal_mkt_allowed = bool(partner.cristal_wa_key and not partner.cristal_mkt_optout)
 
     def write(self, vals):
         now = fields.Datetime.now()

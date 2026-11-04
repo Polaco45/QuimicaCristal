@@ -6,7 +6,7 @@ import { patch } from "@web/core/utils/patch";
 import { PaymentScreen } from "@point_of_sale/app/screens/payment_screen/payment_screen";
 import { usePos } from "@point_of_sale/app/store/pos_hook";
 
-// Alta por WhatsApp en la caja: al cobrar, si el cliente todavía no aceptó avisos,
+// Alta por WhatsApp en la caja: al cobrar, si el cliente no tiene el celular cargado,
 // Guillermo le pregunta el celular. No cambia a nombre de quién se factura el ticket:
 // sólo lo asocia al cliente real (cristal_customer_pid) para su historia de compras.
 
@@ -38,7 +38,9 @@ export class AltaWhatsapp extends Component {
             return false;
         }
         const partner = this.realPartner;
-        return !partner || (!partner.cristal_mkt_optin && !partner.cristal_mkt_optout);
+        // Solo se pide el celular a quien no lo tiene cargado (Joaco, 04/11/2026: no se
+        // pregunta por promos; le llegan a todos y el que no quiere se da de baja).
+        return !partner || (!partner.cristal_wa_key && !partner.cristal_mkt_optout);
     }
 
     // Confirmación después de anotarlo (con sus puntos, si hay programa de lealtad).
@@ -71,6 +73,7 @@ export class AltaWhatsapp extends Component {
             this.order.cristal_customer_pid = res.id;
             if (this.realPartner) {
                 this.realPartner.cristal_mkt_optin = true;
+                this.realPartner.cristal_wa_key = this.realPartner.cristal_wa_key || phone;
             }
             this.order.uiState.cristalAlta = { done: true, ...res };
         } catch (error) {
