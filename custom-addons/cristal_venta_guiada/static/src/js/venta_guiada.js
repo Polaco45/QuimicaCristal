@@ -117,7 +117,8 @@ patch(PosStore.prototype, {
 
     async addLineToCurrentOrder(vals, opts = {}, configure = true) {
         const order = this.get_order();
-        if (configure && !opts.cristalVgSkip && this.cristalVgPending(order)) {
+        // Escaneado o tocado (el lector manda configure=false): igual queda en espera.
+        if (!opts.cristalVgSkip && this.cristalVgPending(order)) {
             this.cristalVg.held.push({ orderUuid: order.uuid, args: [...arguments] });
             this.cristalVgWarnPending();
             return;
