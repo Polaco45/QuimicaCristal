@@ -41,7 +41,8 @@ FORMAT_SELECTION = [
 ORGANIC_WEEKDAYS = (1, 4)
 ORGANIC_ROTATION = ('LOGISTICA', 'FABRICA', 'PRODUCTO', 'MARGEN', 'PRUEBA_SOCIAL',
                     'PRODUCTO', 'FABRICA', 'MARGEN', 'PRODUCTO', 'PRUEBA_SOCIAL')
-ORGANIC_HASHTAGS = "#QuímicaCristal #RíoCuarto #ProductosDeLimpieza #Mayorista #VentaPorMayor"
+ORGANIC_SKIP = {(12, 25), (1, 1)}  # Navidad y Año Nuevo: sin posteo
+ORGANIC_HASHTAGS ="#QuímicaCristal #RíoCuarto #ProductosDeLimpieza #Mayorista #VentaPorMayor"
 ROUTE_ANGLES = ('REGALO', 'LOGISTICA', 'FABRICA', 'MARGEN', 'URGENCIA')
 MESES = ['', 'ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO',
          'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE']
@@ -291,7 +292,7 @@ class CristalAgentPauta(models.AbstractModel):
     # ───────────────────────── v1.59 — Orgánico mensual (E5) ─────────────────────────
     @api.model
     def _month_bounds(self, month_start):
-        ms = month_start.replace(day=1)
+        ms = fields.Date.to_date(month_start).replace(day=1)
         nxt = (ms + timedelta(days=32)).replace(day=1)
         return ms, nxt
 
@@ -300,14 +301,19 @@ class CristalAgentPauta(models.AbstractModel):
         ms, nxt = self._month_bounds(month_start)
         days = (nxt - ms).days
         return [ms + timedelta(days=i) for i in range(days)
-                if (ms + timedelta(days=i)).weekday() in ORGANIC_WEEKDAYS]
+                if (ms + timedelta(days=i)).weekday() in ORGANIC_WEEKDAYS
+                and ((ms + timedelta(days=i)).month, (ms + timedelta(days=i)).day) not in ORGANIC_SKIP]
 
     @api.model
     def _organic_offers(self, ref_date):
+        """Combos de mayorista vigentes (las promos de consumidor final no van al orgánico
+        mayorista)."""
+        import re
         offers = self.env['cristal.agent.offer'].sudo().search(
-            [('active', '=', True), ('offer_type', 'in', ('bundle', 'bonus'))],
-            order='priority desc, id')
-        return offers.filtered(lambda o: not o.valid_until or o.valid_until >= ref_date)
+            [('active', '=', True), ('offer_type', '=', 'bundle')], order='priority desc, id')
+        cf = re.compile(r'\bCF\b|consumidor', re.I)
+        return offers.filtered(lambda o: (not o.valid_until or o.valid_until >= ref_date)
+                               and not cf.search(o.name or ''))
 
     @api.model
     def _organic_buyers(self):
@@ -391,7 +397,8 @@ class CristalAgentPauta(models.AbstractModel):
                     "¿Querés la lista de precios? Escribinos por WhatsApp 👇")
         elif angle == 'PRODUCTO' and offer:
             desc = ' '.join((offer.description or '').split())
-            short = desc if len(desc) <= 90 else desc[:87].rsplit(' ', 1)[0] + '…'
+            short = desc.split(':')[0] if ':' in desc[:70] else desc
+            short = short if len(short) <= 60 else short[:57].rsplit(' ', 1)[0] + '…'
             spec = dict(base='pallet_regalo', dia=f"COMBO DE {ctx['mes']}",
                         titulo=self._two_lines((offer.name or 'Combo del mes').upper()),
                         pueblos='', promo='ARMADO PARA|TU NEGOCIO', detalle=short,
