@@ -199,8 +199,13 @@ patch(PosStore.prototype, {
             });
         }
         // La escalera aprende: el orden viene del recálculo nocturno (lo que más aceptan, primero).
+        // Excepto el combo, que va SIEMPRE primero: es obligatorio ofrecerlo (04/11/2026; con
+        // 0 aceptados la escalera lo había mandado detrás del complemento y casi no salía).
         const ladder = this.cristalVgConfig().ladder_order || ["combo", "qty", "size", "other"];
         const rank = (kind) => {
+            if (kind === "combo") {
+                return -1;
+            }
             const i = ladder.indexOf(["combo", "qty", "size"].includes(kind) ? kind : "other");
             return i < 0 ? 99 : i;
         };
