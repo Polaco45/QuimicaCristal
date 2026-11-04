@@ -1791,6 +1791,7 @@ class CristalAgentRouteSelftest(models.TransientModel):
                 assert c.attachment_id and c.attachment_id.public and c.attachment_id.file_size > 20000, \
                     (c.angle, c.attachment_id.file_size)
                 assert c.body and 'ZZ La Carlota' in c.body and c.headline, c.angle
+                assert 'TITULO: ' + c.headline in (c.attachment_id.description or ''), "copy no viaja en el adjunto"
                 assert c.name.startswith('[RUTA-ZZ-AUTOTEST-PAUTA] ' + c.angle), c.name
             urg = created.filtered(lambda c: c.angle == 'URGENCIA')
             assert urg.activate_on == today_ar + timedelta(days=5), urg.activate_on

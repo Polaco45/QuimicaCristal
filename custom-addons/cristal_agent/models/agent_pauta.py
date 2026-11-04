@@ -227,10 +227,13 @@ class CristalAgentPauta(models.AbstractModel):
                 _logger.exception("Placa %s de %s falló: %s", angle, departure.name, e)
                 continue
             fname = f"placa_{ctx['zone'].lower()}_{departure.date:%Y%m%d}_{angle.lower()}_v1.jpg"
+            body, headline = self.copy_for(angle, ctx)
+            # v1.59: el copy viaja también en la descripción del adjunto (ir.attachment sí está
+            # expuesto al conector), así la rutina de campañas por salida lo lee sin otro permiso.
             att = Att.create({'name': fname, 'raw': data, 'mimetype': 'image/jpeg', 'public': True,
                               'res_model': 'cristal.agent.route.departure', 'res_id': departure.id,
-                              'description': f"Placa {angle} · {departure.name} · Pauta Cristal"})
-            body, headline = self.copy_for(angle, ctx)
+                              'description': (f"Placa {angle} · {departure.name} · Pauta Cristal\n"
+                                              f"TITULO: {headline}\nTEXTO:\n{body}")})
             vals = {
                 'name': f"[{ctx['zone']}] {angle} | placa v1 | salida {departure.date:%d/%m}",
                 'zone': ctx['zone'], 'circuit_id': departure.circuit_id.id,
@@ -242,6 +245,12 @@ class CristalAgentPauta(models.AbstractModel):
             }
             created |= Creative.create(vals)
         return created
+
+    @api.model
+    def generate_for_departure(self, departure_id):
+        """Atajo por RPC: genera el contenido de una salida por id (idempotente)."""
+        dep = self.env['cristal.agent.route.departure'].sudo().browse(int(departure_id)).exists()
+        return self.generate_route_content(dep).ids if dep else []
 
     @api.model
     def cron_route_content(self):
