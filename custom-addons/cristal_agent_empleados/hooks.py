@@ -3,7 +3,7 @@ import logging
 
 _logger = logging.getLogger(__name__)
 
-EMPLOYEE_PARTNERS = [65371, 436]   # Guillermo, Adrián (spec de Sergio, 05/11)
+EMPLOYEE_USERS = [15, 436]   # Guillermo y Adrián (436 es el usuario de Adrián; su contacto es 79526)
 SERGIO_USER = 2
 SERGIO_PARTNER = 3
 BOT_WA_ACCOUNT_NAME = 'Cristal Mayorista'
@@ -13,7 +13,7 @@ def post_init_hook(env):
     config = env['cristal.agent.config'].sudo().get_active()
     if not config:
         return
-    partners = env['res.partner'].sudo().browse(EMPLOYEE_PARTNERS).exists()
+    partners = env['res.users'].sudo().browse(EMPLOYEE_USERS).exists().mapped('partner_id')
     vals = {'employee_partner_ids': [(6, 0, partners.ids)]}
     sergio = env['res.users'].sudo().browse(SERGIO_USER).exists()
     if sergio:
