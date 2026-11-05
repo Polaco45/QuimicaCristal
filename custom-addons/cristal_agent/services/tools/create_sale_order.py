@@ -176,6 +176,8 @@ class CreateSaleOrder(AgentTool):
         """Stock disponible para productos de DISTRIBUCIÓN/secos.
         Devuelve None si es fabricación a granel o no trackea stock (siempre disp.)."""
         from .search_products import is_made_to_order
+        if product.type == 'combo':
+            return None  # v1.60: el combo no tiene stock propio; se mira el de cada producto
         if self._es_granel(product) or is_made_to_order(product):
             return None  # fabricación a pedido (granel, bases, fraccionado) → siempre disponible
         # Solo productos almacenables (goods con stock) trackean disponibilidad.
