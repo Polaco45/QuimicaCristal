@@ -16,7 +16,7 @@ Química Cristal — modo «asistente de empleados» del Cristal Agent (pedido d
 Va aparte de cristal_agent: usa su motor (ClaudeClient, herramientas, corridas y tope diario)
 pero el bot de ventas no ve este modo ni la herramienta escalate_to_sergio.
 """,
-    "version": "18.0.1.0.0",
+    "version": "18.0.1.0.1",
     "author": "Química Cristal",
     "license": "LGPL-3",
     "category": "Productivity",

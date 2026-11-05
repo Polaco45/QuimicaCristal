@@ -163,9 +163,14 @@ class EmployeeSession:
             if rec.date_start:
                 out.append(f"Inicio previsto: {rec.date_start}")
             out.append(f"Ubicaciones: {rec.location_src_id.display_name} → {rec.location_dest_id.display_name}")
-            out.append("Componentes:")
+            out.append("Componentes (lo que se consume; el «a granel» es el producto del tacho o tanque):")
             out += [f"- {m.product_id.display_name}: {m.product_uom_qty:g} {m.product_uom.name}"
-                    for m in rec.move_raw_ids]
+                    f" (sale de {m.location_id.display_name})" for m in rec.move_raw_ids]
+            centers = rec.workorder_ids.mapped('workcenter_id') or rec.bom_id.operation_ids.mapped('workcenter_id')
+            if centers:
+                out.append("Centro de trabajo: " + ", ".join(centers.mapped('display_name')))
+            for wo in rec.workorder_ids:
+                out.append(f"- Operación {wo.name} en {wo.workcenter_id.display_name} ({wo.state})")
         elif name == 'stock.picking':
             out.append(f"Tipo: {rec.picking_type_id.display_name} · Origen: {rec.origin or '—'}")
             out.append(f"Contacto: {rec.partner_id.display_name or '—'} · Fecha: {rec.scheduled_date}")
