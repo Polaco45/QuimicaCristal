@@ -82,6 +82,13 @@ class CreateSaleOrder(AgentTool):
                         "product_id": {"type": "integer"},
                         "product_name": {"type": "string"},
                         "qty": {"type": "number"},
+                        "choices": {
+                            "type": "string",
+                            "description": "(Solo combos para la casa) Aromas/colores que eligió el "
+                                           "cliente, ej: \"Limón, Celeste\". La tool arma el combo "
+                                           "con sus productos; lo que no elija va con lo que hay "
+                                           "en stock.",
+                        },
                         "price_unit": {
                             "type": "number",
                             "description": "(Opcional) Precio por unidad FIJO para esta línea "
@@ -179,6 +186,21 @@ class CreateSaleOrder(AgentTool):
             return product.qty_available or 0.0
         except Exception:
             return None
+
+    def _expand_combos(self, order, combo_plan):
+        """v1.60 — Arma cada combo de la cotización con sus productos (líneas con
+        combo_item_id colgadas de la línea del combo). Si ya estaban, se rearman: el
+        cliente puede haber cambiado aroma/color o cantidad."""
+        for parent in order.order_line.filtered(
+                lambda l: l.product_id.id in combo_plan and not l.combo_item_id):
+            plan = combo_plan[parent.product_id.id]
+            order.order_line.filtered(lambda l: l.linked_line_id == parent and l.combo_item_id).unlink()
+            order.write({'order_line': [(0, 0, {
+                'product_id': item.product_id.id,
+                'product_uom_qty': parent.product_uom_qty,
+                'combo_item_id': item.id,
+                'linked_line_id': parent.id,
+            }) for item in plan['items']]})
 
     def _resolver_producto(self, env, ln):
         """Resuelve el product.product de una línea (id o nombre fuzzy).
@@ -686,6 +708,7 @@ class CreateSaleOrder(AgentTool):
         sin_stock = []
         no_stock_lines = []  # v1.36: líneas NO cargadas por falta de stock
         bidon_adjustments = []  # granel redondeado a múltiplo de 20 L (bidones)
+        combo_plan = {}  # v1.60: {combo product_id: {'items', 'missing', 'chosen'}}
         for i, ln in enumerate(lines):
             qty = float(ln.get('qty', 0))
             if qty <= 0:
@@ -738,6 +761,12 @@ class CreateSaleOrder(AgentTool):
                 fixed_price = None
             if fixed_price is not None:
                 fixed_price_pids.add(product.id)
+            # v1.60 — Combo para la casa: se elige un producto por cada parte del combo
+            # (lo que pidió el cliente o lo que hay en stock) y se arma como en la caja.
+            if product.type == 'combo':
+                from ..cf_combos import pick_items
+                items, missing, chosen = pick_items(product, qty, ln.get('choices'))
+                combo_plan[product.id] = {'items': items, 'missing': missing, 'chosen': chosen}
             resolved.append((product, qty, fixed_price))
 
         if not resolved:
@@ -782,8 +811,9 @@ class CreateSaleOrder(AgentTool):
                 if order:
                     # Mergear en el borrador existente (una sola cotización)
                     for product, qty, fixed_price in resolved:
+                        # (no confundir con un producto que viene DENTRO de un combo)
                         existing = order.order_line.filtered(
-                            lambda l: l.product_id.id == product.id)
+                            lambda l: l.product_id.id == product.id and not l.combo_item_id)
                         if existing:
                             existing[0].product_uom_qty = qty
                             if fixed_price is not None:
@@ -829,11 +859,18 @@ class CreateSaleOrder(AgentTool):
                     for line in order.order_line:
                         if line.product_id.id in fixed_price_pids:
                             continue
+                        if line.combo_item_id or line.product_id.type == 'combo':
+                            continue
                         try:
                             line.price_unit = pricelist._get_product_price(
                                 line.product_id, line.product_uom_qty or 1.0)
                         except Exception:
                             pass
+                # v1.60 — combos: sus productos se cargan como líneas del combo (el precio
+                # del combo se reparte entre ellas, como en la caja y la web). Va después de
+                # fijar la lista para que el reparto salga del precio correcto.
+                if combo_plan:
+                    self._expand_combos(order, combo_plan)
                 if discount_percent and order.order_line:
                     # El 20% (u otro %) NO se aplica a las líneas con precio de promo cerrado.
                     order.order_line.filtered(
@@ -947,12 +984,20 @@ class CreateSaleOrder(AgentTool):
         # El mínimo se mide sobre los PRODUCTOS (sin la línea de envío a domicilio).
         total = sum(order.order_line.filtered(
             lambda l: not getattr(l, 'is_delivery', False)).mapped('price_total'))
-        line_details = [{
-            'product': l.product_id.display_name,
-            'qty': l.product_uom_qty,
-            'price_unit': l.price_unit,
-            'subtotal': l.price_subtotal,
-        } for l in order.order_line]
+        # v1.60 — un combo se informa como UNA línea con su precio total y, debajo, lo que
+        # trae (sin el precio repartido de cada producto, que confunde al cliente).
+        line_details = []
+        for l in order.order_line:
+            if l.combo_item_id:
+                continue
+            d = {'product': l.product_id.display_name, 'qty': l.product_uom_qty,
+                 'price_unit': l.price_unit, 'subtotal': l.price_subtotal}
+            if l.product_id.type == 'combo':
+                kids = order.order_line.filtered(lambda k: k.linked_line_id == l and k.combo_item_id)
+                d['subtotal'] = sum(kids.mapped('price_subtotal')) + l.price_subtotal
+                d['price_unit'] = d['subtotal'] / (l.product_uom_qty or 1.0)
+                d['trae'] = [k.product_id.display_name for k in kids]
+            line_details.append(d)
         # Bidones: se informan SIEMPRE, también cuando el pedido queda bajo el mínimo.
         bid_info = self._bidones_info(env, config, order)
 
@@ -1040,6 +1085,7 @@ class CreateSaleOrder(AgentTool):
             "client_summary": (
                 "\n".join(
                     f"• {d['qty']:g} {d['product']} — {_fmt_money(d['subtotal'])}"
+                    + ''.join(f"\n   ◦ {t}" for t in d.get('trae', []))
                     for d in line_details)
                 + (f"\n{bid_info['summary']}" if bid_info else "")
                 + f"\nTOTAL: {_fmt_money(order.amount_total)}"
@@ -1069,6 +1115,17 @@ class CreateSaleOrder(AgentTool):
         }
 
         result['delivery_mode'] = 'retiro' if is_pickup else 'envio'
+        if combo_plan:
+            missing = [m for p in combo_plan.values() for m in p['missing']]
+            chosen = [c for p in combo_plan.values() for c in p['chosen']]
+            result['combo_note'] = (
+                "COMBO armado con sus productos (están en client_summary, debajo del combo). "
+                "Contale qué trae y que el precio es el del combo. "
+                + (f"Eligió: {', '.join(chosen)}. " if chosen else
+                   "Aromas/colores: van los que hay en stock; si quiere otro, volvé a llamar con "
+                   "choices en la línea del combo. ")
+                + (f"⚠️ Sin stock suficiente: {', '.join(missing)} — avisale y ofrecé otro aroma "
+                   f"u otro combo antes de confirmar." if missing else ""))
         if auto_discount:
             pct, why = auto_discount
             result['auto_discount'] = {'percent': pct, 'reason': why}
@@ -1112,7 +1169,7 @@ class CreateSaleOrder(AgentTool):
             result['cf_note'] = (
                 "CONSUMIDOR FINAL: precio público (L.C 1). Antes de cerrar, ofrecé UNA mejora "
                 "en este orden: el combo que incluye lo que lleva → el tamaño más grande → un "
-                "complemento. Si nunca se le preguntó, pedile el permiso de avisos por WhatsApp.")
+                "complemento.")
         if is_pickup:
             result['route_note'] = (
                 "RETIRO EN PLANTA (San Martín 2350, Río Cuarto): sin compra mínima y sin "

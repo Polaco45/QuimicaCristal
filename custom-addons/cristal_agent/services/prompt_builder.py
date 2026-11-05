@@ -108,6 +108,10 @@ def build_system_prompt(env, partner=None, base_prompt=None, client_type=None):
     # ─── 5.b Combo Emprendedor (v1.12) — global ───
     stable_parts.append(_build_combo_context(env, config))
 
+    # ─── 5.c Combos para la casa (v1.60) — catálogo real: qué trae cada uno ───
+    from .cf_combos import prompt_block as _cf_combos_block
+    stable_parts.append(_cf_combos_block(env))
+
     # ─── 6. REGLAS DURAS (siempre al final del bloque estable) ───
     stable_parts.append(_build_hard_rules())
 
@@ -274,10 +278,12 @@ def _build_partner_context(env, partner):
     elif partner.is_empresa():
         lines.append("- TIPO: EMPRESA — derivá a Joaco, NO avances ciclo comercial")
     else:
-        lines.append("- TIPO: SIN ETIQUETA (cliente nuevo) — preguntá en UNA línea si es para su casa o para "
-                     "revender/comercio. Si su primer mensaje es el saludo de un anuncio (\"Quiero más "
-                     "información\"), puede venir del anuncio de COMBOS para la casa (Limpieza Total $29.900, "
-                     "Casa Completa $39.900) o del anuncio mayorista: preguntá igual y, si es para su casa, "
+        lines.append("- TIPO: SIN ETIQUETA (cliente nuevo) — si NOMBRA un combo para la casa o una promo de "
+                     "consumidor final, YA ES consumidor final: no le preguntes si es para su casa o para "
+                     "revender; contale qué trae ese combo (bloque COMBOS PARA LA CASA) y seguí la sección 4b. "
+                     "Si no, preguntá en UNA línea si es para su casa o para revender/comercio. Si su primer "
+                     "mensaje es el saludo de un anuncio (\"Quiero más información\"), puede venir del anuncio "
+                     "de COMBOS para la casa o del anuncio mayorista: preguntá igual y, si es para su casa, "
                      "ofrecé el combo (sección 4b); si revende, lista mayorista. No mandes la lista mayorista "
                      "sin saberlo.")
 

@@ -1866,6 +1866,54 @@ class CristalAgentRouteSelftest(models.TransientModel):
             return "arma HTML + snapshot, regla de control y de salida flojas, una sola por mes"
         self._case(results, "58. Revisión mensual", c_monthly_review)
 
+        # 59) Combos para la casa (v1.60): el prompt sabe qué trae cada uno y la cotización
+        #     arma el combo con sus productos al precio del combo (antes salía en $0 y vacío).
+        def c_cf_combos():
+            from ..services import cf_combos
+            data = cf_combos.catalog(env)
+            if not data:
+                return "sin combos para la casa en esta base (nada que probar)"
+            block = cf_combos.prompt_block(env)
+            assert 'COMBOS PARA LA CASA' in block and 'Trae:' in block, block[:300]
+            combo = next((c for c in data if not c['missing']), data[0])
+            assert combo['name'] in block and f"product_id={combo['product'].id}" in block, "falta el combo"
+            # Un aroma/color a elegir, si el combo tiene alguno con opciones en stock.
+            choice, expected = None, None
+            for s in combo['slots']:
+                if len(s['in_stock']) > 1:
+                    target = s['in_stock'][-1]
+                    lab = cf_combos._variant_label(target).split(',')[0].strip()
+                    if lab:
+                        choice, expected = lab, target
+                        break
+            p = mk_partner('CF Combo', 'Rio Cuarto')
+            line = {'product_id': combo['product'].id, 'qty': 1}
+            if choice:
+                line['choices'] = choice
+            r = cso.execute(env=env, run=None, partner_id=p.id, consumidor_final=True,
+                            delivery_mode='retiro', lines=[line])
+            assert r.get('ok'), r
+            o = SaleOrder.browse(r['order_id'])
+            parent = o.order_line.filtered(lambda l: l.product_id == combo['product'])
+            kids = o.order_line.filtered(lambda l: l.combo_item_id and l.linked_line_id == parent)
+            assert parent and len(kids) == len(combo['slots']), \
+                f"{len(kids)} productos para {len(combo['slots'])} partes"
+            total = sum(kids.mapped('price_total')) + parent.price_total
+            net = sum(kids.mapped('price_subtotal')) + parent.price_subtotal
+            assert min(abs(total - combo['price']), abs(net - combo['price'])) < 2, \
+                f"total {total} / neto {net} ≠ precio del combo {combo['price']}"
+            if expected:
+                assert expected in kids.mapped('product_id'), f"no respetó la elección {choice}"
+            assert '◦' in r['client_summary'] and r.get('combo_note'), r['client_summary']
+            # Rearmar (cambio de aroma) no duplica productos.
+            r = cso.execute(env=env, run=None, partner_id=p.id, consumidor_final=True,
+                            delivery_mode='retiro', lines=[{'product_id': combo['product'].id, 'qty': 1}])
+            kids = o.order_line.filtered(lambda l: l.combo_item_id)
+            assert len(kids) == len(combo['slots']), f"duplicó productos al rearmar ({len(kids)})"
+            return (f"{len(data)} combos en el prompt con lo que traen · {combo['name']} cotizado con "
+                    f"{len(kids)} productos a {total:,.0f}" + (f" · eligió {choice}" if choice else ""))
+        self._case(results, "59. Combos para la casa", c_cf_combos)
+
         # 48) confirm_order: confirma solo lo que cumple la lista de control
         def c_confirm_order():
             co = ToolRegistry.get('confirm_order')
