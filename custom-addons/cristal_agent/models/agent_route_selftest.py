@@ -1914,6 +1914,30 @@ class CristalAgentRouteSelftest(models.TransientModel):
                     f"{len(kids)} productos a {total:,.0f}" + (f" · eligió {choice}" if choice else ""))
         self._case(results, "59. Combos para la casa", c_cf_combos)
 
+        # 60) Una plantilla de campaña no deja al cliente sin Claudio (v1.60.1)
+        def c_takeover_plantilla():
+            from types import SimpleNamespace
+            WaMsg = env['whatsapp.message'].sudo()
+            tpl = env['whatsapp.template'].sudo().search([('status', '=', 'approved')], limit=1)
+            if not tpl:
+                return "sin plantillas aprobadas en esta base (nada que probar)"
+            phone = '+5493589990060'
+            p = mk_partner('Takeover Plantilla', 'Rio Cuarto')
+            p.mobile = phone
+            mem = env['cristal.agent.memory'].sudo().get_or_create(p)
+            mem.activate_takeover(reason="Intervención manual de Joaquin", duration_hours=12)
+            base = {'mobile_number': phone, 'message_type': 'outbound', 'state': 'sent',
+                    'wa_account_id': tpl.wa_account_id.id}
+            WaMsg.create(dict(base, wa_template_id=tpl.id))
+            inbound = SimpleNamespace(id=0, mobile_number=phone)
+            assert WaMsg._takeover_only_templates(mem, inbound, config), "plantilla sola no liberó a Claudio"
+            WaMsg.create(dict(base))   # alguien escribió a mano
+            assert not WaMsg._takeover_only_templates(mem, inbound, config), "liberó con un humano atendiendo"
+            mem.activate_takeover(reason="Comando /off de Joaquin", duration_hours=0)
+            assert not WaMsg._takeover_only_templates(mem, inbound, config), "liberó un /off"
+            return "plantilla de campaña → contesta Claudio · mensaje a mano → sigue pausado · /off → sigue pausado"
+        self._case(results, "60. Plantilla de campaña no pausa a Claudio", c_takeover_plantilla)
+
         # 48) confirm_order: confirma solo lo que cumple la lista de control
         def c_confirm_order():
             co = ToolRegistry.get('confirm_order')
