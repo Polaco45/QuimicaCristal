@@ -7,6 +7,24 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.60.0] — 2026-11-05
+
+### Changed — Claudio vende bien los combos para la casa
+Joaco: "no es coherente a la hora de ofrecer los combos minoristas, no sabe ni qué tienen, mal
+vendedor". Claudio tenía nombre y precio fijos en el prompt pero no qué traía cada combo (a Angy
+le dijo "productos para toda la casa" y lo escaló a Joaco) y cotizar un combo salía en $0 y vacío.
+- `services/cf_combos.py`: catálogo real (los combos de la caja): qué trae cada uno, aromas/colores
+  a elegir, precio, suelto, ahorro y si hoy falta stock (⛔ HOY NO OFRECER). Va en el bloque
+  estable del prompt "COMBOS PARA LA CASA".
+- `create_sale_order`: un combo se arma con sus productos (líneas de combo, precio repartido como
+  en la caja y la web); `choices` en la línea elige aromas/colores; el `client_summary` muestra el
+  combo con su precio y debajo lo que trae. Rearmar no duplica.
+- Prompt (migración): reglas de venta de combos en la sección 4b (recomendar uno según la
+  necesidad, decir qué trae, precio, ahorro y envío; no preguntar "casa o revende" si nombró un
+  combo; nunca escalarlo por no saber qué trae). Se saca el pedido de permiso de avisos (desde el
+  04/11 llegan a todos) y se corrigen restos de "camión los miércoles" (es el jueves).
+- Autotest 59: combos para la casa.
+
 ## [18.0.1.54.0] — 2026-11-03
 
 ### Changed — La ruta del camión vuelve a salir los JUEVES (v1.35-1.53: miércoles)
