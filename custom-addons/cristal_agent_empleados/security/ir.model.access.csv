@@ -1,0 +1,5 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_employee_question_user,cristal.agent.employee.question user,model_cristal_agent_employee_question,base.group_user,1,0,0,0
+access_employee_question_admin,cristal.agent.employee.question admin,model_cristal_agent_employee_question,base.group_system,1,1,1,1
+access_employee_escalation_user,cristal.agent.employee.escalation user,model_cristal_agent_employee_escalation,base.group_user,1,0,0,0
+access_employee_escalation_admin,cristal.agent.employee.escalation admin,model_cristal_agent_employee_escalation,base.group_system,1,1,1,1

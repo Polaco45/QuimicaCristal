@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <!-- Respaldo cada minuto; además cada consulta programa su propio disparo
+             (debounce de 15 s o la próxima apertura del horario). -->
+        <record id="cron_process_employee_questions" model="ir.cron">
+            <field name="name">Cristal Agent: contestar consultas de empleados</field>
+            <field name="model_id" ref="model_cristal_agent_employee_question"/>
+            <field name="state">code</field>
+            <field name="code">model.cron_process()</field>
+            <field name="interval_number">1</field>
+            <field name="interval_type">minutes</field>
+            <field name="active" eval="True"/>
+        </record>
+    </data>
+</odoo>

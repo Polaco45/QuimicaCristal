@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_cristal_agent_config_form_employees" model="ir.ui.view">
+        <field name="name">cristal.agent.config.form.employees</field>
+        <field name="model">cristal.agent.config</field>
+        <field name="inherit_id" ref="cristal_agent.view_cristal_agent_config_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//notebook" position="inside">
+                <page string="👷 Asistente de empleados" name="employee_mode">
+                    <group>
+                        <group>
+                            <field name="employee_mode_enabled"/>
+                            <field name="employee_partner_ids" widget="many2many_tags"/>
+                            <field name="employee_hours"/>
+                            <field name="employee_max_turns"/>
+                        </group>
+                        <group>
+                            <field name="sergio_user_id"/>
+                            <field name="sergio_whatsapp_partner_id"/>
+                            <field name="employee_wa_account_id"/>
+                        </group>
+                    </group>
+                    <field name="system_prompt_employee" widget="text"/>
+                </page>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="view_employee_question_list" model="ir.ui.view">
+        <field name="name">cristal.agent.employee.question.list</field>
+        <field name="model">cristal.agent.employee.question</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="create_date" string="Fecha"/>
+                <field name="employee_partner_id"/>
+                <field name="record_name"/>
+                <field name="text"/>
+                <field name="response"/>
+                <field name="state"/>
+                <field name="run_id" optional="hide"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_employee_escalation_list" model="ir.ui.view">
+        <field name="name">cristal.agent.employee.escalation.list</field>
+        <field name="model">cristal.agent.employee.escalation</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="create_date" string="Fecha"/>
+                <field name="employee_partner_id"/>
+                <field name="record_name"/>
+                <field name="question"/>
+                <field name="whatsapp_note"/>
+                <field name="answer"/>
+                <field name="state"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="action_employee_questions" model="ir.actions.act_window">
+        <field name="name">Consultas de empleados</field>
+        <field name="res_model">cristal.agent.employee.question</field>
+        <field name="view_mode">list</field>
+    </record>
+
+    <record id="action_employee_escalations" model="ir.actions.act_window">
+        <field name="name">Consultas pasadas a Sergio</field>
+        <field name="res_model">cristal.agent.employee.escalation</field>
+        <field name="view_mode">list</field>
+    </record>
+
+    <menuitem id="menu_employee_root" name="Asistente de empleados"
+              parent="cristal_agent.menu_cristal_agent_root" sequence="80"/>
+    <menuitem id="menu_employee_questions" name="Consultas" parent="menu_employee_root"
+              action="action_employee_questions" sequence="10"/>
+    <menuitem id="menu_employee_escalations" name="Pasadas a Sergio" parent="menu_employee_root"
+              action="action_employee_escalations" sequence="20"/>
+</odoo>
