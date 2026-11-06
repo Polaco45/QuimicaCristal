@@ -392,7 +392,7 @@ class WhatsAppMessage(models.Model):
             ('mobile_number', 'like', digits),
             ('create_date', '>=', since),
         ])
-        return bool(outbound) and all(outbound.mapped('wa_template_id'))
+        return bool(outbound) and all(m.wa_template_id for m in outbound)
 
     def _sync_whatsapp_channel_name(self, wa_message):
         """Renombra el canal de WhatsApp para que muestre el NOMBRE del contacto
