@@ -1912,6 +1912,19 @@ class CristalAgentRouteSelftest(models.TransientModel):
             return "apagado no corre · sin plantilla aprobada no manda"
         self._case(results, "62. Aviso de paso automático", c_aviso_auto)
 
+        # 64) Referidos: activo que compró hace poco, solo los días 1-5 y 15-19, uno cada 60 días
+        def c_referidos():
+            NBA = env['cristal.agent.nba'].sudo()
+            p = env['res.partner'].sudo().create({'name': 'ZZ Referidos'})
+            s = {'last_order': date(2026, 11, 1)}
+            d_ok, d_no = date(2026, 11, 3), date(2026, 11, 10)
+            assert NBA._referral_candidate(p, s, d_ok, 'active', {})[0] == 'f_referidos'
+            assert NBA._referral_candidate(p, s, d_no, 'active', {}) is None, "fuera de la ventana"
+            assert NBA._referral_candidate(p, s, d_ok, 'lead', {}) is None, "no es cliente"
+            assert NBA._referral_candidate(p, s, d_ok, 'active', {'f_referidos': date(2026, 10, 1)}) is None
+            return "ventana quincenal · solo clientes activos · uno cada 60 días"
+        self._case(results, "64. Campaña de referidos", c_referidos)
+
         # 58) Revisión mensual: arma, guarda snapshot y recomienda con reglas fijas
         def c_monthly_review():
             Review = env['cristal.agent.monthly.review'].sudo()

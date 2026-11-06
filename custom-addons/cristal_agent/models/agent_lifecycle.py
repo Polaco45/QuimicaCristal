@@ -147,6 +147,15 @@ ACTIONS = {
         "concreto: gracias por el mes, le recordás su beneficio (descuento ORO aplicado "
         "solo en cada cotización) y preguntás si necesita algo para arrancar el mes. "
         "Si le toca reponer, ofrecelo (search_orders). Nada de oferta genérica."),
+    # v1.62 — campaña quincenal de referidos (punto 14 de captación)
+    'f_referidos': (
+        "Activo · pedir referidos", 'claudio',
+        "Cliente activo que compró hace poco. Pedile en dos líneas, cálido y sin presión, si "
+        "conoce otro negocio que venda productos de limpieza (almacén, kiosco, lavadero, "
+        "revendedor) y que le pase nuestro WhatsApp. Contale el beneficio real: cuando ese "
+        "negocio haga su primera compra, los dos tienen el descuento por referido (lo ves en "
+        "la configuración, hoy 5 %) en el próximo pedido. Si te nombra a alguien o te pasa un "
+        "contacto, agradecé y anotalo con update_observation."),
 }
 ACTION_SELECTION = [(k, v[0]) for k, v in ACTIONS.items()]
 # Orden de prioridad cuando hay más candidatos que cupo diario: primero la plata parada
@@ -154,7 +163,7 @@ ACTION_SELECTION = [(k, v[0]) for k, v in ACTIONS.items()]
 PRIORITY = ['a_ruta_proxima', 'c_objecion', 'c_promo', 'o_ritual', 'n_chequeo',
             'n_producto_top', 'n_segunda_compra', 'a_reposicion', 'n_reposicion',
             'q_lista_pregunta', 'q_combo', 'r_reactivacion_1', 'r_reactivacion_2', 'c_ultima',
-            'q_oferta_mes', 'a_encuesta', 'd_reactivacion_3', 'd_visita']
+            'q_oferta_mes', 'a_encuesta', 'f_referidos', 'd_reactivacion_3', 'd_visita']
 # v1.57 — encuesta post-compra: plantilla aprobada por Meta con botones.
 SURVEY_TEMPLATE = 'cristal_satisfaccion'
 SURVEY_DAYS = (7, 14)          # ventana después del pedido en la que se manda
@@ -529,7 +538,28 @@ class CristalAgentNBA(models.Model):
         stage = self._stage_candidate(partner, s, today, config, lc, last, cycle, once)
         if stage:
             return stage
-        return self._survey_candidate(partner, s, today, lc, last)
+        survey = self._survey_candidate(partner, s, today, lc, last)
+        if survey:
+            return survey
+        return self._referral_candidate(partner, s, today, lc, last)
+
+    @api.model
+    def _referral_candidate(self, partner, s, today, lc, last):
+        """v1.62 — campaña quincenal de referidos: días 1-5 y 15-19 de cada mes, clientes
+        activos o nuevos que compraron en los últimos 60 días, como mucho un pedido cada 60
+        días, y nunca a quien respondió Regular o Mal en la encuesta reciente."""
+        if lc not in ('new_customer', 'active') or not s.get('last_order'):
+            return None
+        if not (1 <= today.day <= 5 or 15 <= today.day <= 19):
+            return None
+        if (today - s['last_order']).days > 60:
+            return None
+        prev = last.get('f_referidos')
+        if prev and (today - prev).days < 60:
+            return None
+        if getattr(partner, 'agent_survey_answer', False) in ('regular', 'mal'):
+            return None
+        return ('f_referidos', f"cliente activo, compró el {s['last_order']:%d/%m}")
 
     @api.model
     def _route_candidate(self, partner, s, today, last):
