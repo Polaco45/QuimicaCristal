@@ -1843,6 +1843,43 @@ class CristalAgentRouteSelftest(models.TransientModel):
                     f"ángulos {', '.join(sorted(angles))} · idempotente · sin oferta → FABRICA")
         self._case(results, "57. Pauta: orgánico mensual", c_pauta_organico)
 
+        # ═════════════════ v1.60 — historias diarias y placas rotativas de Río Cuarto ═════════════════
+        # 59) Historias 9:16: una por día, 1080×1920, texto en el adjunto, idempotente
+        def c_pauta_historias():
+            from io import BytesIO
+            from PIL import Image
+            Pauta = env['cristal.agent.pauta']
+            Creative = env['cristal.agent.creative'].sudo()
+            cfg.write({'pauta_enabled': True, 'pauta_story_enabled': True})
+            ms, nxt = Pauta._month_bounds(today_ar)
+            target, after = Pauta._month_bounds(nxt)
+            Creative.search([('format', '=', 'story'), ('planned_date', '>=', target),
+                             ('planned_date', '<', after)]).unlink()
+            ids = Pauta.generate_stories_for(target)
+            days = (after - target).days - sum(1 for i in range((after - target).days)
+                                               if ((target + timedelta(days=i)).month,
+                                                   (target + timedelta(days=i)).day) in {(12, 25), (1, 1)})
+            assert len(ids) == days, f"{len(ids)} historias (esperaba {days})"
+            st = Creative.browse(ids)
+            img = Image.open(BytesIO(st[0].attachment_id.raw))
+            assert img.size == (1080, 1920), img.size
+            assert all('TEXTO:' in (c.attachment_id.description or '') for c in st), "falta el texto"
+            assert not Pauta.generate_stories_for(target), "duplicó historias"
+            return f"{len(ids)} historias 1080×1920 con texto en el adjunto · idempotente"
+        self._case(results, "59. Pauta: historias diarias", c_pauta_historias)
+
+        # 60) Placas de Río Cuarto: una por ángulo, sin pueblos, con copy; la tanda siguiente cambia
+        def c_pauta_rc():
+            Pauta = env['cristal.agent.pauta']
+            a = env['cristal.agent.creative'].sudo().browse(Pauta.generate_rc_now())
+            assert len(a) >= 3, len(a)
+            assert all(c.zone == 'RC' and 'TITULO:' in (c.attachment_id.description or '') for c in a), "sin copy"
+            b = env['cristal.agent.creative'].sudo().browse(Pauta.generate_rc_now())
+            fa = {c.angle: c.attachment_id.checksum for c in a}
+            assert any(fa.get(c.angle) != c.attachment_id.checksum for c in b), "la tanda nueva es igual"
+            return f"{len(a)} placas por tanda, con copy, y la tanda siguiente cambia"
+        self._case(results, "60. Pauta: placas rotativas de Río Cuarto", c_pauta_rc)
+
         # 58) Revisión mensual: arma, guarda snapshot y recomienda con reglas fijas
         def c_monthly_review():
             Review = env['cristal.agent.monthly.review'].sudo()
