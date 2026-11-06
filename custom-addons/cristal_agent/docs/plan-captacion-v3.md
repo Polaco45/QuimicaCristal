@@ -17,6 +17,12 @@ lo mínimo en créditos y pauta, sin bajar la calidad.
 | 8 | Remarketing | No por ahora: preferir orgánico. Queda en borrador. |
 | 9 | Público similar | A: se refresca solo cada lunes con los que compraron. |
 | 10 | Escalado | Solo si hay ventas reales atribuidas que lo respalden. |
+| 11 | Aviso de paso por WhatsApp | Sale solo a todos los contactos de la zona (menos «No contactar»), D-6 a D-2, hasta 100 por día. Necesita la plantilla ruta_aviso_paso aprobada por Meta (hoy en borrador). |
+| 12 | Mensajes y comentarios de IG/FB | A: respuesta automática que lleva a WhatsApp con código de origen. |
+| 13 | Prospección en frío | No se hace. |
+| 14 | Referidos | B: campaña mensual o quincenal a clientes activos (plantilla de WhatsApp a aprobar). |
+| 15 | Código de origen | A: mensaje prellenado con código en cada anuncio nuevo y Claudio pregunta cómo nos conoció cuando no hay código (`set_origin`, v1.61). |
+| 16 | Perfil de Google | A: el orgánico también se publica en Google Business con Metricool (falta conectar el perfil en Metricool). |
 
 ## Autonomía nueva (nivel 2)
 Ejecuta solo y avisa en el canal 969: pausar anuncios perdedores, mover hasta 20 % entre anuncios o
