@@ -553,14 +553,14 @@ class CristalAgentPauta(models.AbstractModel):
         return angle, spec, body
 
     @api.model
-    def generate_stories_for(self, month_start):
+    def generate_stories_for(self, month_start, from_day=None):
         """Atajo por RPC: historias de un mes (por ejemplo, de un mes cuyo feed ya existía)."""
         ms, _nxt = self._month_bounds(month_start)
         offers = list(self._organic_offers(ms))
         sal = self._organic_departures(ms)
         ctx = {'mes': MESES[ms.month], 'mes_min': MESES[ms.month].lower(),
                'clientes': (self._organic_buyers() // 10) * 10, 'salidas': [], 'solo_jueves': True}
-        return self.generate_stories_month(ms, ctx, offers, sal).ids
+        return self.generate_stories_month(ms, ctx, offers, sal, from_day=from_day).ids
 
     @api.model
     def generate_rc_now(self):
@@ -568,7 +568,7 @@ class CristalAgentPauta(models.AbstractModel):
         return self.generate_rc_batch().ids
 
     @api.model
-    def generate_stories_month(self, month_start, ctx, offers, sal):
+    def generate_stories_month(self, month_start, ctx, offers, sal, from_day=None):
         """Una historia 9:16 por día del mes (menos Navidad y Año Nuevo). Idempotente por fecha."""
         from ..services import placa
         ms, nxt = self._month_bounds(month_start)
@@ -576,7 +576,7 @@ class CristalAgentPauta(models.AbstractModel):
         Att = self.env['ir.attachment'].sudo()
         created = Creative.browse()
         oi = 0
-        day = ms
+        day = max(ms, fields.Date.to_date(from_day)) if from_day else ms
         while day < nxt:
             if (day.month, day.day) in ORGANIC_SKIP or Creative.search_count(
                     [('format', '=', 'story'), ('planned_date', '=', day)]):
@@ -694,6 +694,15 @@ class CristalAgentPauta(models.AbstractModel):
             _logger.info("cron_organic_content: orgánico apagado")
             return False
         today = fields.Date.context_today(config)
+        # v1.61: las historias del mes en curso (desde hoy) y, desde el día del orgánico, las del
+        # mes siguiente: idempotente, así un mes cuyo feed ya existía también tiene historias.
+        if getattr(config, 'pauta_story_enabled', True):
+            try:
+                self.generate_stories_for(today, from_day=today)
+                if force or today.day >= (config.pauta_organic_day or 25):
+                    self.generate_stories_for(self._month_bounds(today)[1])
+            except Exception as e:  # noqa: BLE001
+                _logger.exception("Historias del cron fallaron: %s", e)
         if not force and today.day < (config.pauta_organic_day or 25):
             return False
         ms, nxt = self._month_bounds(today)

@@ -316,6 +316,48 @@ class CristalAgentRouteDeparture(models.Model):
                        'type': 'success' if sent else 'warning', 'sticky': bool(errors)},
         }
 
+    # ───────────────────────── v1.61 — Aviso de paso automático (punto 11) ─────────────────────────
+    @api.model
+    def _cron_aviso_auto(self, per_run=4):
+        """Todos los días: para cada salida entre 2 y 6 días adelante, manda el aviso de paso a
+        los contactos del circuito que todavía no lo recibieron (sin «No contactar» ni takeover),
+        en tandas de 25, hasta `per_run` tandas por salida y corrida. Si la plantilla no está
+        aprobada por Meta, no manda nada y lo avisa en el canal interno (una vez, a D-6)."""
+        config = self.env['cristal.agent.config'].sudo().get_active()
+        if not config or not getattr(config, 'route_aviso_auto', False):
+            return False
+        today = self._local_today()
+        deps = self.search([('date', '>=', today + timedelta(days=2)),
+                            ('date', '<=', today + timedelta(days=6)),
+                            ('state', 'in', ('preventa', 'rescate'))])
+        tpl_ok = self.env['whatsapp.template'].sudo().search_count([
+            ('template_name', 'in', list(TEMPLATE_NAMES['aviso'])), ('status', '=', 'approved')])
+        channel = config.internal_channel_id
+        for dep in deps:
+            pending = dep._circuit_contacts() - dep.aviso_partner_ids
+            if not pending:
+                continue
+            if not tpl_ok:
+                if (dep.date - today).days == 6 and channel:
+                    channel.sudo().with_context(from_cristal_agent=True).message_post(
+                        body=(f"🚚 El aviso de paso de {dep.name} ({len(pending)} contactos) no salió: "
+                              f"la plantilla ruta_aviso_paso todavía no está aprobada por Meta."),
+                        message_type='comment', subtype_xmlid='mail.mt_comment')
+                continue
+            before = len(dep.aviso_partner_ids)
+            for _i in range(per_run):
+                try:
+                    dep.with_context(from_cristal_agent=True)._send_batch('aviso')
+                except UserError:
+                    break
+            sent = len(dep.aviso_partner_ids) - before
+            if sent and channel:
+                left = len(dep._circuit_contacts() - dep.aviso_partner_ids)
+                channel.sudo().with_context(from_cristal_agent=True).message_post(
+                    body=f"🚚 Aviso de paso de {dep.name}: salieron {sent} hoy, quedan {left}.",
+                    message_type='comment', subtype_xmlid='mail.mt_comment')
+        return True
+
     # ───────────────────────── Crons (inactivos hasta aprobación Meta) ─────────────────────────
     @api.model
     def _cron_aviso_ready(self):

@@ -1880,6 +1880,38 @@ class CristalAgentRouteSelftest(models.TransientModel):
             return f"{len(a)} placas por tanda, con copy, y la tanda siguiente cambia"
         self._case(results, "60. Pauta: placas rotativas de Río Cuarto", c_pauta_rc)
 
+        # 61) set_origin: guarda el origen si no había (u ORGANICO) y nunca pisa uno de anuncio
+        def c_set_origin():
+            so_tool = ToolRegistry.get('set_origin')
+            p1 = env['res.partner'].sudo().create({'name': 'ZZ Origen 1', 'agent_origin_code': 'ORGANICO'})
+            r = so_tool.execute(env=env, run=None, partner_id=p1.id, source='instagram', detail='lo vi en IG')
+            assert r.get('ok') and p1.agent_origin_code == 'ORG-IG', (r, p1.agent_origin_code)
+            p2 = env['res.partner'].sudo().create({'name': 'ZZ Origen 2', 'agent_origin_code': 'MAY-INFO'})
+            so_tool.execute(env=env, run=None, partner_id=p2.id, source='google')
+            assert p2.agent_origin_code == 'MAY-INFO', p2.agent_origin_code
+            return "ORGANICO → ORG-IG · MAY-INFO no se pisa"
+        self._case(results, "61. Origen preguntado (set_origin)", c_set_origin)
+
+        # 62) Aviso de paso automático: apagado no corre; sin plantilla aprobada no manda nada
+        def c_aviso_auto():
+            Dep = env['cristal.agent.route.departure'].sudo()
+            cfg.write({'route_aviso_auto': False})
+            assert Dep._cron_aviso_auto() is False, "corrió apagado"
+            cfg.write({'route_aviso_auto': True})
+            approved = env['whatsapp.template'].sudo().search_count([
+                ('template_name', '=', 'ruta_aviso_paso'), ('status', '=', 'approved')])
+            if approved:
+                return "plantilla aprobada: el envío real no se prueba en el autotest"
+            zc = Circuit.create({'name': 'ZZ Autotest Aviso', 'sequence': 96,
+                                 'first_departure_date': today_ar})
+            dep = Dep.create({'circuit_id': zc.id, 'date': today_ar + timedelta(days=4), 'state': 'preventa'})
+            env['res.partner'].sudo().create({'name': 'ZZ Aviso', 'mobile': '+5493584000000',
+                                              'truck_circuit_id': zc.id})
+            assert Dep._cron_aviso_auto() is True
+            assert not dep.aviso_partner_ids, "mandó sin plantilla aprobada"
+            return "apagado no corre · sin plantilla aprobada no manda"
+        self._case(results, "62. Aviso de paso automático", c_aviso_auto)
+
         # 58) Revisión mensual: arma, guarda snapshot y recomienda con reglas fijas
         def c_monthly_review():
             Review = env['cristal.agent.monthly.review'].sudo()

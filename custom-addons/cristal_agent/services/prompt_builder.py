@@ -312,6 +312,12 @@ def _build_partner_context(env, partner):
     if partner.agent_origin_code:
         lines.append(f"- origen: {partner.agent_origin_code}"
                      + (" (vino de un anuncio)" if partner.agent_origin_code not in ('ORGANICO',) else ""))
+    # v1.61 — sin código de origen: preguntar una vez cómo nos conoció (set_origin)
+    if (not partner.agent_origin_code or partner.agent_origin_code == 'ORGANICO') \
+            and not partner.agent_last_purchase_at and partner.create_date \
+            and (datetime.utcnow() - partner.create_date).days <= 7:
+        lines.append("- origen desconocido: en este intercambio preguntá UNA vez, natural y corto, "
+                     "cómo nos conoció, y guardalo con set_origin.")
     if 'cristal_segment' in partner._fields and partner.cristal_segment \
             and partner.cristal_segment != 'sin_compras':
         seg = dict(partner._fields['cristal_segment'].selection).get(partner.cristal_segment)
