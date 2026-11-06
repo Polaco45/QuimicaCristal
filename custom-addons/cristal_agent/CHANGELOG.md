@@ -7,6 +7,19 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.61.1] — 2026-11-05
+
+### Fixed — Las campañas dejaban a los clientes sin respuesta 12 h
+Las plantillas de campaña ("Hola X. Como estas? …") mandadas con el usuario de Joaco cuentan
+como "intervención manual" y pausaban a Claudio 12 h en cada chat. Entre el 20/10 y el 05/11,
+37 de 92 clientes que respondieron una campaña quedaron sin respuesta (o con horas de demora):
+Elisa, Claudia Vilchez (pedido de ruta perdido), Mónica Rubiolo, etc. El cron 160 (04/11) los
+liberaba cada 5 min, pero el que respondía antes seguía sin respuesta.
+- `whatsapp.message._takeover_only_templates`: al llegar un mensaje con takeover por
+  "Intervención manual", si desde que empezó solo se le mandaron PLANTILLAS (nada escrito a
+  mano), se libera y contesta Claudio en el momento. Un mensaje a mano o un /off lo mantienen.
+- Autotest 63.
+
 ## [18.0.1.60.0] — 2026-11-05
 
 ### Changed — Claudio vende bien los combos para la casa

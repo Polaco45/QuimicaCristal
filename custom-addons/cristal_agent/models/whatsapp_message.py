@@ -165,8 +165,18 @@ class WhatsAppMessage(models.Model):
 
         # 6) Takeover humano activo? Bot pausado?
         if memory.is_takeover_active():
-            _logger.info("🤫 Takeover activo para %s. Bot ignora el mensaje.", partner.name)
-            return
+            # v1.60.1 — Si lo único que "intervino" fue una PLANTILLA mandada por campaña
+            # (ej. "Hola X. Como estas? Hoy martes cerramos el camión…" con el usuario de
+            # Joaco), no es una persona atendiendo: el cliente que responde tiene que tener
+            # respuesta YA. Antes quedaba 12 h sin Claudio (Elisa, Claudia, Mónica: 37 de 92
+            # respuestas a campañas sin contestar entre el 20/10 y el 05/11).
+            if self._takeover_only_templates(memory, wa_message, config):
+                memory.deactivate_takeover()
+                _logger.info("📣 Takeover por plantilla de campaña liberado para %s: responde Claudio.",
+                             partner.name)
+            else:
+                _logger.info("🤫 Takeover activo para %s. Bot ignora el mensaje.", partner.name)
+                return
 
         # 6.5) v1.9.0 — Detectar client_type y aplicar bypass institucional
         #
@@ -363,6 +373,26 @@ class WhatsAppMessage(models.Model):
             return True
         cleaned = re.sub(r'[\s\-\+()]', '', txt)
         return cleaned.isdigit()
+
+    def _takeover_only_templates(self, memory, wa_message, config):
+        """True si el takeover vigente es por "Intervención manual" y, desde que empezó,
+        todo lo que se le mandó a este número fueron PLANTILLAS (campañas, avisos), sin
+        ningún mensaje escrito a mano. En ese caso nadie está atendiendo el chat."""
+        reason = memory.takeover_reason or ''
+        if not reason.startswith('Intervención manual') or not memory.takeover_until:
+            return False
+        hours = getattr(config, 'human_takeover_hours', 12) or 12
+        since = memory.takeover_until - timedelta(hours=hours) - timedelta(minutes=5)
+        digits = re.sub(r'\D', '', wa_message.mobile_number or '')[-8:]
+        if not digits:
+            return False
+        outbound = self.sudo().search([
+            ('id', '!=', wa_message.id),
+            ('message_type', '=', 'outbound'),
+            ('mobile_number', 'like', digits),
+            ('create_date', '>=', since),
+        ])
+        return bool(outbound) and all(m.wa_template_id for m in outbound)
 
     def _sync_whatsapp_channel_name(self, wa_message):
         """Renombra el canal de WhatsApp para que muestre el NOMBRE del contacto
