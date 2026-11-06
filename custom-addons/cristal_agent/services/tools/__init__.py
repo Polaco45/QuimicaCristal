@@ -97,3 +97,6 @@ from . import suggest_products
 # Calificación institucional (v1.9.1)
 from . import update_qualification_data
 from . import complete_institutional_qualification
+
+# v1.61 — origen preguntado por Claudio cuando no hay código
+from . import set_origin

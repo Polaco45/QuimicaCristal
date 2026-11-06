@@ -677,6 +677,10 @@ class CristalAgentConfig(models.Model):
     pauta_story_enabled = fields.Boolean(
         string="Historias diarias (9:16)", default=True,
         help="El orgánico de cada mes suma una historia por día.")
+    route_aviso_auto = fields.Boolean(
+        string="Aviso de paso automático por WhatsApp", default=True,
+        help="Entre 2 y 6 días antes de cada salida manda solo el aviso de paso a los contactos "
+             "del circuito (hasta 100 por día y salida). Necesita la plantilla aprobada por Meta.")
     pauta_rc_every_days = fields.Integer(
         string="Días entre tandas de placas de Río Cuarto", default=14)
     monthly_review_enabled = fields.Boolean(
