@@ -302,6 +302,8 @@
                                 <field name="higgsfield_min_credits"/>
                                 <field name="pauta_organic_enabled" widget="boolean_toggle"/>
                                 <field name="pauta_organic_day"/>
+                                <field name="pauta_story_enabled" widget="boolean_toggle"/>
+                                <field name="pauta_rc_every_days"/>
                                 <field name="monthly_review_enabled" widget="boolean_toggle"/>
                             </group>
                             <group string="🏅 Niveles y referidos">

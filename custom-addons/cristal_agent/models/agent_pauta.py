@@ -42,6 +42,7 @@ ORGANIC_WEEKDAYS = (1, 4)
 ORGANIC_ROTATION = ('LOGISTICA', 'FABRICA', 'PRODUCTO', 'MARGEN', 'PRUEBA_SOCIAL',
                     'PRODUCTO', 'FABRICA', 'MARGEN', 'PRODUCTO', 'PRUEBA_SOCIAL')
 ORGANIC_SKIP = {(12, 25), (1, 1)}  # Navidad y Año Nuevo: sin posteo
+BASES_ORDER = ('joaco_deposito', 'camion_cargado', 'pallet_regalo', 'joaco_camion')
 ORGANIC_HASHTAGS ="#QuímicaCristal #RíoCuarto #ProductosDeLimpieza #Mayorista #VentaPorMayor"
 ROUTE_ANGLES = ('REGALO', 'LOGISTICA', 'FABRICA', 'MARGEN', 'URGENCIA')
 MESES = ['', 'ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO',
@@ -484,7 +485,8 @@ class CristalAgentPauta(models.AbstractModel):
             version = Creative.search_count([('format', '=', 'organico'), ('angle', '=', angle)]) + 1
             att = Att.create({'name': f"organico_{day:%Y%m%d}_{angle.lower()}_v{version}.jpg",
                               'raw': data, 'mimetype': 'image/jpeg', 'public': True,
-                              'description': f"Orgánico {angle} · {day:%d/%m} · Pauta Cristal"})
+                              'description': (f"Orgánico {angle} · {day:%d/%m} · Pauta Cristal\n"
+                                              f"FECHA: {day:%Y-%m-%d}\nTEXTO:\n{body}")})
             created |= Creative.create({
                 'name': f"[ORGANICO] {angle} | placa v{version} | {day:%d/%m}",
                 'zone': 'ORGANICO', 'angle': angle, 'format': 'organico', 'version': version,
@@ -492,7 +494,195 @@ class CristalAgentPauta(models.AbstractModel):
                 'headline': offer.name if offer else False, 'state': 'generated',
                 'notes': f"Oferta: {offer.name} (id {offer.id})" if offer else False,
             })
+        config = config or self.env['cristal.agent.config'].sudo().get_active()
+        if config and getattr(config, 'pauta_story_enabled', True):
+            created |= self.generate_stories_month(ms, ctx, offers, sal)
         return created
+
+    # ───────────────────────── v1.60 — Historias diarias (9:16) ─────────────────────────
+    @api.model
+    def _week_departure(self, day, sal):
+        """Salida del jueves de la semana de `day` (lunes a domingo), si hay: (fecha, circuito)."""
+        monday = day - timedelta(days=day.weekday())
+        thursday = monday + timedelta(days=3)
+        for d, name in sal:
+            if d == thursday:
+                return d, name
+        return None
+
+    @api.model
+    def story_spec(self, day, ctx, offer=None, dep=None):
+        """Historia del día según el día de la semana. Devuelve (ángulo, spec, texto)."""
+        wd = day.weekday()
+        cierre = 'ESCRIBINOS POR WHATSAPP'
+        if dep and wd in (0, 2, 3):
+            d, name = dep
+            circuit = self.env['cristal.agent.circuit'].sudo().search([('name', '=', name)], limit=1)
+            towns = [t.name for t in circuit.town_ids.sorted(lambda t: (bool(t.optional), t.id))][:8]
+            half = (len(towns) + 1) // 2
+            pueblos = ' · '.join(towns[:half]) + ('|' + ' · '.join(towns[half:]) if towns[half:] else '')
+            cut = d - timedelta(days=1)
+            if wd == 0:
+                spec = dict(base='joaco_camion', dia=f"ESTE JUEVES {d.day}/{d.month}",
+                            titulo=f"EL CAMIÓN VA|A {name.upper()}", pueblos=pueblos,
+                            promo='PEDÍ HASTA EL|MIÉRCOLES 18 H', detalle='Te lo dejamos en tu negocio',
+                            condiciones='Mezclás los productos como quieras', cierre=cierre)
+                body = (f"🚚 Este jueves {d.day}/{d.month} el camión va a {name}: "
+                        f"{', '.join(towns)}. Pedidos hasta el miércoles a las 18 h.")
+                return 'LOGISTICA', spec, body
+            if wd == 2:
+                spec = dict(base='joaco_camion', dia=f"HOY {cut.day}/{cut.month} CIERRA",
+                            titulo='ÚLTIMO DÍA PARA|SUBIRTE AL CAMIÓN', pueblos=pueblos,
+                            promo='CIERRA HOY|A LAS 18 H', detalle=f"Sale mañana a {name}",
+                            condiciones='Escribinos y lo dejamos cargado', cierre=cierre)
+                body = f"⏰ Hoy a las 18 h cierra la preventa del camión a {name}. Mañana sale."
+                return 'URGENCIA', spec, body
+            spec = dict(base='camion_cargado', dia=f"HOY {d.day}/{d.month}",
+                        titulo=f"SALIMOS PARA|{name.upper()}", pueblos=pueblos,
+                        promo='¿TE LO|PERDISTE?', detalle='La próxima pasada es en 4 semanas',
+                        condiciones='Escribinos y te anotamos', cierre=cierre)
+            body = f"🚚 Hoy sale el camión a {name}. ¿Te lo perdiste? Escribinos y te anotamos para la próxima."
+            return 'LOGISTICA', spec, body
+        by_wd = {1: 'PRODUCTO', 4: 'FABRICA', 5: 'MARGEN', 6: 'PRUEBA_SOCIAL', 0: 'MARGEN',
+                 2: 'PRODUCTO', 3: 'FABRICA'}
+        angle = by_wd[wd]
+        if angle == 'PRUEBA_SOCIAL' and ctx.get('clientes', 0) < 20:
+            angle = 'FABRICA'
+        angle, spec, body = self.organic_spec(angle, ctx, offer if angle == 'PRODUCTO' else None)
+        body = body.split('\n\n#')[0]
+        return angle, spec, body
+
+    @api.model
+    def generate_stories_for(self, month_start):
+        """Atajo por RPC: historias de un mes (por ejemplo, de un mes cuyo feed ya existía)."""
+        ms, _nxt = self._month_bounds(month_start)
+        offers = list(self._organic_offers(ms))
+        sal = self._organic_departures(ms)
+        ctx = {'mes': MESES[ms.month], 'mes_min': MESES[ms.month].lower(),
+               'clientes': (self._organic_buyers() // 10) * 10, 'salidas': [], 'solo_jueves': True}
+        return self.generate_stories_month(ms, ctx, offers, sal).ids
+
+    @api.model
+    def generate_rc_now(self):
+        """Atajo por RPC: una tanda de placas de Río Cuarto ya."""
+        return self.generate_rc_batch().ids
+
+    @api.model
+    def generate_stories_month(self, month_start, ctx, offers, sal):
+        """Una historia 9:16 por día del mes (menos Navidad y Año Nuevo). Idempotente por fecha."""
+        from ..services import placa
+        ms, nxt = self._month_bounds(month_start)
+        Creative = self.env['cristal.agent.creative'].sudo()
+        Att = self.env['ir.attachment'].sudo()
+        created = Creative.browse()
+        oi = 0
+        day = ms
+        while day < nxt:
+            if (day.month, day.day) in ORGANIC_SKIP or Creative.search_count(
+                    [('format', '=', 'story'), ('planned_date', '=', day)]):
+                day += timedelta(days=1)
+                continue
+            offer = None
+            if offers and day.weekday() in (1, 2):
+                offer = offers[oi % len(offers)]
+                oi += 1
+            angle, spec, body = self.story_spec(day, ctx, offer, self._week_departure(day, sal))
+            try:
+                data = placa.render(story=True, **spec)
+            except Exception as e:  # noqa: BLE001
+                _logger.exception("Historia %s del %s falló: %s", angle, day, e)
+                day += timedelta(days=1)
+                continue
+            version = Creative.search_count([('format', '=', 'story'), ('angle', '=', angle)]) + 1
+            att = Att.create({'name': f"historia_{day:%Y%m%d}_{angle.lower()}_v{version}.jpg",
+                              'raw': data, 'mimetype': 'image/jpeg', 'public': True,
+                              'description': (f"Historia {angle} · {day:%d/%m} · Pauta Cristal\n"
+                                              f"FECHA: {day:%Y-%m-%d}\nTEXTO:\n{body}")})
+            created |= Creative.create({
+                'name': f"[HISTORIA] {angle} | story v{version} | {day:%d/%m}",
+                'zone': 'ORGANICO', 'angle': angle, 'format': 'story', 'version': version,
+                'attachment_id': att.id, 'body': body, 'planned_date': day, 'state': 'generated',
+            })
+            day += timedelta(days=1)
+        return created
+
+    # ───────────────────────── v1.60 — Placas de Río Cuarto que rotan ─────────────────────────
+    RC_VARIANTS = {
+        'FABRICA': [('SOMOS FÁBRICA|SIN INTERMEDIARIOS', 'PRECIO DE FÁBRICA|PARA TU NEGOCIO'),
+                    ('HECHO EN|RÍO CUARTO', 'COMPRÁ DIRECTO|A LA FÁBRICA'),
+                    ('20 AÑOS|FABRICANDO', 'TU PROVEEDOR|DE LIMPIEZA')],
+        'MARGEN': [('COMPRÁS A GRANEL|GANÁS POR LITRO', 'FRACCIONÁS|Y REVENDÉS'),
+                   ('MÁS MARGEN|EN CADA LITRO', 'BIDONES DE 20 L|A PRECIO DE FÁBRICA'),
+                   ('LO QUE MÁS|SE VENDE', 'EN TU GÓNDOLA|TODO EL AÑO')],
+        'PRUEBA_SOCIAL': [('+{n} NEGOCIOS|YA NOS COMPRAN', 'DIRECTO DE FÁBRICA|A TU LOCAL'),
+                          ('{n} NEGOCIOS|CONFÍAN EN CRISTAL', 'SUMATE A LOS|QUE YA COMPRAN')],
+    }
+    RC_HEADLINES = {
+        'FABRICA': "Precio de fábrica en Río Cuarto",
+        'MARGEN': "Comprás a granel y ganás por litro",
+        'PRUEBA_SOCIAL': "Negocios de la zona ya nos compran",
+        'PRODUCTO': "Combo armado para tu negocio",
+    }
+
+    @api.model
+    def generate_rc_batch(self, day=None):
+        """Placas nuevas para la campaña continua de Río Cuarto: una por ángulo, sin pueblos,
+        con otra foto y otro título que la tanda anterior. Copy en la descripción del adjunto."""
+        from ..services import placa
+        day = fields.Date.to_date(day) if day else fields.Date.context_today(self)
+        Creative = self.env['cristal.agent.creative'].sudo()
+        Att = self.env['ir.attachment'].sudo()
+        batch = Creative.search_count([('zone', '=', 'RC')]) // 4
+        buyers = (self._organic_buyers() // 10) * 10
+        offers = list(self._organic_offers(day))
+        ctx = {'mes': MESES[day.month], 'mes_min': MESES[day.month].lower(), 'clientes': buyers,
+               'salidas': [], 'solo_jueves': True}
+        bases = list(BASES_ORDER)
+        angles = ['FABRICA', 'MARGEN', 'PRODUCTO'] + (['PRUEBA_SOCIAL'] if buyers >= 20 else [])
+        created = Creative.browse()
+        for k, angle in enumerate(angles):
+            offer = offers[batch % len(offers)] if (angle == 'PRODUCTO' and offers) else None
+            real, spec, body = self.organic_spec(angle, ctx, offer)
+            variants = self.RC_VARIANTS.get(real)
+            if variants:
+                tit, pro = variants[batch % len(variants)]
+                spec['titulo'], spec['promo'] = tit.format(n=buyers), pro
+            spec['base'] = bases[(batch + k) % len(bases)]
+            spec['dia'] = 'RÍO CUARTO Y LA ZONA'
+            body = body.split('\n\n#')[0]
+            try:
+                data = placa.render(**spec)
+            except Exception as e:  # noqa: BLE001
+                _logger.exception("Placa RC %s falló: %s", real, e)
+                continue
+            version = Creative.search_count([('zone', '=', 'RC'), ('angle', '=', real)]) + 1
+            headline = self.RC_HEADLINES.get(real, '')
+            att = Att.create({'name': f"placa_rc_{day:%Y%m%d}_{real.lower()}_v{version}.jpg",
+                              'raw': data, 'mimetype': 'image/jpeg', 'public': True,
+                              'description': (f"Placa RC {real} v{version} · Pauta Cristal\n"
+                                              f"TITULO: {headline}\nTEXTO:\n{body}")})
+            created |= Creative.create({
+                'name': f"[RC] {real} | placa v{version} | continuo",
+                'zone': 'RC', 'angle': real, 'format': 'placa', 'version': version,
+                'attachment_id': att.id, 'body': body, 'headline': headline, 'state': 'generated',
+            })
+        return created
+
+    @api.model
+    def cron_rc_creatives(self):
+        """Todos los días: si la última tanda de Río Cuarto tiene `pauta_rc_every_days` días o
+        más, genera otra. La rutina semanal las carga en Meta y pausa las que pierden."""
+        config = self.env['cristal.agent.config'].sudo().get_active()
+        if not config or not config.pauta_enabled:
+            return False
+        every = int(getattr(config, 'pauta_rc_every_days', 14) or 14)
+        last = self.env['cristal.agent.creative'].sudo().search(
+            [('zone', '=', 'RC')], order='create_date desc', limit=1)
+        today = fields.Date.context_today(config)
+        if last and (today - last.create_date.date()).days < every:
+            return True
+        self.generate_rc_batch(today)
+        return True
 
     @api.model
     def cron_organic_content(self, force=False):

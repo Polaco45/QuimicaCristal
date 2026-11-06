@@ -28,6 +28,18 @@
             <field name="active" eval="True"/>
         </record>
 
+        <!-- v1.60 — 8:30 AR: placas nuevas de Río Cuarto cada 14 días. -->
+        <record id="cron_pauta_rc_creatives" model="ir.cron">
+            <field name="name">Cristal Agent: Pauta — placas rotativas de Río Cuarto</field>
+            <field name="model_id" ref="model_cristal_agent_pauta"/>
+            <field name="state">code</field>
+            <field name="code">model.cron_rc_creatives()</field>
+            <field name="interval_number">1</field>
+            <field name="interval_type">days</field>
+            <field name="nextcall" eval="(DateTime.now() + relativedelta(days=1)).strftime('%Y-%m-%d 11:30:00')"/>
+            <field name="active" eval="True"/>
+        </record>
+
         <!-- v1.59 — 9:00 AR: revisión mensual del mayorista (día 1; reintenta si falló). -->
         <record id="cron_monthly_review" model="ir.cron">
             <field name="name">Cristal Agent: Revisión mensual del mayorista</field>

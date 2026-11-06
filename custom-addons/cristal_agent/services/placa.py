@@ -127,29 +127,35 @@ def _pill(draw, text, font, x, y, bg, fg):
     return w, h
 
 
-def render(base, dia, titulo, pueblos, promo, detalle, condiciones, cierre, quality=86):
+STORY_H = 1920  # v1.60: historia 9:16
+
+
+def render(base, dia, titulo, pueblos, promo, detalle, condiciones, cierre, quality=86, story=False):
     """Devuelve los bytes JPEG de la placa. `base` es una clave de BASES o una ruta.
-    Los textos multilínea usan '|' como separador."""
+    Los textos multilínea usan '|' como separador. `story=True` arma 1080×1920 (9:16) dejando
+    libres las franjas de arriba y abajo que tapa la interfaz de Instagram."""
     from PIL import Image, ImageDraw
+    HH = STORY_H if story else H
+    top = 250 if story else 48
     path = BASES.get(base, base)
     if not os.path.isabs(path):
         path = os.path.join(BASE_DIR, path)
     with Image.open(path) as im:
         img = im.convert('RGB')
-    if img.size != (W, H):
-        # recorte 4:5 centrado y redimensión
-        ratio = W / H
+    if img.size != (W, HH):
+        # recorte centrado a la proporción pedida y redimensión
+        ratio = W / HH
         cw, ch = img.width, int(img.width / ratio)
         if ch > img.height:
             ch, cw = img.height, int(img.height * ratio)
         cx, cy = (img.width - cw) // 2, (img.height - ch) // 2
-        img = img.crop((cx, cy, cx + cw, cy + ch)).resize((W, H))
+        img = img.crop((cx, cy, cx + cw, cy + ch)).resize((W, HH))
     img = img.convert('RGBA')
-    _gradient(img, 0, 520, 230, 0)
-    _gradient(img, 800, H, 0, 245)
+    _gradient(img, 0, top + 472, 230, 0)
+    _gradient(img, HH - 550 - (top - 48), HH, 0, 245)
     draw = ImageDraw.Draw(img)
 
-    y = 48
+    y = top
     if dia:
         f = _fit(draw, dia, _FONT_BLACK, 34, 700)
         _, h = _pill(draw, dia, f, 48, y, ORANGE, WHITE)
@@ -163,10 +169,10 @@ def render(base, dia, titulo, pueblos, promo, detalle, condiciones, cierre, qual
         if line:
             _shadow(draw, (48, y), line, _fit(draw, line, _FONT_BOLD, 30, 990), WHITE)
             y += 40
-    _shadow(draw, (W - 268, 52), 'CRISTAL', _font(_FONT_BLACK, 44), ORANGE)
-    _shadow(draw, (W - 172, 102), 'Química', _font(_FONT_BOLD, 26), ORANGE)
+    _shadow(draw, (W - 268, top + 4), 'CRISTAL', _font(_FONT_BLACK, 44), ORANGE)
+    _shadow(draw, (W - 172, top + 54), 'Química', _font(_FONT_BOLD, 26), ORANGE)
 
-    yb = 905
+    yb = HH - 445 - (300 if story else 0)
     for line in (promo or '').split('|'):
         if line:
             _shadow(draw, (44, yb), line, _fit(draw, line, _FONT_BLACK, 84, 990), ORANGE)
@@ -180,7 +186,7 @@ def render(base, dia, titulo, pueblos, promo, detalle, condiciones, cierre, qual
     if cierre:
         f = _fit(draw, cierre, _FONT_BLACK, 34, W - 200)
         tw = draw.textlength(cierre, font=f)
-        _pill(draw, cierre, f, int((W - tw - 44) / 2), max(yb + 18, H - 110), WHITE, DARK)
+        _pill(draw, cierre, f, int((W - tw - 44) / 2), max(yb + 18, HH - 110 - (290 if story else 0)), WHITE, DARK)
 
     out = io.BytesIO()
     img.convert('RGB').save(out, format='JPEG', quality=quality, optimize=True)
