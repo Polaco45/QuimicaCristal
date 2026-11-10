@@ -7,6 +7,19 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.63.5] — 2026-11-10
+
+### Changed — Kits en tarjetas, palos acostados y "Fabricado" solo para la categoría Fabricación
+En las placas, lo largo y finito (palos, cabos, secadores) va acostado sobre la mesada adelante y
+lo demás parado atrás; si todo es largo, foto cenital con cada pieza a lo ancho
+(`_lineup_lying`). Antes los palos quedaban parados como hilos y achicaban el resto.
+
+Además: solo lo de la categoría "Fabricación" cuenta como nuestro (Joaco 10/11). Las placas de combos
+dicen "Fabricado en Río Cuarto" solo si todo es de Fabricación; si no, "Con productos de nuestra
+fábrica" o "Química Cristal · Río Cuarto". Las placas mayoristas toman los más vendidos de Fabricación.
+El recorte mide la caja sobre lo que tiene color. Los kits van en tarjetas con el nombre de cada pieza
+(sin escenario) y si una opción no tiene foto se muestra otra de la misma parte del combo.
+
 ## [18.0.1.63.4] — 2026-11-10
 
 ### Fixed — Notificaciones que inundaban a Joaco (WhatsApp y bandeja de entrada)

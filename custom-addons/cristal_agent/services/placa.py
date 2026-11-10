@@ -357,7 +357,14 @@ def _cutout(photo):
     mask = mask.filter(ImageFilter.MinFilter(3)).filter(ImageFilter.GaussianBlur(1.1))
     out = rgb.convert('RGBA')
     out.putalpha(mask)
-    box = mask.point(lambda v: 255 if v > 40 else 0).getbbox()
+    # v1.63.2 — La caja se mide sobre lo que tiene "tinta" (no casi blanco): restos claros
+    # invisibles ensanchaban la caja y un palo dejaba de verse largo y finito.
+    ink = ImageChops.lighter(lo.point(lambda v: 255 if v < 215 else 0),
+                             ImageChops.subtract(hi, lo).point(lambda v: 255 if v > 28 else 0))
+    core = ImageChops.multiply(ink, mask.point(lambda v: 255 if v > 128 else 0))
+    box = core.getbbox() or mask.point(lambda v: 255 if v > 40 else 0).getbbox()
+    if box:
+        box = (max(0, box[0] - 4), max(0, box[1] - 4), min(w, box[2] + 4), min(h, box[3] + 4))
     return out.crop(box) if box else None
 
 
@@ -392,6 +399,19 @@ def _lineup(img, photos, base_y, x0, x1, max_h):
             c = Image.new('RGBA', (card.width, int(card.height * 1.25)), (0, 0, 0, 0))
             c.alpha_composite(card, (0, c.height - card.height))
         cut.append(c)
+    # v1.63.2 — Lo largo y finito (palos, cabos, secadores) va ACOSTADO sobre la mesada, no
+    # parado: parado queda como un hilo y achica todo lo demás (kits mopa/secador/barrido).
+    lying, stand = [], []
+    for c in cut:
+        ar = c.height / max(1, c.width)
+        if ar > 3.5:
+            lying.append(c.rotate(90, expand=True))
+        elif ar < 1 / 3.5:
+            lying.append(c)
+        else:
+            stand.append(c)
+    if lying:
+        return _lineup_lying(img, stand, lying, base_y, x0, x1, max_h)
     # Una fila si entran a buen tamaño; si no (más de 5, o productos anchos como bolsas y
     # esponjas que quedarían chiquitos), dos filas.
     natural = sum(c.width * max_h / c.height for c in cut) + 14 * (len(cut) - 1)
@@ -405,13 +425,8 @@ def _lineup(img, photos, base_y, x0, x1, max_h):
         else:   # la de atrás asoma por encima de la de adelante
             h_t = int(max_h * (0.55 if back else 0.60))
             y_b = base_y - (int(max_h * 0.26) if back else 0)
-        # Cada producto entra en su celda (ancho parejo): un palo largo no achica a los demás
-        # y una pala ancha no se agiganta.
-        cell = (x1 - x0 - 14 * (len(row) - 1)) / max(1, len(row))
-        scaled = []
-        for p in row:
-            f = min(h_t / p.height, cell / p.width)
-            scaled.append(p.resize((max(1, int(p.width * f)), max(1, int(p.height * f)))))
+        # Altura pareja en la fila (prolijo); lo largo y finito ya se acostó antes.
+        scaled = [p.resize((max(1, int(p.width * h_t / p.height)), h_t)) for p in row]
         gap = 14
         total = sum(p.width for p in scaled) + gap * (len(scaled) - 1)
         avail = x1 - x0
@@ -428,6 +443,56 @@ def _lineup(img, photos, base_y, x0, x1, max_h):
     sd = ImageDraw.Draw(shadow)
     for p, x, y in layers:
         sd.ellipse((x + p.width * 0.08, y - 14, x + p.width * 0.92, y + 16), fill=(0, 0, 0, 110))
+    canvas = Image.alpha_composite(canvas, shadow.filter(ImageFilter.GaussianBlur(10)))
+    for p, x, y in layers:
+        canvas.alpha_composite(p, (int(x), int(y - p.height)))
+    return canvas.convert('RGB')
+
+
+def _lineup_lying(img, stand, lying, base_y, x0, x1, max_h):
+    """Productos parados atrás y los largos acostados adelante, a lo ancho de la mesada. Si
+    todo es largo (kit secador), foto cenital: cada pieza a lo ancho, una debajo de la otra.
+    `stand` y `lying` ya vienen recortados (RGBA) y `lying` ya horizontal."""
+    from PIL import Image, ImageDraw, ImageFilter
+    avail = x1 - x0
+    canvas = img.convert('RGBA')
+    shadow = Image.new('RGBA', canvas.size, (0, 0, 0, 0))
+    sd = ImageDraw.Draw(shadow)
+    layers = []
+
+    def fit_w(p, w, h_max):
+        f = min(w / p.width, h_max / p.height)
+        return p.resize((max(1, int(p.width * f)), max(1, int(p.height * f))), Image.LANCZOS)
+
+    if stand:
+        lay = [fit_w(p, avail * 0.88, max_h * 0.16) for p in lying]
+        band = sum(p.height for p in lay) + 12 * (len(lay) - 1)
+        y_s = base_y - int(band * 0.55)
+        h_s = int(max_h - band * 0.55)
+        cell = (avail - 24 * (len(stand) - 1)) / len(stand)
+        sc = [fit_w(p, cell, h_s) for p in stand]
+        total = sum(p.width for p in sc) + 24 * (len(sc) - 1)
+        x = x0 + (avail - total) // 2
+        for p in sc:
+            layers.append((p, x, y_s))
+            sd.ellipse((x + p.width * 0.08, y_s - 14, x + p.width * 0.92, y_s + 16), fill=(0, 0, 0, 110))
+            x += p.width + 24
+        y = base_y
+        for p in lay:                      # adelante, de abajo hacia arriba
+            x = x0 + (avail - p.width) // 2
+            layers.append((p, x, y))
+            sd.rounded_rectangle((x + 10, y - 6, x + p.width - 10, y + 10), radius=8, fill=(0, 0, 0, 120))
+            y -= p.height + 12
+    else:                                  # foto cenital: todo a lo ancho
+        slot = max_h / len(lying)
+        top = base_y - max_h
+        for i, p in enumerate(lying):
+            q = fit_w(p, avail * 0.88, slot * 0.78)
+            x = x0 + (avail - q.width) // 2
+            y = int(top + slot * i + (slot + q.height) / 2)
+            layers.append((q, x, y))
+            sd.rounded_rectangle((x + 12, y - q.height + 14, x + q.width - 4, y + 12), radius=12,
+                                 fill=(0, 0, 0, 90))
     canvas = Image.alpha_composite(canvas, shadow.filter(ImageFilter.GaussianBlur(10)))
     for p, x, y in layers:
         canvas.alpha_composite(p, (int(x), int(y - p.height)))
@@ -456,7 +521,9 @@ def _paste_fit(img, photo, cell):
     from PIL import Image
     x, y, w, h = cell
     p = photo.copy()
-    p.thumbnail((w, h), Image.LANCZOS)
+    # v1.63.2 — también agranda (fotos chicas de catálogo quedaban como estampillas)
+    f = min(w / p.width, h / p.height)
+    p = p.resize((max(1, int(p.width * f)), max(1, int(p.height * f))), Image.LANCZOS)
     img.paste(p, (x + (w - p.width) // 2, y + (h - p.height) // 2))
 
 
@@ -570,7 +637,8 @@ def render(base, dia, titulo, pueblos, promo, detalle, condiciones, cierre, qual
     return out.getvalue()
 
 
-def render_combo(name, price, items, loose=None, footer=None, story=False, quality=88, scene=None):
+def render_combo(name, price, items, loose=None, footer=None, story=False, quality=88, scene=None,
+                 origin="Fabricado en Río Cuarto"):
     """v1.61.3 — Placa de un combo para la casa con las FOTOS REALES de lo que trae.
     items = [(nombre corto, bytes de la foto de la variante)], price/loose en pesos.
     Fondo claro, banda naranja con el nombre, grilla de productos con su nombre, precio en
@@ -628,7 +696,7 @@ def render_combo(name, price, items, loose=None, footer=None, story=False, quali
         d.text((tx, yb + 96), f"Ahorrás {money(loose - price)}", font=_font(_FONT_BLACK, 56), fill=ORANGE)
     else:
         d.text((tx, yb + 70), "Todo junto, un solo pedido", font=_font(_FONT_BOLD, 40), fill=GREY)
-    d.text((tx, yb + 170), "Fabricado en Río Cuarto", font=_font(_FONT_BOLD, 32), fill=DARK)
+    d.text((tx, yb + 170), origin or "", font=_fit(d, origin or "", _FONT_BOLD, 32, W - tx - 40), fill=DARK)
 
     # Franja inferior
     fy = HH - bottom_safe - 64

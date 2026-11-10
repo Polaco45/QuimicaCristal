@@ -171,9 +171,9 @@ class CristalAgentPauta(models.AbstractModel):
             if tmpl.id in seen or not (product.image_1024 or tmpl.image_1024):
                 continue
             seen.add(tmpl.id)
-            # Lo de reventa (categoría "Distribución": papel, bolsas, trapos de otras marcas) no
+            # Solo lo de la categoría "Fabricación" es nuestro (Joaco 10/11: ni Distribución ni Fraccionado) y
             # va en placas que dicen "fabricamos / precio de fábrica": solo si faltan productos.
-            if (tmpl.categ_id.complete_name or '').startswith('Distribuci'):
+            if not (tmpl.categ_id.complete_name or '').startswith('Fabricaci'):
                 resale.append(product)
                 continue
             result.append(product)
@@ -278,16 +278,35 @@ class CristalAgentPauta(models.AbstractModel):
         for c in cf_combos.catalog(self.env):
             combo = c['product']
             items, _missing, _chosen = cf_combos.pick_items(combo)
-            photos = [(self._short_label(it.product_id), self._product_photo(it.product_id))
-                      for it in items]
+            # v1.63.2 — Si la opción elegida no tiene foto, se muestra otra de la MISMA parte del
+            # combo que sí tenga (antes el "Kit barrido" salía sin escobillón).
+            shown = []
+            for it in items:
+                prod = it.product_id
+                if not self._product_photo(prod):
+                    alts = it.combo_id.combo_item_ids.mapped('product_id').filtered(
+                        lambda p: p.active and p.sale_ok and (p.image_1024 or p.product_tmpl_id.image_1024))
+                    prod = (alts.filtered(lambda p: p.qty_available > 0) or alts)[:1] or prod
+                shown.append(prod)
+            photos = [(self._short_label(p), self._product_photo(p)) for p in shown]
             photos = [(lab, ph) for lab, ph in photos if ph]
             if not photos:
                 continue
             trae = ', '.join(self._short_label(it.product_id) for it in items)
+            # v1.63.2 — Solo decimos "fabricado" si TODO es de nuestra fábrica (Joaco: los
+            # palos, palas, mopas y trapos son de reventa).
+            own = [(it.product_id.categ_id.complete_name or '').startswith('Fabricaci')
+                   for it in items]
+            origin = ('Fabricado en Río Cuarto' if own and all(own) else
+                      'Con productos de nuestra fábrica' if any(own) else
+                      'Química Cristal · Río Cuarto')
+            # Los kits (accesorios de reventa con fotos de catálogo) van en tarjetas con el nombre
+            # de cada pieza, sin escenario: se entiende mejor qué trae.
+            scene = None if (c['name'] or '').lower().startswith('kit') else self._cf_scene(c['name'])
             for fmt, story in (('feed', False), ('story', True)):
                 try:
                     data = placa.render_combo(c['name'], c['price'], photos, loose=c['loose'], story=story,
-                                              scene=self._cf_scene(c['name']))
+                                              scene=scene, origin=origin)
                 except Exception as e:  # noqa: BLE001
                     _logger.exception("Placa CF %s %s falló: %s", c['name'], fmt, e)
                     continue
@@ -299,7 +318,8 @@ class CristalAgentPauta(models.AbstractModel):
                     'description': (f"Placa CF {c['name']} · {fmt} · fotos reales · Pauta Cristal\n"
                                     f"PRECIO: {round(c['price'])}\nSUELTO: {round(c['loose'])}\n"
                                     f"AHORRO: {round(c['saving'])}\nTRAE: {trae}\n"
-                                    f"SIN_STOCK: {', '.join(c['missing']) or '-'}")})
+                                    f"SIN_STOCK: {', '.join(c['missing']) or '-'}\n"
+                                    f"ORIGEN: {origin}")})
                 result[name] = att.id
         return result
 
@@ -635,8 +655,8 @@ class CristalAgentPauta(models.AbstractModel):
                         detalle='Bidones de 20 L a precio de fábrica, directo al negocio',
                         condiciones='Jabón, suavizante, lavandina, cloro, detergente', cierre=cierre)
             body = ("💰 Comprás a granel en bidones de 20 L, fraccionás en tu local y ganás por "
-                    "litro.\n\nJabón líquido, suavizante, lavandina, cloro, detergente y "
-                    "desengrasante, hechos en nuestra fábrica de Río Cuarto.\n\n"
+                    "litro.\n\nJabón líquido, suavizante, detergente y desengrasante hechos en "
+                    "nuestra fábrica de Río Cuarto, y también lavandina y cloro.\n\n"
                     "Pedí la lista de precios por WhatsApp 👇")
         else:  # FABRICA (y PRODUCTO sin oferta)
             angle = 'FABRICA'
