@@ -279,10 +279,17 @@ class CristalAgentPauta(models.AbstractModel):
             if not photos:
                 continue
             trae = ', '.join(self._short_label(it.product_id) for it in items)
+            # v1.63.2 — Solo decimos "fabricado" si TODO es de nuestra fábrica (Joaco: los
+            # palos, palas, mopas y trapos son de reventa).
+            own = [not (it.product_id.categ_id.complete_name or '').startswith('Distribuci')
+                   for it in items]
+            origin = ('Fabricado en Río Cuarto' if own and all(own) else
+                      'Con productos de nuestra fábrica' if any(own) else
+                      'Química Cristal · Río Cuarto')
             for fmt, story in (('feed', False), ('story', True)):
                 try:
                     data = placa.render_combo(c['name'], c['price'], photos, loose=c['loose'], story=story,
-                                              scene=self._cf_scene(c['name']))
+                                              scene=self._cf_scene(c['name']), origin=origin)
                 except Exception as e:  # noqa: BLE001
                     _logger.exception("Placa CF %s %s falló: %s", c['name'], fmt, e)
                     continue
@@ -294,7 +301,8 @@ class CristalAgentPauta(models.AbstractModel):
                     'description': (f"Placa CF {c['name']} · {fmt} · fotos reales · Pauta Cristal\n"
                                     f"PRECIO: {round(c['price'])}\nSUELTO: {round(c['loose'])}\n"
                                     f"AHORRO: {round(c['saving'])}\nTRAE: {trae}\n"
-                                    f"SIN_STOCK: {', '.join(c['missing']) or '-'}")})
+                                    f"SIN_STOCK: {', '.join(c['missing']) or '-'}\n"
+                                    f"ORIGEN: {origin}")})
                 result[name] = att.id
         return result
 

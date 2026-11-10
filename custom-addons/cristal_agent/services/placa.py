@@ -640,7 +640,8 @@ def render(base, dia, titulo, pueblos, promo, detalle, condiciones, cierre, qual
     return out.getvalue()
 
 
-def render_combo(name, price, items, loose=None, footer=None, story=False, quality=88, scene=None):
+def render_combo(name, price, items, loose=None, footer=None, story=False, quality=88, scene=None,
+                 origin="Fabricado en Río Cuarto"):
     """v1.61.3 — Placa de un combo para la casa con las FOTOS REALES de lo que trae.
     items = [(nombre corto, bytes de la foto de la variante)], price/loose en pesos.
     Fondo claro, banda naranja con el nombre, grilla de productos con su nombre, precio en
@@ -698,7 +699,7 @@ def render_combo(name, price, items, loose=None, footer=None, story=False, quali
         d.text((tx, yb + 96), f"Ahorrás {money(loose - price)}", font=_font(_FONT_BLACK, 56), fill=ORANGE)
     else:
         d.text((tx, yb + 70), "Todo junto, un solo pedido", font=_font(_FONT_BOLD, 40), fill=GREY)
-    d.text((tx, yb + 170), "Fabricado en Río Cuarto", font=_font(_FONT_BOLD, 32), fill=DARK)
+    d.text((tx, yb + 170), origin or "", font=_fit(d, origin or "", _FONT_BOLD, 32, W - tx - 40), fill=DARK)
 
     # Franja inferior
     fy = HH - bottom_safe - 64
