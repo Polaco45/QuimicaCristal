@@ -100,3 +100,6 @@ from . import complete_institutional_qualification
 
 # v1.61 — origen preguntado por Claudio cuando no hay código
 from . import set_origin
+
+# v1.65 — entregas y reclamos al responsable (conversión punto 11)
+from . import derive_delivery_issue

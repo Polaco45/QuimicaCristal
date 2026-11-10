@@ -77,6 +77,7 @@ class ToolRegistry:
             'suggest_products',
             'register_referral',
             'set_origin',
+            'derive_delivery_issue',
             # NOTA: create_lead y schedule_activity quedan disponibles para el bot
             # institucional como respaldo, pero su uso normal es vía la tool atómica
             # complete_institutional_qualification.

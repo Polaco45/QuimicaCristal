@@ -164,13 +164,32 @@ class CreateSaleOrder(AgentTool):
         parts = []
         for ln in no_stock_lines:
             alts = ', '.join(a['name'] for a in ln['alternativas']) or 'ninguna con stock'
+            repone = (f", vuelve a entrar aprox. el {ln['repone']}" if ln.get('repone')
+                      else ", sin fecha de reposición cargada")
             parts.append(f"{ln['product']} (pidió {ln['qty_pedida']:g}, hay "
-                         f"{ln['disponible']:g}) → alternativas: {alts}")
+                         f"{ln['disponible']:g}{repone}) → alternativas: {alts}")
         return ("⚠️ NO cargué estas líneas por FALTA DE STOCK: " + '; '.join(parts) + ". "
                 "Decile al cliente que ese producto no está disponible y ofrecé UNA "
-                "alternativa de la lista (con su precio de search_products). Si no hay "
-                "alternativa, avisale que no lo tenemos ahora. NO lo cotices igual ni lo "
-                "escales por esto.")
+                "alternativa de la lista (con su precio de search_products). Si tiene fecha "
+                "de reposición, decísela (\"vuelve a entrar alrededor del X\") y ofrecé "
+                "dejárselo anotado: si acepta, agendá con schedule_activity para ese día "
+                "volver a escribirle y cotizárselo. Sin fecha ni alternativa, avisale que no "
+                "lo tenemos ahora. NO lo cotices igual ni lo escales por esto.")
+
+    def _restock_date(self, env, product):
+        """v1.65 — Fecha aproximada de reposición: la próxima entrada pendiente de una
+        compra (stock.move entrante), en formato dd/mm. None si no hay."""
+        try:
+            move = env['stock.move'].sudo().search([
+                ('product_id', '=', product.id),
+                ('state', 'not in', ('done', 'cancel', 'draft')),
+                ('picking_code', '=', 'incoming')], order='date', limit=1)
+        except Exception:  # noqa: BLE001 — sin inventario o campo distinto: sin fecha
+            return None
+        if not move or not move.date:
+            return None
+        from ..helpers import to_ar
+        return f"{to_ar(env, move.date):%d/%m}"
 
     def _disponibilidad(self, product):
         """Stock disponible para productos de DISTRIBUCIÓN/secos.
@@ -757,6 +776,7 @@ class CreateSaleOrder(AgentTool):
                     "qty_pedida": qty,
                     "disponible": max(disp, 0.0),
                     "alternativas": self._stock_alternatives(env, product, qty),
+                    "repone": self._restock_date(env, product),
                 })
                 continue
             # Precio fijo de promo (opcional): esa línea NO lleva el 20% (no acumulable)
