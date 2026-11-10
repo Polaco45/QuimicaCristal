@@ -188,7 +188,7 @@ class CristalAgentPauta(models.AbstractModel):
             products = list(offer.product_ids)
             if any(is_granel(p) for p in products):
                 return [('GRANEL', self._granel_label(p)) if is_granel(p)
-                        else ('ITEM', self._short_label(p)) for p in products]
+                        else ('ITEM', self._item_label(p)) for p in products]
         else:
             top = self._top_products()
             labels = list(dict.fromkeys(self._granel_label(p) for p in top if is_granel(p)))
@@ -207,6 +207,19 @@ class CristalAgentPauta(models.AbstractModel):
                       ('cloro', 'Cloro'), ('detergente', 'Detergente'),
                       ('desengrasante', 'Desengrasante'), ('limpiador', 'Limpiador'),
                       ('desodorante', 'Desodorante'), ('alcohol', 'Alcohol'))
+
+    @api.model
+    def _item_label(self, product):
+        """Nombre corto para la lista de la placa: 'Base Limpiador Desodorante (1+80) 1 lt' →
+        'Base limpiador 1 L'."""
+        import re
+        name = re.sub(r'^\[[^\]]*\]\s*', '', product.name or '')
+        name = re.sub(r'\([^)]*\)|\bCrilimp\b', ' ', name)
+        words = name.split()[:2]
+        m = re.search(r'(\d+(?:[.,]\d+)?)\s*(lts?|l|kg|gr?)\b', product.display_name or '', re.I)
+        unit = {'l': 'L', 'k': 'kg', 'g': 'g'}.get(m.group(2)[0].lower(), '') if m else ''
+        size = f" {m.group(1)} {unit}" if m else ''
+        return (' '.join(words).capitalize() + size)[:24]
 
     @api.model
     def _granel_label(self, product):
