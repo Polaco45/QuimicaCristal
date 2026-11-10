@@ -7,6 +7,14 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.62.2] — 2026-11-10
+
+### Changed — Lo a granel se muestra en el bidón de 20 L
+Joaco: "las placas mayoristas están hechas con los bidones de 5 cuando en realidad se hacen con
+los de 20 L". En las placas mayoristas (`_pauta_photos`) cada producto "a granel" se muestra con
+la foto del bidón plástico azul de 20 L (`static/img/bidon_20l.png`) y una etiqueta impresa con el
+producto y "20 LITROS" (`placa.bidon_granel()`, `_granel_label()`). Los combos para la casa no cambian.
+
 ## [18.0.1.62.1] — 2026-11-10
 
 ### Changed — Placas con fotos REALES de los productos (sin IA)

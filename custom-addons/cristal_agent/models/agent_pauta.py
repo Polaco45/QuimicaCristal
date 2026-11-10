@@ -191,8 +191,33 @@ class CristalAgentPauta(models.AbstractModel):
             if top:
                 start = seed % len(top)
                 products = (top[start:] + top[:start])[:n]
-        photos = [p for p in (self._product_photo(prod) for prod in products[:8]) if p]
+        photos = [p for p in (self._pauta_photo(prod) for prod in products[:8]) if p]
         return photos
+
+    # v1.62.2 — Lo "a granel" se muestra en el bidón azul de 20 L con etiqueta (la foto de la
+    # variante es el bidón de 5 L y confunde: Joaco, 10/11/2026).
+    _GRANEL_LABELS = (('jabon', 'Jabón líquido'), ('jabón', 'Jabón líquido'),
+                      ('suavizante', 'Suavizante'), ('lavandina', 'Lavandina'),
+                      ('cloro', 'Cloro'), ('detergente', 'Detergente'),
+                      ('desengrasante', 'Desengrasante'), ('limpiador', 'Limpiador'),
+                      ('desodorante', 'Desodorante'), ('alcohol', 'Alcohol'))
+
+    @api.model
+    def _granel_label(self, product):
+        name = (product.name or '').lower()
+        for key, label in self._GRANEL_LABELS:
+            if key in name:
+                return label
+        return ' '.join((product.name or '').replace('a granel', '').split()[:2])
+
+    @api.model
+    def _pauta_photo(self, product):
+        if 'granel' in (product.name or '').lower():
+            from ..services import placa
+            img = placa.bidon_granel(self._granel_label(product))
+            if img:
+                return img
+        return self._product_photo(product)
 
     @api.model
     def _scene_for(self, angle, seed=0):
