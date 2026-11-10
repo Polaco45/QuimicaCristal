@@ -14,6 +14,7 @@ Bugs reales que esto corrige:
 - Ariel: 3ra compra y el bot lo trataba como primera (fase nunca avanzaba).
 """
 import logging
+from datetime import timedelta
 from odoo import models, fields, api
 
 _logger = logging.getLogger(__name__)
@@ -54,6 +55,15 @@ class SaleOrder(models.Model):
         [('envio', 'Envío'), ('retiro', 'Retira en planta')],
         string="Entrega", copy=False, tracking=True,
         help="Lo carga Claudio al cotizar. Retira en planta = sin compra mínima ni flete.")
+
+    # v1.62 — Aviso de pedido confirmado (conversión, punto 7): el 35 % de los pases a
+    # Joaco eran "¿se confirmó mi pedido?". Al confirmar a mano un pedido mayorista, el
+    # cron le avisa al cliente por WhatsApp (si lo confirmó Claudio, ya se lo dijo él).
+    cristal_confirm_notice = fields.Selection(
+        [('pending', 'Pendiente'), ('sent', 'Enviado'), ('skipped', 'No se envió')],
+        string="Aviso de confirmación", copy=False, readonly=True)
+    cristal_confirm_notice_note = fields.Char(
+        string="Detalle del aviso", copy=False, readonly=True)
 
     # ───────────────────── Flete de la ruta (v1.37) ─────────────────────
     def _cristal_freight_product(self, config):
@@ -154,6 +164,118 @@ class SaleOrder(models.Model):
             self._cristal_referral_on_confirm()
         except Exception as e:  # noqa: BLE001
             _logger.warning("referidos al confirmar %s: %s", self.name, e)
+        # v1.62 — Aviso de confirmación: solo si lo confirmó una persona (Claudio ya
+        # le avisa al cliente cuando confirma él).
+        if not self.cristal_confirm_notice:
+            if self.env.context.get('from_cristal_agent'):
+                self.sudo().write({'cristal_confirm_notice': 'skipped',
+                                   'cristal_confirm_notice_note': 'Lo confirmó Claudio'})
+            else:
+                self.sudo().cristal_confirm_notice = 'pending'
+
+    # ───────────── v1.62 — Aviso de pedido confirmado por WhatsApp ─────────────
+    def _cristal_is_mayorista(self):
+        partner = self.partner_id.sudo()
+        commercial = partner.commercial_partner_id
+        tags = (partner.category_id | commercial.category_id).mapped('name')
+        if 'Mayorista' in tags:
+            return True
+        return bool(self.env['cristal.agent.memory'].sudo().search_count([
+            ('partner_id', 'in', (partner | commercial).ids),
+            ('client_type', '=', 'mayorista')]))
+
+    def _cristal_confirm_notice_text(self):
+        """Texto del aviso, sin saludo (la plantilla de ventana cerrada ya lo trae)."""
+        self.ensure_one()
+        from ..services.helpers import fmt_day, to_ar
+        parts = [f"Tu pedido {self.name} quedó confirmado ✅."]
+        dep = self.route_departure_id
+        if dep and dep.date:
+            circ = f" (circuito {dep.circuit_id.name})" if dep.circuit_id else ""
+            parts.append(f"Va en el camión del {fmt_day(dep.date)}{circ}.")
+        elif self.cristal_delivery_mode == 'retiro':
+            parts.append("Te avisamos cuando esté listo para retirar.")
+        elif self.commitment_date:
+            parts.append(f"Te lo llevamos el {fmt_day(to_ar(self.env, self.commitment_date).date())}.")
+        else:
+            parts.append("Te avisamos el día de la entrega.")
+        total = f"{self.amount_total:,.0f}".replace(',', '.')
+        parts.append(f"Total: ${total}.")
+        parts.append("Cualquier cosa escribinos por acá.")
+        return " ".join(parts)
+
+    def _cristal_send_confirm_notice(self):
+        """Manda el aviso por el chat de WhatsApp del cliente (con la ventana cerrada
+        sale por la plantilla genérica). Devuelve (estado, detalle)."""
+        self.ensure_one()
+        if self.state not in ('sale', 'done'):
+            return 'skipped', 'El pedido ya no está confirmado'
+        if not self._cristal_is_mayorista():
+            return 'skipped', 'No es mayorista'
+        partner = self.partner_id.sudo()
+        channel = self.env['discuss.channel'].sudo().search([
+            ('channel_type', '=', 'whatsapp'), ('channel_partner_ids', 'in', partner.ids)],
+            order='write_date desc', limit=1)
+        if not channel or not channel.wa_account_id or not channel.whatsapp_number:
+            return 'skipped', 'Sin chat de WhatsApp'
+        # Si alguien del equipo ya le escribió desde la confirmación, no se repite.
+        config = self.env['cristal.agent.config'].sudo().get_active()
+        bot_pid = config.bot_partner_id.id if config and config.bot_partner_id else 2
+        since = (self.date_order or fields.Datetime.now()) - timedelta(hours=1)
+        human = self.env['mail.message'].sudo().search([
+            ('model', '=', 'discuss.channel'), ('res_id', '=', channel.id),
+            ('date', '>=', since), ('author_id', 'not in', [bot_pid, 2]),
+            ('author_id.user_ids.share', '=', False)], limit=1)   # usuarios internos
+        if human:
+            return 'skipped', f"Ya le escribió {human.author_id.name}"
+        from ..services.tool_registry import ToolRegistry
+        tool = ToolRegistry.get('send_whatsapp')
+        if not tool:
+            return 'pending', 'Herramienta send_whatsapp no disponible'
+        env = self.env(context=dict(self.env.context, from_cristal_agent=True))
+        res = tool.execute(env=env, run=None, channel_id=channel.id,
+                           body=self._cristal_confirm_notice_text(),
+                           wa_account_id=channel.wa_account_id.id,
+                           mobile_number=channel.whatsapp_number) or {}
+        if res.get('ok'):
+            how = 'por plantilla' if res.get('window_closed') else 'en el chat'
+            return 'sent', f"Enviado {how}"
+        if res.get('error') == 'TEMPLATE_PENDING':
+            return 'pending', 'Espera respuesta a una plantilla anterior'
+        return 'skipped', str(res.get('error') or res.get('message') or 'No salió')[:200]
+
+    @api.model
+    def cron_confirm_notices(self, limit=30):
+        """Cada 10 minutos, en horario de contacto: avisa los pedidos confirmados a mano
+        hace más de 5 minutos según date_order (margen por si se confirmó por error). Los que siguen
+        pendientes después de 3 días se dan por vencidos."""
+        config = self.env['cristal.agent.config'].sudo().get_active()
+        if not config or not config.order_confirm_notice:
+            return True
+        from ..services.helpers import within_contact_hours
+        now = fields.Datetime.now()
+        stale = self.sudo().search([('cristal_confirm_notice', '=', 'pending'),
+                                    ('date_order', '<', now - timedelta(days=3))])
+        stale.write({'cristal_confirm_notice': 'skipped',
+                     'cristal_confirm_notice_note': 'Vencido (más de 3 días)'})
+        if not within_contact_hours(self.env):
+            return True
+        orders = self.sudo().search([('cristal_confirm_notice', '=', 'pending'),
+                                     ('date_order', '<', now - timedelta(minutes=5))],
+                                    order='id', limit=limit)
+        for order in orders:
+            try:
+                with self.env.cr.savepoint():
+                    state, note = order._cristal_send_confirm_notice()
+            except Exception as e:  # noqa: BLE001
+                _logger.warning("Aviso de confirmación de %s falló: %s", order.name, e)
+                state, note = 'skipped', f"Error: {e}"[:200]
+            order.write({'cristal_confirm_notice': state, 'cristal_confirm_notice_note': note})
+            if state == 'sent':
+                order.message_post(body=f"📲 Aviso de pedido confirmado: {note.lower()}.",
+                                   subtype_xmlid='mail.mt_note')
+            self.env.cr.commit()
+        return True
 
     def _cristal_referral_on_confirm(self):
         partner = self.partner_id.sudo()

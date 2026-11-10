@@ -17,5 +17,16 @@
             <field name="active" eval="True"/>
         </record>
 
+        <!-- v1.62 — Cada 10 minutos: aviso de pedido confirmado por WhatsApp (conversión, punto 7). -->
+        <record id="cron_order_confirm_notices" model="ir.cron">
+            <field name="name">Cristal Agent: Aviso de pedido confirmado (WhatsApp)</field>
+            <field name="model_id" ref="sale.model_sale_order"/>
+            <field name="state">code</field>
+            <field name="code">model.cron_confirm_notices()</field>
+            <field name="interval_number">10</field>
+            <field name="interval_type">minutes</field>
+            <field name="active" eval="True"/>
+        </record>
+
     </data>
 </odoo>

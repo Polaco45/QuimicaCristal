@@ -681,6 +681,11 @@ class CristalAgentConfig(models.Model):
         string="Aviso de paso automático por WhatsApp", default=True,
         help="Entre 2 y 6 días antes de cada salida manda solo el aviso de paso a los contactos "
              "del circuito (hasta 100 por día y salida). Necesita la plantilla aprobada por Meta.")
+    order_confirm_notice = fields.Boolean(
+        string="Aviso de pedido confirmado por WhatsApp", default=True,
+        help="Cuando una persona confirma un pedido mayorista, le avisa al cliente por "
+             "WhatsApp con la fecha de entrega y el total (si lo confirma Claudio, ya se lo "
+             "dice él).")
     pauta_rc_every_days = fields.Integer(
         string="Días entre tandas de placas de Río Cuarto", default=14)
     monthly_review_enabled = fields.Boolean(

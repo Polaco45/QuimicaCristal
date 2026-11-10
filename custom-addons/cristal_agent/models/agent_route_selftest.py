@@ -1949,6 +1949,30 @@ class CristalAgentRouteSelftest(models.TransientModel):
             return "ventana quincenal · solo clientes activos · uno cada 60 días"
         self._case(results, "64. Campaña de referidos", c_referidos)
 
+        # 66) Aviso de pedido confirmado: solo si confirma una persona, mayorista y con chat
+        def c_aviso_confirmado():
+            p = mk_lc('Aviso conf Claudio', 'Rio Cuarto')
+            o1 = SaleOrder.browse(quote(p, 60000)['order_id'])
+            o1.with_context(from_cristal_agent=True).action_confirm()
+            assert o1.cristal_confirm_notice == 'skipped', o1.cristal_confirm_notice
+            p2 = mk_lc('Aviso conf manual', 'Rio Cuarto', mobile='+5493589990043')
+            o2 = SaleOrder.browse(quote(p2, 60000)['order_id'])
+            o2.action_confirm()
+            assert o2.cristal_confirm_notice == 'pending', o2.cristal_confirm_notice
+            dep = Dep.search([('date', '>=', today_ar)], order='date', limit=1)
+            if dep:
+                o2.route_departure_id = dep.id
+                txt = o2._cristal_confirm_notice_text()
+                assert 'Va en el camión del' in txt and o2.name in txt and 'Total: $' in txt, txt
+            state, note = o2._cristal_send_confirm_notice()
+            assert state == 'skipped' and 'chat' in note, (state, note)
+            o3 = SaleOrder.browse(quote(mk_partner('Aviso CF', 'Rio Cuarto'), 60000)['order_id'])
+            o3.action_confirm()
+            state, note = o3._cristal_send_confirm_notice()
+            assert state == 'skipped' and 'mayorista' in note, (state, note)
+            return "Claudio → no avisa · a mano → pendiente · texto con camión y total · sin chat o no mayorista → no sale"
+        self._case(results, "66. Aviso de pedido confirmado", c_aviso_confirmado)
+
         # 58) Revisión mensual: arma, guarda snapshot y recomienda con reglas fijas
         def c_monthly_review():
             Review = env['cristal.agent.monthly.review'].sudo()
