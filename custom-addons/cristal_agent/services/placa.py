@@ -425,13 +425,8 @@ def _lineup(img, photos, base_y, x0, x1, max_h):
         else:   # la de atrás asoma por encima de la de adelante
             h_t = int(max_h * (0.55 if back else 0.60))
             y_b = base_y - (int(max_h * 0.26) if back else 0)
-        # Cada producto entra en su celda (ancho parejo): un palo largo no achica a los demás
-        # y una pala ancha no se agiganta.
-        cell = (x1 - x0 - 14 * (len(row) - 1)) / max(1, len(row))
-        scaled = []
-        for p in row:
-            f = min(h_t / p.height, cell / p.width)
-            scaled.append(p.resize((max(1, int(p.width * f)), max(1, int(p.height * f)))))
+        # Altura pareja en la fila (prolijo); lo largo y finito ya se acostó antes.
+        scaled = [p.resize((max(1, int(p.width * h_t / p.height)), h_t)) for p in row]
         gap = 14
         total = sum(p.width for p in scaled) + gap * (len(scaled) - 1)
         avail = x1 - x0

@@ -278,8 +278,17 @@ class CristalAgentPauta(models.AbstractModel):
         for c in cf_combos.catalog(self.env):
             combo = c['product']
             items, _missing, _chosen = cf_combos.pick_items(combo)
-            photos = [(self._short_label(it.product_id), self._product_photo(it.product_id))
-                      for it in items]
+            # v1.63.2 — Si la opción elegida no tiene foto, se muestra otra de la MISMA parte del
+            # combo que sí tenga (antes el "Kit barrido" salía sin escobillón).
+            shown = []
+            for it in items:
+                prod = it.product_id
+                if not self._product_photo(prod):
+                    alts = it.combo_id.combo_item_ids.mapped('product_id').filtered(
+                        lambda p: p.active and p.sale_ok and (p.image_1024 or p.product_tmpl_id.image_1024))
+                    prod = (alts.filtered(lambda p: p.qty_available > 0) or alts)[:1] or prod
+                shown.append(prod)
+            photos = [(self._short_label(p), self._product_photo(p)) for p in shown]
             photos = [(lab, ph) for lab, ph in photos if ph]
             if not photos:
                 continue
@@ -291,10 +300,13 @@ class CristalAgentPauta(models.AbstractModel):
             origin = ('Fabricado en Río Cuarto' if own and all(own) else
                       'Con productos de nuestra fábrica' if any(own) else
                       'Química Cristal · Río Cuarto')
+            # Los kits (accesorios de reventa con fotos de catálogo) van en tarjetas con el nombre
+            # de cada pieza, sin escenario: se entiende mejor qué trae.
+            scene = None if (c['name'] or '').lower().startswith('kit') else self._cf_scene(c['name'])
             for fmt, story in (('feed', False), ('story', True)):
                 try:
                     data = placa.render_combo(c['name'], c['price'], photos, loose=c['loose'], story=story,
-                                              scene=self._cf_scene(c['name']), origin=origin)
+                                              scene=scene, origin=origin)
                 except Exception as e:  # noqa: BLE001
                     _logger.exception("Placa CF %s %s falló: %s", c['name'], fmt, e)
                     continue
