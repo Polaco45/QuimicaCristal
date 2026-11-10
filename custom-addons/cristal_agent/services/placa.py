@@ -357,7 +357,14 @@ def _cutout(photo):
     mask = mask.filter(ImageFilter.MinFilter(3)).filter(ImageFilter.GaussianBlur(1.1))
     out = rgb.convert('RGBA')
     out.putalpha(mask)
-    box = mask.point(lambda v: 255 if v > 40 else 0).getbbox()
+    # v1.63.2 — La caja se mide sobre lo que tiene "tinta" (no casi blanco): restos claros
+    # invisibles ensanchaban la caja y un palo dejaba de verse largo y finito.
+    ink = ImageChops.lighter(lo.point(lambda v: 255 if v < 215 else 0),
+                             ImageChops.subtract(hi, lo).point(lambda v: 255 if v > 28 else 0))
+    core = ImageChops.multiply(ink, mask.point(lambda v: 255 if v > 128 else 0))
+    box = core.getbbox() or mask.point(lambda v: 255 if v > 40 else 0).getbbox()
+    if box:
+        box = (max(0, box[0] - 4), max(0, box[1] - 4), min(w, box[2] + 4), min(h, box[3] + 4))
     return out.crop(box) if box else None
 
 
