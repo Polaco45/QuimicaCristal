@@ -161,6 +161,46 @@ def _load_photo(data):
     return flat
 
 
+BIDON_20L = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                         'static', 'img', 'bidon_20l.png')
+
+
+def bidon_granel(label):
+    """v1.62.2 — Lo que se vende A GRANEL va en el bidón plástico azul de 20 L (Joaco,
+    10/11/2026: las fotos de las variantes muestran el bidón de 5 L y confunde). Foto del bidón
+    real + etiqueta blanca impresa con el producto y '20 LITROS'. Devuelve bytes PNG."""
+    from PIL import Image, ImageDraw
+    if not os.path.exists(BIDON_20L):
+        return None
+    with Image.open(BIDON_20L) as im:
+        img = im.convert('RGB')
+    img = img.resize((img.width * 2, img.height * 2), Image.LANCZOS)
+    d = ImageDraw.Draw(img)
+    x0, y0, x1, y1 = 330, 380, 730, 620          # cara frontal del bidón (foto ×2)
+    d.rounded_rectangle((x0 + 4, y0 + 6, x1 + 4, y1 + 6), radius=18, fill=(20, 60, 140))
+    d.rounded_rectangle((x0, y0, x1, y1), radius=18, fill=WHITE, outline=(205, 210, 220), width=2)
+    d.rounded_rectangle((x0, y0, x1, y0 + 52), radius=18, fill=ORANGE)
+    d.rectangle((x0, y0 + 30, x1, y0 + 52), fill=ORANGE)
+    f = _fit(d, 'QUÍMICA CRISTAL', _FONT_BOLD, 30, x1 - x0 - 40)
+    d.text(((x0 + x1) / 2, y0 + 26), 'QUÍMICA CRISTAL', font=f, fill=WHITE, anchor='mm')
+    words = (label or '').upper().split()
+    lines = [' '.join(words)]
+    big = _fit(d, lines[0], _FONT_BLACK, 60, x1 - x0 - 36, min_size=40)
+    if d.textlength(lines[0], font=big) > x1 - x0 - 36 and len(words) > 1:
+        half = (len(words) + 1) // 2
+        lines = [' '.join(words[:half]), ' '.join(words[half:])]
+        big = _fit(d, max(lines, key=len), _FONT_BLACK, 50, x1 - x0 - 36, min_size=28)
+    yy = y0 + 60 + (110 - 56 * len(lines)) // 2 + 28
+    for ln in lines:
+        d.text(((x0 + x1) / 2, yy), ln, font=big, fill=NAVY, anchor='mm')
+        yy += 56
+    f2 = _font(_FONT_BLACK, 40)
+    d.text(((x0 + x1) / 2, y1 - 38), '20 LITROS', font=f2, fill=ORANGE, anchor='mm')
+    out = io.BytesIO()
+    img.save(out, format='PNG')
+    return out.getvalue()
+
+
 SCENE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                          'static', 'img', 'escenas')
 # v1.61.3 — Escenarios generados SIN productos ni texto (cocina, lavadero, baño, pileta,
