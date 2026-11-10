@@ -7,9 +7,10 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [18.0.1.63.3] — 2026-11-10
+## [18.0.1.63.4] — 2026-11-10
 
-### Fixed — Notificaciones de WhatsApp que inundaban a Joaco
+### Fixed — Notificaciones que inundaban a Joaco (WhatsApp y bandeja de entrada)
+- Las actividades que OdooBot (crons/automatizaciones) le asigna a los partners silenciados ya no dejan el aviso "Te asignaron ..." en la bandeja de entrada; las que asigna una persona sí. La migración marca como leída la bandeja (1.287 avisos).
 - Los chats de WhatsApp de los partners del parámetro `cristal_agent.whatsapp_silenciar_partner_ids` (por defecto Joaco) nacen silenciados y la migración silencia y marca como leídos los existentes (eran 1.491 sin leer).
 - El aviso "Desfijó su conversación con X" (uno por cada chat vencido que Odoo desfija a diario) se descarta en el cliente web (`static/src/js/avisos_silenciosos.js`).
 
