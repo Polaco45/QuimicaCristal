@@ -394,7 +394,8 @@ def verify_prices(env, run, body_html):
     known = _known_prices_from_run(run)
     # v1.36: el precio con 20% solo vale para clientes con derecho a la 1ra compra.
     factors = _ALLOWED_FACTORS
-    if run.partner_id and first_purchase_discount_status(env, run.partner_id)[0] != 'allowed':
+    if run.partner_id and first_purchase_discount_status(env, run.partner_id)[0] != 'allowed' \
+            and not first_purchase_pickup_order(env, run.partner_id):
         factors = tuple(f for f in _ALLOWED_FACTORS if f != 0.8)
     # Vocabulario de productos: nombres del catálogo mayorista + lo que devolvieron
     # las tools. Solo se controla un precio si el texto nombra un producto real
@@ -461,6 +462,16 @@ def first_purchase_discount_status(env, partner):
         return 'blocked', f"{info.get('canonical') or city} no es Río Cuarto"
     return 'unknown', 'localidad sin confirmar'
 
+
+
+def first_purchase_pickup_order(env, partner):
+    """v1.63 — Cotización abierta con retiro en el local: ahí el 20% de primera compra
+    vale aunque el cliente no sea de Río Cuarto (Joaco, 10/11/2026)."""
+    if not partner:
+        return False
+    return bool(env["sale.order"].sudo().search_count([
+        ("partner_id", "child_of", partner.commercial_partner_id.id),
+        ("state", "in", ("draft", "sent")), ("cristal_delivery_mode", "=", "retiro")]))
 
 _RE_FIRST_PURCHASE_OFFER = re.compile(
     r'[^.!?\n<]*(?:20\s?%|veinte por ciento)[^.!?\n<]*(?:[.!?]|(?=<)|$)', re.IGNORECASE)

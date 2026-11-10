@@ -515,11 +515,21 @@ class CristalAgentRouteSelftest(models.TransientModel):
             o = SaleOrder.browse(r['order_id'])
             assert o.order_line.filtered(lambda l: l.product_id == prod).discount == 20, (
                 "Río Cuarto sin el 20%")
+            # v1.63: retirando en el local, el 20% vale aunque sea de la ruta.
+            pr = mk_partner('Veinte Sampacho Retira', 'Sampacho')
+            r = cso.execute(env=env, run=None, partner_id=pr.id, discount_percent=20,
+                            delivery_mode='retiro', lines=[{'product_id': prod.id, 'qty': 1}])
+            assert r.get('ok') and not r.get('zone_discount_blocked'), f"retiro sin 20% ({r})"
+            o = SaleOrder.browse(r['order_id'])
+            assert o.order_line.filtered(lambda l: l.product_id == prod).discount == 20, (
+                "Sampacho con retiro sin el 20%")
+            from ..services.helpers import first_purchase_pickup_order
+            assert first_purchase_pickup_order(env, pr), "no ve la cotización con retiro"
             pf = mk_partner('Veinte Laboulaye', 'Laboulaye')
             assert first_purchase_discount_status(env, pf)[0] == 'blocked'
             pn = mk_partner('Veinte SinCiudad', False)
             assert first_purchase_discount_status(env, pn)[0] == 'unknown'
-            return "Sampacho sin 20% · Río Cuarto con 20% · Laboulaye bloqueado · sin ciudad: no se ofrece"
+            return "Sampacho sin 20% · Sampacho retirando con 20% · Río Cuarto con 20% · Laboulaye bloqueado · sin ciudad: no se ofrece"
         self._case(results, "19. 20% solo Río Cuarto", c_veinte_zona)
 
         # 20) Localidades mal escritas: alias + parecido (pregunta, no fuera de zona).

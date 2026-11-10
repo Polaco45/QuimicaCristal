@@ -199,7 +199,8 @@ def duplicate_recent(env, channel_id, body_html, bot_partner_id, seconds=300):
 def apply_send_guards(env, run, channel_id, body_html, partner=None):
     """Devuelve (body_html, error_dict|None). Solo para canales de clientes."""
     from .helpers import (first_purchase_discount_status, mentions_first_purchase_discount,
-                          strip_first_purchase_offer, business_status)
+                          strip_first_purchase_offer, business_status,
+                          first_purchase_pickup_order)
     prior = _prior_guards(run)
     partner = partner or (run.partner_id if run else None)
     plain = _plain(body_html)
@@ -222,6 +223,11 @@ def apply_send_guards(env, run, channel_id, body_html, partner=None):
     # 1) 20% de primera compra: SOLO Río Cuarto / Las Higueras.
     if partner and mentions_first_purchase_discount(body_html):
         status, reason = first_purchase_discount_status(env, partner)
+        # v1.63: el 20% también vale retirando en el local; si el mensaje lo ata al
+        # retiro (o ya hay cotización con retiro), se deja pasar.
+        if status != 'allowed' and (re.search(r'\bretir', plain, re.IGNORECASE)
+                                    or first_purchase_pickup_order(env, partner)):
+            status = 'allowed'
         if status != 'allowed':
             return block(
                 'first_purchase_zone',

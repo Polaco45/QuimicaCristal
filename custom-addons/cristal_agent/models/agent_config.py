@@ -601,7 +601,7 @@ class CristalAgentConfig(models.Model):
              "transferencia), Claudio confirma el pedido solo. Los de la ruta del camión y los "
              "que no cumplen siguen yendo a Joaco.")
     auto_confirm_max_amount = fields.Float(
-        string="Monto máximo que confirma solo (sin IVA)", default=150000.0,
+        string="Monto máximo que confirma solo (sin IVA)", default=200000.0,
         digits='Product Price',
         help="Por encima de este subtotal sin IVA el pedido lo confirma Joaco. 0 = sin tope.")
 

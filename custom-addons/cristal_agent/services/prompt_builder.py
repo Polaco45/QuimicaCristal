@@ -257,8 +257,10 @@ def _build_partner_context(env, partner):
         lines.append("- 20% OFF 1ra compra: APLICA si nunca compró (cliente de Río Cuarto / "
                      "Las Higueras).")
     elif fp_status == 'blocked':
-        lines.append(f"- 20% OFF 1ra compra: ❌ NO APLICA ({fp_reason}). NO lo ofrezcas, NO "
-                     f"lo menciones y NO pases discount_percent. Sí vale la promo Ariel/Skip "
+        lines.append(f"- 20% OFF 1ra compra: ❌ NO APLICA CON ENVÍO ({fp_reason}). Con envío no "
+                     f"lo ofrezcas ni pases discount_percent. SÍ aplica si nunca compró y "
+                     f"RETIRA en el local (San Martín 2350, Río Cuarto): cotizá con "
+                     f"delivery_mode='retiro' y discount_percent=20. Sí vale la promo Ariel/Skip "
                      f"$600/L desde 100 L.")
     else:
         lines.append("- 20% OFF 1ra compra: todavía NO sé si es de Río Cuarto → NO lo "

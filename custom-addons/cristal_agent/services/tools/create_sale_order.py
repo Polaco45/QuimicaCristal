@@ -679,6 +679,10 @@ class CreateSaleOrder(AgentTool):
             if route_ctx and route_ctx['kind'] in ('circuit', 'fuera_zona'):
                 fp_status, fp_reason = 'blocked', (
                     f"{route_ctx.get('canonical') or partner.city} no es Río Cuarto")
+            # v1.63 — Joaco (10/11/2026): también vale si retira en el local, sea de
+            # donde sea (sin envío no hay costo de flete que lo coma).
+            if is_pickup:
+                fp_status, fp_reason = 'allowed', 'retira en el local'
             if fp_status != 'allowed':
                 zone_discount_blocked = fp_reason
                 _logger.info("🚫 20%% de primera compra BLOQUEADO por zona: %s (%s)",
@@ -1073,8 +1077,10 @@ class CreateSaleOrder(AgentTool):
             "zone_discount_blocked": bool(zone_discount_blocked),
             "zone_discount_note": (
                 f"⚠️ NO apliqué el 20% de primera compra: {zone_discount_blocked}. El 20% es "
-                f"SOLO para clientes de Río Cuarto / Las Higueras. Está cotizado a Lista "
-                f"Mayorista. NO le menciones el 20% ni 'primera compra'."
+                f"SOLO para clientes de Río Cuarto / Las Higueras o si retira en el local "
+                f"(San Martín 2350). Está cotizado a Lista Mayorista. Con envío NO le menciones "
+                f"el 20%; si le interesa retirar, recotizá con delivery_mode='retiro' y "
+                f"discount_percent=20."
             ) if zone_discount_blocked else None,
             "first_purchase_note": (
                 f"⚠️ Este cliente YA compró {prev_purchases} vez/veces: NO corresponde el "
