@@ -20,3 +20,4 @@ from . import agent_admin
 from . import agent_lifecycle
 from . import agent_pauta
 from . import agent_monthly_review
+from . import discuss_channel_member

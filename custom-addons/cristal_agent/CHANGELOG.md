@@ -7,6 +7,12 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.63.3] — 2026-11-10
+
+### Fixed — Notificaciones de WhatsApp que inundaban a Joaco
+- Los chats de WhatsApp de los partners del parámetro `cristal_agent.whatsapp_silenciar_partner_ids` (por defecto Joaco) nacen silenciados y la migración silencia y marca como leídos los existentes (eran 1.491 sin leer).
+- El aviso "Desfijó su conversación con X" (uno por cada chat vencido que Odoo desfija a diario) se descarta en el cliente web (`static/src/js/avisos_silenciosos.js`).
+
 ## [18.0.1.63.1] — 2026-11-10
 
 ### Changed — Placa mayorista de granel rediseñada
