@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 {
     'name': "Cristal Agent — Claudio (Mayorista)",
-    'version': '18.0.1.63.2',
+    'version': '18.0.1.63.3',
     'summary': "Agente comercial autónomo (Claude AI) para Cristal Mayorista",
     'description': """
 Cristal Agent — Claudio
@@ -88,6 +88,11 @@ Características principales
         'views/sale_order_views.xml',
         'views/menu.xml',  # ← AL FINAL: el menú referencia las acciones de los archivos anteriores
     ],
+    'assets': {
+        'web.assets_backend': [
+            'cristal_agent/static/src/js/avisos_silenciosos.js',
+        ],
+    },
     'installable': True,
     'application': True,
     'auto_install': False,
