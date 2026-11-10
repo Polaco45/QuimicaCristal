@@ -1949,6 +1949,31 @@ class CristalAgentRouteSelftest(models.TransientModel):
             return "ventana quincenal · solo clientes activos · uno cada 60 días"
         self._case(results, "64. Campaña de referidos", c_referidos)
 
+        # 65) Placas con FOTOS REALES de las variantes, sin fondos de IA (v1.61.3)
+        def c_fotos_reales():
+            from io import BytesIO
+            from PIL import Image
+            from ..services import placa
+            Pauta = env['cristal.agent.pauta']
+            top = Pauta._top_products()
+            assert top, "no hay productos vendidos con foto"
+            photos = Pauta._pauta_photos('FABRICA', seed=3)
+            assert photos, "sin fotos para la placa"
+            jpg = placa.render(None, 'FÁBRICA EN RÍO CUARTO', 'SOMOS FÁBRICA|SIN INTERMEDIARIOS', '',
+                               'PRECIO DE FÁBRICA|PARA TU NEGOCIO', 'Detalle', 'Condiciones',
+                               'ESCRIBINOS POR WHATSAPP', products=photos)
+            assert Image.open(BytesIO(jpg)).size == (1080, 1350), "tamaño de la placa"
+            st = placa.render(None, 'HOY', 'TITULO|DOS', '', 'PROMO|DOS', 'd', 'c', 'CIERRE',
+                              story=True, products=photos)
+            assert Image.open(BytesIO(st)).size == (1080, 1920), "tamaño de la historia"
+            res = Pauta.generate_cf_combo_placas()
+            assert res, "no armó placas de combos"
+            any_feed = next(k for k in res if k.endswith('_feed.jpg'))
+            att = env['ir.attachment'].sudo().browse(res[any_feed])
+            assert att.public and 'TRAE:' in (att.description or ''), att.description
+            return (f"{len(top)} productos con foto · placa y historia con fotos reales · "
+                    f"{len(res)} placas de combos ({any_feed})")
+        self._case(results, "65. Placas con fotos reales", c_fotos_reales)
         # 66) Aviso de pedido confirmado: solo si confirma una persona, mayorista y con chat
         def c_aviso_confirmado():
             p = mk_lc('Aviso conf Claudio', 'Rio Cuarto')
