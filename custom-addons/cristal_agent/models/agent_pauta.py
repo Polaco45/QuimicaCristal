@@ -183,19 +183,30 @@ class CristalAgentPauta(models.AbstractModel):
 
     @api.model
     def _pauta_photos(self, angle=None, offer=None, seed=0, n=5):
-        """Fotos (bytes) para una placa: los productos de la oferta si es un combo; si no, los
-        más vendidos, rotando según `seed` para que las placas no repitan siempre las mismas."""
-        products = list(offer.product_ids) if offer and offer.product_ids else []
-        if not products:
+        """Lo que va en la placa. v1.62.3: si son productos A GRANEL devuelve etiquetas
+        [('GRANEL', 'Suavizante'), ('ITEM', 'Base limpiador 1 L'), ...] y la placa muestra
+        bidones de 20 L limpios + tarjeta con la lista (las fotos de las variantes son del bidón
+        de 5 L y confunden). Si no, fotos (bytes) de los productos de la oferta o de los más
+        vendidos, rotando según `seed`."""
+        is_granel = lambda p: 'granel' in (p.name or '').lower()  # noqa: E731
+        if offer and offer.product_ids:
+            products = list(offer.product_ids)
+            if any(is_granel(p) for p in products):
+                return [('GRANEL', self._granel_label(p)) if is_granel(p)
+                        else ('ITEM', self._short_label(p)) for p in products]
+        else:
             top = self._top_products()
+            labels = list(dict.fromkeys(self._granel_label(p) for p in top if is_granel(p)))
+            if len(labels) >= 3:
+                start = seed % len(labels)
+                return [('GRANEL', x) for x in (labels[start:] + labels[:start])[:6]]
+            products = []
             if top:
                 start = seed % len(top)
                 products = (top[start:] + top[:start])[:n]
-        photos = [p for p in (self._pauta_photo(prod) for prod in products[:8]) if p]
-        return photos
+        return [p for p in (self._product_photo(prod) for prod in products[:8]) if p]
 
-    # v1.62.2 — Lo "a granel" se muestra en el bidón azul de 20 L con etiqueta (la foto de la
-    # variante es el bidón de 5 L y confunde: Joaco, 10/11/2026).
+
     _GRANEL_LABELS = (('jabon', 'Jabón líquido'), ('jabón', 'Jabón líquido'),
                       ('suavizante', 'Suavizante'), ('lavandina', 'Lavandina'),
                       ('cloro', 'Cloro'), ('detergente', 'Detergente'),
@@ -209,15 +220,6 @@ class CristalAgentPauta(models.AbstractModel):
             if key in name:
                 return label
         return ' '.join((product.name or '').replace('a granel', '').split()[:2])
-
-    @api.model
-    def _pauta_photo(self, product):
-        if 'granel' in (product.name or '').lower():
-            from ..services import placa
-            img = placa.bidon_granel(self._granel_label(product))
-            if img:
-                return img
-        return self._product_photo(product)
 
     @api.model
     def _scene_for(self, angle, seed=0):

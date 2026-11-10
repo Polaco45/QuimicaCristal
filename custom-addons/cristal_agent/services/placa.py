@@ -165,39 +165,127 @@ BIDON_20L = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file_
                          'static', 'img', 'bidon_20l.png')
 
 
-def bidon_granel(label):
-    """v1.62.2 — Lo que se vende A GRANEL va en el bidón plástico azul de 20 L (Joaco,
-    10/11/2026: las fotos de las variantes muestran el bidón de 5 L y confunde). Foto del bidón
-    real + etiqueta blanca impresa con el producto y '20 LITROS'. Devuelve bytes PNG."""
-    from PIL import Image, ImageDraw
+def _hero_bidones(img, base_y, cx, max_h):
+    """v1.62.3 — Tres bidones de 20 L SIN etiquetas (el del medio adelante, dos atrás) parados
+    sobre la mesada. Qué hay adentro lo dice la tarjeta de abajo, no texto pegado en el bidón
+    (Joaco, 10/11: las etiquetas sobre el bidón quedaban corridas y no se leían)."""
+    from PIL import Image, ImageDraw, ImageFilter, ImageOps
     if not os.path.exists(BIDON_20L):
-        return None
+        return img
     with Image.open(BIDON_20L) as im:
-        img = im.convert('RGB')
-    img = img.resize((img.width * 2, img.height * 2), Image.LANCZOS)
+        src = im.convert('RGB')
+    src = src.resize((src.width * 2, src.height * 2), Image.LANCZOS)
+    cut = _cutout(src)
+    if cut is None:
+        return img
+    h_c = int(min(max_h, 480))
+    front = cut.resize((int(cut.width * h_c / cut.height), h_c), Image.LANCZOS)
+    h_s = int(h_c * 0.80)
+    side = cut.resize((int(cut.width * h_s / cut.height), h_s), Image.LANCZOS)
+    lift = int(h_c * 0.08)
+    layers = [(ImageOps.mirror(side), int(cx - front.width * 0.5 - side.width * 0.62), base_y - lift),
+              (side, int(cx + front.width * 0.5 - side.width * 0.38), base_y - lift),
+              (front, int(cx - front.width / 2), base_y)]
+    canvas = img.convert('RGBA')
+    sh = Image.new('RGBA', canvas.size, (0, 0, 0, 0))
+    sd = ImageDraw.Draw(sh)
+    for p, x, y in layers:
+        sd.ellipse((x + p.width * 0.06, y - 16, x + p.width * 0.94, y + 18), fill=(0, 0, 0, 120))
+    canvas = Image.alpha_composite(canvas, sh.filter(ImageFilter.GaussianBlur(12)))
+    for p, x, y in layers:
+        canvas.alpha_composite(p, (x, y - p.height))
+    return canvas
+
+
+def _granel_card(img, box, header, items):
+    """Tarjeta blanca con encabezado naranja y la lista de productos en letra grande."""
+    from PIL import Image, ImageDraw
+    x0, y0, x1, y1 = box
+    sh = Image.new('RGBA', img.size, (0, 0, 0, 0))
+    ImageDraw.Draw(sh).rounded_rectangle((x0 + 4, y0 + 8, x1 + 4, y1 + 8), radius=28,
+                                         fill=(0, 0, 0, 90))
+    img.alpha_composite(sh)
     d = ImageDraw.Draw(img)
-    x0, y0, x1, y1 = 330, 380, 730, 620          # cara frontal del bidón (foto ×2)
-    d.rounded_rectangle((x0 + 4, y0 + 6, x1 + 4, y1 + 6), radius=18, fill=(20, 60, 140))
-    d.rounded_rectangle((x0, y0, x1, y1), radius=18, fill=WHITE, outline=(205, 210, 220), width=2)
-    d.rounded_rectangle((x0, y0, x1, y0 + 52), radius=18, fill=ORANGE)
-    d.rectangle((x0, y0 + 30, x1, y0 + 52), fill=ORANGE)
-    f = _fit(d, 'QUÍMICA CRISTAL', _FONT_BOLD, 30, x1 - x0 - 40)
-    d.text(((x0 + x1) / 2, y0 + 26), 'QUÍMICA CRISTAL', font=f, fill=WHITE, anchor='mm')
-    words = (label or '').upper().split()
-    lines = [' '.join(words)]
-    big = _fit(d, lines[0], _FONT_BLACK, 60, x1 - x0 - 36, min_size=40)
-    if d.textlength(lines[0], font=big) > x1 - x0 - 36 and len(words) > 1:
-        half = (len(words) + 1) // 2
-        lines = [' '.join(words[:half]), ' '.join(words[half:])]
-        big = _fit(d, max(lines, key=len), _FONT_BLACK, 50, x1 - x0 - 36, min_size=28)
-    yy = y0 + 60 + (110 - 56 * len(lines)) // 2 + 28
-    for ln in lines:
-        d.text(((x0 + x1) / 2, yy), ln, font=big, fill=NAVY, anchor='mm')
-        yy += 56
-    f2 = _font(_FONT_BLACK, 40)
-    d.text(((x0 + x1) / 2, y1 - 38), '20 LITROS', font=f2, fill=ORANGE, anchor='mm')
+    d.rounded_rectangle((x0, y0, x1, y1), radius=28, fill=WHITE)
+    hh = 66
+    d.rounded_rectangle((x0, y0, x1, y0 + hh), radius=28, fill=ORANGE)
+    d.rectangle((x0, y0 + hh - 30, x1, y0 + hh), fill=ORANGE)
+    fh = _fit(d, header, _FONT_BLACK, 38, x1 - x0 - 60)
+    d.text(((x0 + x1) / 2, y0 + hh / 2 + 2), header, font=fh, fill=WHITE, anchor='mm')
+    cols = 1 if len(items) <= 3 else 2
+    rows = -(-len(items) // cols)
+    top, bottom = y0 + hh + 14, y1 - 14
+    rh = (bottom - top) / max(1, rows)
+    colw = (x1 - x0 - 60) / cols
+    size = int(min(42, rh * 0.62))
+    for i, it in enumerate(items):
+        c, r = (i // rows, i % rows) if cols == 2 else (0, i)
+        cx0 = x0 + 36 + c * colw
+        cy = top + rh * r + rh / 2
+        f = _fit(d, it, _FONT_BOLD, size, colw - 50, min_size=24)
+        d.ellipse((cx0, cy - 9, cx0 + 18, cy + 9), fill=ORANGE)
+        d.text((cx0 + 32, cy + 1), it, font=f, fill=NAVY, anchor='lm')
+
+
+def _render_granel(dia, titulo, pueblos, promo, condiciones, cierre, items, scene, story, quality):
+    """v1.62.3 — Placa mayorista de productos A GRANEL: título, tres bidones de 20 L limpios
+    en el escenario, tarjeta con lo que se vende y CTA. Pensada para leerse en el celular."""
+    from PIL import Image, ImageDraw
+    HH = STORY_H if story else H
+    top = 250 if story else 48
+    n_title = len([x for x in (titulo or '').split('|') if x])
+    n_pueb = len([x for x in (pueblos or '').split('|') if x])
+    promo_lines = [x for x in (promo or '').split('|') if x]
+    title_end = top + (72 if dia else 0) + 84 * n_title + 40 * n_pueb + 6
+    bottom = HH - (300 if story else 40)
+    cta_y = bottom - 66
+    cond_h = 46 if condiciones else 0
+    promo_h = 76 * len(promo_lines)
+    promo_y = cta_y - 22 - cond_h - promo_h
+    rows = len(items) if len(items) <= 3 else -(-len(items) // 2)
+    card_h = 66 + 28 + rows * (64 if story else 56)
+    card_y1 = promo_y - 20
+    card_y0 = card_y1 - card_h
+    base_y = card_y0 - 14
+    vis_h = base_y - title_end - 30
+    sc = _scene(scene, HH, surface_at=base_y - 34)[0] if scene else None
+    if sc is None:
+        sc = Image.new('RGB', (W, HH), NAVY)
+    img = sc.convert('RGBA')
+    _gradient(img, 0, title_end + 20, 235, 110)
+    _gradient(img, card_y0 + card_h // 2, HH, 170, 250)
+    if vis_h >= 200:
+        img = _hero_bidones(img, base_y, W // 2, vis_h)
+    _granel_card(img, (40, card_y0, W - 40, card_y1), 'EN BIDONES DE 20 L', items)
+    draw = ImageDraw.Draw(img)
+    y = top
+    if dia:
+        f = _fit(draw, dia, _FONT_BLACK, 34, 700)
+        _, h = _pill(draw, dia, f, 48, y, ORANGE, WHITE)
+        y += h + 22
+    for line in (titulo or '').split('|'):
+        if line:
+            _shadow(draw, (44, y), line, _fit(draw, line, _FONT_BLACK, 78, 980), WHITE)
+            y += 84
+    y += 6
+    for line in (pueblos or '').split('|'):
+        if line:
+            _shadow(draw, (48, y), line, _fit(draw, line, _FONT_BOLD, 30, 990), WHITE)
+            y += 40
+    _shadow(draw, (W - 268, top + 4), 'CRISTAL', _font(_FONT_BLACK, 44), ORANGE)
+    _shadow(draw, (W - 172, top + 54), 'Química', _font(_FONT_BOLD, 26), ORANGE)
+    yb = promo_y
+    for line in promo_lines:
+        _shadow(draw, (44, yb), line, _fit(draw, line, _FONT_BLACK, 72, 990), ORANGE)
+        yb += 76
+    if condiciones:
+        _shadow(draw, (48, yb + 4), condiciones, _fit(draw, condiciones, _FONT_BOLD, 30, 990), WHITE)
+    if cierre:
+        f = _fit(draw, cierre, _FONT_BLACK, 34, W - 200)
+        tw = draw.textlength(cierre, font=f)
+        _pill(draw, cierre, f, int((W - tw - 44) / 2), cta_y, WHITE, DARK)
     out = io.BytesIO()
-    img.save(out, format='PNG')
+    img.convert('RGB').save(out, format='JPEG', quality=quality, optimize=True)
     return out.getvalue()
 
 
@@ -394,6 +482,13 @@ def render(base, dia, titulo, pueblos, promo, detalle, condiciones, cierre, qual
     `products`: lista de fotos reales (bytes) de las variantes de los productos; si viene, la
     placa se arma con ellas (v1.61.3). `base` (foto de IA) queda solo como respaldo viejo."""
     from PIL import Image, ImageDraw
+    # v1.62.3: lo a granel viene como ('GRANEL', 'Suavizante') / ('ITEM', 'Base limpiador 1 L')
+    granel = [x for x in (products or []) if isinstance(x, tuple)]
+    if any(k == 'GRANEL' for k, _ in granel):
+        items = list(dict.fromkeys(lbl for _, lbl in granel))[:6]
+        return _render_granel(dia, titulo, pueblos, promo, condiciones, cierre, items,
+                              scene, story, quality)
+    products = [x for x in (products or []) if not isinstance(x, tuple)]
     HH = STORY_H if story else H
     top = 250 if story else 48
     photos = [p for p in (_load_photo(b) for b in (products or [])) if p is not None]

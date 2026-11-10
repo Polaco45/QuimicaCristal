@@ -7,6 +7,14 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.63.1] — 2026-11-10
+
+### Changed — Placa mayorista de granel rediseñada
+Joaco: las etiquetas impresas sobre cada bidón quedaban corridas y no se entendía. Ahora la placa
+(`_render_granel`) es: título → tres bidones de 20 L limpios en el escenario (`_hero_bidones`) →
+tarjeta blanca "EN BIDONES DE 20 L" con la lista de productos en letra grande (`_granel_card`) →
+promo y CTA. `_pauta_photos` devuelve etiquetas (`("GRANEL", label)`) para lo a granel.
+
 ## [18.0.1.62.2] — 2026-11-10
 
 ### Changed — Lo a granel se muestra en el bidón de 20 L
