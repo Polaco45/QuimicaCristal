@@ -165,16 +165,21 @@ class CristalAgentPauta(models.AbstractModel):
              ('product_id.product_tmpl_id.is_mayorista_catalog', '=', True)],
             ['product_id'], ['product_uom_qty:sum'])
         rows = sorted(rows, key=lambda r: -(r[1] or 0))
-        result, seen = [], set()
+        result, seen, resale = [], set(), []
         for product, _qty in rows:
             tmpl = product.product_tmpl_id
             if tmpl.id in seen or not (product.image_1024 or tmpl.image_1024):
                 continue
             seen.add(tmpl.id)
+            # Solo lo de la categoría "Fabricación" es nuestro (Joaco 10/11: ni Distribución ni Fraccionado) y
+            # va en placas que dicen "fabricamos / precio de fábrica": solo si faltan productos.
+            if not (tmpl.categ_id.complete_name or '').startswith('Fabricaci'):
+                resale.append(product)
+                continue
             result.append(product)
             if len(result) >= limit:
                 break
-        return result
+        return (result + resale)[:limit] if len(result) < 4 else result
 
     @api.model
     def _pauta_photos(self, angle=None, offer=None, seed=0, n=5):
@@ -281,7 +286,7 @@ class CristalAgentPauta(models.AbstractModel):
             trae = ', '.join(self._short_label(it.product_id) for it in items)
             # v1.63.2 — Solo decimos "fabricado" si TODO es de nuestra fábrica (Joaco: los
             # palos, palas, mopas y trapos son de reventa).
-            own = [not (it.product_id.categ_id.complete_name or '').startswith('Distribuci')
+            own = [(it.product_id.categ_id.complete_name or '').startswith('Fabricaci')
                    for it in items]
             origin = ('Fabricado en Río Cuarto' if own and all(own) else
                       'Con productos de nuestra fábrica' if any(own) else
@@ -638,8 +643,8 @@ class CristalAgentPauta(models.AbstractModel):
                         detalle='Bidones de 20 L a precio de fábrica, directo al negocio',
                         condiciones='Jabón, suavizante, lavandina, cloro, detergente', cierre=cierre)
             body = ("💰 Comprás a granel en bidones de 20 L, fraccionás en tu local y ganás por "
-                    "litro.\n\nJabón líquido, suavizante, lavandina, cloro, detergente y "
-                    "desengrasante, hechos en nuestra fábrica de Río Cuarto.\n\n"
+                    "litro.\n\nJabón líquido, suavizante, detergente y desengrasante hechos en "
+                    "nuestra fábrica de Río Cuarto, y también lavandina y cloro.\n\n"
                     "Pedí la lista de precios por WhatsApp 👇")
         else:  # FABRICA (y PRODUCTO sin oferta)
             angle = 'FABRICA'
