@@ -677,6 +677,10 @@ class CristalAgentConfig(models.Model):
     pauta_story_enabled = fields.Boolean(
         string="Historias diarias (9:16)", default=True,
         help="El orgánico de cada mes suma una historia por día.")
+    delivery_issue_user_id = fields.Many2one(
+        'res.users', string="Responsable de entregas y reclamos",
+        help="Claudio le deriva directo las consultas de entrega, faltantes y reclamos de "
+             "pedidos confirmados, con el pedido identificado (v1.65).")
     route_aviso_auto = fields.Boolean(
         string="Aviso de paso automático por WhatsApp", default=True,
         help="Entre 2 y 6 días antes de cada salida manda solo el aviso de paso a los contactos "

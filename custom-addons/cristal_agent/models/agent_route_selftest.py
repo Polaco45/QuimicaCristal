@@ -2021,6 +2021,31 @@ class CristalAgentRouteSelftest(models.TransientModel):
             return 'lead día 4 → pregunta 1 · día 11 → pregunta 2 · cotización que vence → cierre con plazo + llamada'
         self._case(results, "67. Conversión: leads y cierre con plazo", c_conversion_164)
 
+        # 68) Conversión (v1.65): entregas y reclamos al responsable, fecha de reposición
+        def c_conversion_165():
+            dd = ToolRegistry.get('derive_delivery_issue')
+            assert dd, 'falta la tool derive_delivery_issue'
+            user = env['res.users'].sudo().search([], limit=1)
+            cfg.delivery_issue_user_id = user.id
+            p = mk_lc('Conv reclamo', 'Rio Cuarto', mobile='+5493589990063')
+            o = SaleOrder.browse(quote(p, 60000)['order_id'])
+            before = env['mail.activity'].sudo().search_count([('user_id', '=', user.id)])
+            r = dd.execute(env=env, run=None, partner_id=p.id, order_id=o.id, kind='faltante',
+                           detail='Le faltó un bidón de suavizante')
+            assert r.get('ok') and r.get('assigned_to') == user.name, r
+            after = env['mail.activity'].sudo().search_count([('user_id', '=', user.id)])
+            assert after == before + 1, 'no creó la actividad'
+            act = env['mail.activity'].sudo().search([('user_id', '=', user.id)], order='id desc', limit=1)
+            assert act.res_model == 'sale.order' and act.res_id == o.id, (act.res_model, act.res_id)
+            cso_tool = ToolRegistry.get('create_sale_order')
+            rd = cso_tool._restock_date(env, product)
+            assert rd is None or len(rd) == 5, rd
+            note = cso_tool._no_stock_note([{'product': 'ZZ', 'qty_pedida': 2, 'disponible': 0,
+                                             'alternativas': [], 'repone': '20/11'}])
+            assert 'vuelve a entrar aprox. el 20/11' in note and 'schedule_activity' in note, note
+            return 'faltante → actividad en el pedido para el responsable · aviso de reposición con fecha'
+        self._case(results, "68. Conversión: entregas y reposición", c_conversion_165)
+
         # 58) Revisión mensual: arma, guarda snapshot y recomienda con reglas fijas
         def c_monthly_review():
             Review = env['cristal.agent.monthly.review'].sudo()
