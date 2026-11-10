@@ -195,35 +195,70 @@ def _scene(name, HH, surface_at=None):
 
 
 def _cutout(photo):
-    """Saca el fondo blanco de la foto de estudio (relleno desde los bordes, no por color:
-    un bidón blanco no se agujerea) y devuelve RGBA con bordes suaves."""
+    """Saca el fondo de la foto de estudio. v1.61.5: el fondo se toma como lo CLARO y SIN COLOR
+    (blanco, gris claro del piso, reflejos) conectado con los bordes — un bidón blanco con su
+    contorno no se agujerea. Si la foto no tiene fondo para sacar (el producto llena el cuadro:
+    trapos, paños, bolsas) devuelve None y se muestra en tarjeta."""
     from PIL import Image, ImageChops, ImageDraw, ImageFilter
     rgb = photo.convert('RGB')
     rgb.thumbnail((700, 700))
-    key = (255, 0, 255)
-    work = rgb.copy()
-    w, h = work.size
-    seeds = [(0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1),
-             (w // 2, 0), (w // 2, h - 1), (0, h // 2), (w - 1, h // 2)]
-    for sx, sy in seeds:
-        r, g, b = work.getpixel((sx, sy))[:3]
-        if min(r, g, b) >= 225:
-            ImageDraw.floodfill(work, (sx, sy), key, thresh=38)
-    diff = ImageChops.difference(work, Image.new('RGB', (w, h), key))
-    r_, g_, b_ = diff.split()
-    mask = ImageChops.add(ImageChops.add(r_, g_), b_).point(lambda v: 255 if v > 0 else 0)
-    mask = mask.filter(ImageFilter.MinFilter(3)).filter(ImageFilter.GaussianBlur(1.2))
+    w, h = rgb.size
+    r, g, b = rgb.split()
+    lo = ImageChops.darker(ImageChops.darker(r, g), b)
+    hi = ImageChops.lighter(ImageChops.lighter(r, g), b)
+    light = lo.point(lambda v: 255 if v >= 200 else 0)
+    flat = ImageChops.subtract(hi, lo).point(lambda v: 255 if v <= 28 else 0)
+    cand = ImageChops.multiply(light, flat)          # 255 = parece fondo
+    px = cand.load()
+    step = max(1, min(w, h) // 60)
+    border = ([(x, 0) for x in range(0, w, step)] + [(x, h - 1) for x in range(0, w, step)]
+              + [(0, y) for y in range(0, h, step)] + [(w - 1, y) for y in range(0, h, step)])
+    for sx, sy in border:
+        if px[sx, sy] == 255:
+            ImageDraw.floodfill(cand, (sx, sy), 128)
+    bg = cand.point(lambda v: 255 if v == 128 else 0)
+    frac = sum(bg.histogram()[255:]) / float(w * h)
+    if frac < 0.10:
+        return None
+    mask = ImageChops.invert(bg)
+    mask = mask.filter(ImageFilter.MinFilter(3)).filter(ImageFilter.GaussianBlur(1.1))
     out = rgb.convert('RGBA')
     out.putalpha(mask)
-    box = mask.point(lambda v: 255 if v > 20 else 0).getbbox()
-    return out.crop(box) if box else out
+    box = mask.point(lambda v: 255 if v > 40 else 0).getbbox()
+    return out.crop(box) if box else None
+
+
+def _card(photo, h_t):
+    """Foto en tarjeta blanca redondeada (para lo que no se puede recortar)."""
+    from PIL import Image, ImageDraw
+    p = photo.convert('RGB').copy()
+    inner = int(h_t * 0.86)
+    p.thumbnail((inner, inner), Image.LANCZOS)
+    pad = max(8, int(h_t * 0.06))
+    cw, ch = p.width + 2 * pad, p.height + 2 * pad
+    card = Image.new('RGBA', (cw, ch), (0, 0, 0, 0))
+    ImageDraw.Draw(card).rounded_rectangle((0, 0, cw - 1, ch - 1), radius=max(10, pad * 2),
+                                           fill=(255, 255, 255, 255))
+    card.paste(p, (pad, pad))
+    return card
 
 
 def _lineup(img, photos, base_y, x0, x1, max_h):
     """Para los productos (recortados) sobre la superficie del escenario, con sombra.
     Hasta 5 en una fila; más, en dos filas (la de atrás un poco más arriba y más chica)."""
     from PIL import Image, ImageDraw, ImageFilter
-    cut = [_cutout(p) for p in photos]
+    cut, seen = [], set()
+    for p in photos:
+        sig = p.resize((16, 16)).tobytes()
+        if sig in seen:          # misma foto (variantes con la misma imagen): una sola vez
+            continue
+        seen.add(sig)
+        c = _cutout(p)
+        if c is None:
+            card = _card(p, 600)
+            c = Image.new('RGBA', (card.width, int(card.height * 1.25)), (0, 0, 0, 0))
+            c.alpha_composite(card, (0, c.height - card.height))
+        cut.append(c)
     rows = [cut] if len(cut) <= 5 else [cut[:len(cut) // 2], cut[len(cut) // 2:]]
     layers = []
     for ri, row in enumerate(rows):
