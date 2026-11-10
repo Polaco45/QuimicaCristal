@@ -2008,6 +2008,42 @@ class CristalAgentRouteSelftest(models.TransientModel):
             return "Claudio → no avisa · a mano → pendiente · texto con camión y total · sin chat o no mayorista → no sale"
         self._case(results, "66. Aviso de pedido confirmado", c_aviso_confirmado)
 
+        # 67) Conversión (v1.64): preguntas a leads, cierre con plazo y llamada de Alejandra
+        def c_conversion_164():
+            NBA = env['cristal.agent.nba'].sudo()
+            once = lambda last: (lambda code, reason: None if code in last else (code, reason))
+            lead = mk_lc('Conv lead', mobile='+5493589990061')
+            lead.write({'city': False})
+            env.cr.execute("UPDATE res_partner SET create_date = %s WHERE id = %s",
+                           (fields.Datetime.now() - timedelta(days=4), lead.id))
+            lead.invalidate_recordset(['create_date'])
+            r = NBA._stage_candidate(lead, {}, today_ar, cfg, 'lead', {}, 30, once({}))
+            assert r and r[0] == 'l_pregunta_1', r
+            last = {'l_pregunta_1': today_ar - timedelta(days=8)}
+            env.cr.execute("UPDATE res_partner SET create_date = %s WHERE id = %s",
+                           (fields.Datetime.now() - timedelta(days=11), lead.id))
+            lead.invalidate_recordset(['create_date'])
+            r = NBA._stage_candidate(lead, {}, today_ar, cfg, 'lead', last, 30, once(last))
+            assert r and r[0] == 'l_pregunta_2', r
+            pq = mk_lc('Conv vence', 'Rio Cuarto', mobile='+5493589990062')
+            o = SaleOrder.browse(quote(pq, 150000)['order_id'])
+            o.validity_date = today_ar + timedelta(days=2)
+            s = {'last_quote': today_ar - timedelta(days=12)}
+            r = NBA._stage_candidate(pq, s, today_ar, cfg, 'quoted_no_order', {}, 30, once({}))
+            assert r and r[0] == 'c_vence' and o.name in r[1], r
+            r2 = NBA._stage_candidate(pq, s, today_ar, cfg, 'quoted_no_order',
+                                      {'c_vence': today_ar - timedelta(days=3)}, 30, once({}))
+            assert not r2 or r2[0] != 'c_vence', r2
+            if cfg.lifecycle_visit_user_id and cfg.bot_user_id:
+                before = env['mail.activity'].sudo().search_count([('user_id', '=', cfg.lifecycle_visit_user_id.id)])
+                from .agent_lifecycle import ACTIONS as NBA_ACTIONS
+                label, channel, instr = NBA_ACTIONS['c_vence']
+                NBA._schedule(pq, 'c_vence', label, channel, instr, r[1], cfg, today_ar)
+                after = env['mail.activity'].sudo().search_count([('user_id', '=', cfg.lifecycle_visit_user_id.id)])
+                assert after == before + 1, 'no agendó la llamada de Alejandra'
+            return 'lead día 4 → pregunta 1 · día 11 → pregunta 2 · cotización que vence → cierre con plazo + llamada'
+        self._case(results, "67. Conversión: leads y cierre con plazo", c_conversion_164)
+
         # 58) Revisión mensual: arma, guarda snapshot y recomienda con reglas fijas
         def c_monthly_review():
             Review = env['cristal.agent.monthly.review'].sudo()
