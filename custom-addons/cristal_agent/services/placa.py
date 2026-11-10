@@ -392,6 +392,19 @@ def _lineup(img, photos, base_y, x0, x1, max_h):
             c = Image.new('RGBA', (card.width, int(card.height * 1.25)), (0, 0, 0, 0))
             c.alpha_composite(card, (0, c.height - card.height))
         cut.append(c)
+    # v1.63.2 — Lo largo y finito (palos, cabos, secadores) va ACOSTADO sobre la mesada, no
+    # parado: parado queda como un hilo y achica todo lo demás (kits mopa/secador/barrido).
+    lying, stand = [], []
+    for c in cut:
+        ar = c.height / max(1, c.width)
+        if ar > 3.5:
+            lying.append(c.rotate(90, expand=True))
+        elif ar < 1 / 3.5:
+            lying.append(c)
+        else:
+            stand.append(c)
+    if lying:
+        return _lineup_lying(img, stand, lying, base_y, x0, x1, max_h)
     # Una fila si entran a buen tamaño; si no (más de 5, o productos anchos como bolsas y
     # esponjas que quedarían chiquitos), dos filas.
     natural = sum(c.width * max_h / c.height for c in cut) + 14 * (len(cut) - 1)
@@ -428,6 +441,56 @@ def _lineup(img, photos, base_y, x0, x1, max_h):
     sd = ImageDraw.Draw(shadow)
     for p, x, y in layers:
         sd.ellipse((x + p.width * 0.08, y - 14, x + p.width * 0.92, y + 16), fill=(0, 0, 0, 110))
+    canvas = Image.alpha_composite(canvas, shadow.filter(ImageFilter.GaussianBlur(10)))
+    for p, x, y in layers:
+        canvas.alpha_composite(p, (int(x), int(y - p.height)))
+    return canvas.convert('RGB')
+
+
+def _lineup_lying(img, stand, lying, base_y, x0, x1, max_h):
+    """Productos parados atrás y los largos acostados adelante, a lo ancho de la mesada. Si
+    todo es largo (kit secador), foto cenital: cada pieza a lo ancho, una debajo de la otra.
+    `stand` y `lying` ya vienen recortados (RGBA) y `lying` ya horizontal."""
+    from PIL import Image, ImageDraw, ImageFilter
+    avail = x1 - x0
+    canvas = img.convert('RGBA')
+    shadow = Image.new('RGBA', canvas.size, (0, 0, 0, 0))
+    sd = ImageDraw.Draw(shadow)
+    layers = []
+
+    def fit_w(p, w, h_max):
+        f = min(w / p.width, h_max / p.height)
+        return p.resize((max(1, int(p.width * f)), max(1, int(p.height * f))), Image.LANCZOS)
+
+    if stand:
+        lay = [fit_w(p, avail * 0.88, max_h * 0.16) for p in lying]
+        band = sum(p.height for p in lay) + 12 * (len(lay) - 1)
+        y_s = base_y - int(band * 0.55)
+        h_s = int(max_h - band * 0.55)
+        cell = (avail - 24 * (len(stand) - 1)) / len(stand)
+        sc = [fit_w(p, cell, h_s) for p in stand]
+        total = sum(p.width for p in sc) + 24 * (len(sc) - 1)
+        x = x0 + (avail - total) // 2
+        for p in sc:
+            layers.append((p, x, y_s))
+            sd.ellipse((x + p.width * 0.08, y_s - 14, x + p.width * 0.92, y_s + 16), fill=(0, 0, 0, 110))
+            x += p.width + 24
+        y = base_y
+        for p in lay:                      # adelante, de abajo hacia arriba
+            x = x0 + (avail - p.width) // 2
+            layers.append((p, x, y))
+            sd.rounded_rectangle((x + 10, y - 6, x + p.width - 10, y + 10), radius=8, fill=(0, 0, 0, 120))
+            y -= p.height + 12
+    else:                                  # foto cenital: todo a lo ancho
+        slot = max_h / len(lying)
+        top = base_y - max_h
+        for i, p in enumerate(lying):
+            q = fit_w(p, avail * 0.88, slot * 0.78)
+            x = x0 + (avail - q.width) // 2
+            y = int(top + slot * i + (slot + q.height) / 2)
+            layers.append((q, x, y))
+            sd.rounded_rectangle((x + 12, y - q.height + 14, x + q.width - 4, y + 12), radius=12,
+                                 fill=(0, 0, 0, 90))
     canvas = Image.alpha_composite(canvas, shadow.filter(ImageFilter.GaussianBlur(10)))
     for p, x, y in layers:
         canvas.alpha_composite(p, (int(x), int(y - p.height)))
