@@ -178,7 +178,7 @@ def _hero_bidones(img, base_y, cx, max_h):
     cut = _cutout(src)
     if cut is None:
         return img
-    h_c = int(min(max_h, 480))
+    h_c = int(min(max_h * 0.82, 400))
     front = cut.resize((int(cut.width * h_c / cut.height), h_c), Image.LANCZOS)
     h_s = int(h_c * 0.80)
     side = cut.resize((int(cut.width * h_s / cut.height), h_s), Image.LANCZOS)
@@ -218,11 +218,16 @@ def _granel_card(img, box, header, items):
     rh = (bottom - top) / max(1, rows)
     colw = (x1 - x0 - 60) / cols
     size = int(min(42, rh * 0.62))
+    # un solo tamaño para toda la lista (el que entra en la más larga), nunca menos de 30
+    size = min([size] + [getattr(_fit(d, it, _FONT_BOLD, size, colw - 50, min_size=30), 'size', size)
+                         for it in items])
+    f = _font(_FONT_BOLD, size)
     for i, it in enumerate(items):
         c, r = (i // rows, i % rows) if cols == 2 else (0, i)
         cx0 = x0 + 36 + c * colw
         cy = top + rh * r + rh / 2
-        f = _fit(d, it, _FONT_BOLD, size, colw - 50, min_size=24)
+        while d.textlength(it, font=f) > colw - 50 and len(it) > 4:
+            it = it[:-2].rstrip() + '…'
         d.ellipse((cx0, cy - 9, cx0 + 18, cy + 9), fill=ORANGE)
         d.text((cx0 + 32, cy + 1), it, font=f, fill=NAVY, anchor='lm')
 
