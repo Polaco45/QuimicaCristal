@@ -259,12 +259,19 @@ def _lineup(img, photos, base_y, x0, x1, max_h):
             c = Image.new('RGBA', (card.width, int(card.height * 1.25)), (0, 0, 0, 0))
             c.alpha_composite(card, (0, c.height - card.height))
         cut.append(c)
-    rows = [cut] if len(cut) <= 5 else [cut[:len(cut) // 2], cut[len(cut) // 2:]]
+    # Una fila si entran a buen tamaño; si no (más de 5, o productos anchos como bolsas y
+    # esponjas que quedarían chiquitos), dos filas.
+    natural = sum(c.width * max_h / c.height for c in cut) + 14 * (len(cut) - 1)
+    one_row = len(cut) <= 3 or (len(cut) <= 5 and natural <= (x1 - x0) * 1.15)
+    rows = [cut] if one_row else [cut[:len(cut) // 2], cut[len(cut) // 2:]]
     layers = []
     for ri, row in enumerate(rows):
         back = len(rows) == 2 and ri == 0
-        h_t = int(max_h * (0.78 if back else 1.0))
-        y_b = base_y - (int(max_h * 0.30) if back else 0)
+        if len(rows) == 1:
+            h_t, y_b = max_h, base_y
+        else:   # la de atrás asoma por encima de la de adelante
+            h_t = int(max_h * (0.55 if back else 0.60))
+            y_b = base_y - (int(max_h * 0.26) if back else 0)
         # Cada producto entra en su celda (ancho parejo): un palo largo no achica a los demás
         # y una pala ancha no se agiganta.
         cell = (x1 - x0 - 14 * (len(row) - 1)) / max(1, len(row))
