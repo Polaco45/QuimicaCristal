@@ -61,13 +61,37 @@ ACTIONS = {
         "Este cliente ya dijo de dónde es y qué hace, pero todavía no le armamos ninguna "
         "cotización. Si no tiene la lista, mandásela (generate_pricelist_pdf). Preguntale "
         "UNA cosa concreta: qué producto mueve más y cuántos litros por mes, y ofrecé "
-        "cotizarle 2 productos para que vea el precio final con envío."),
+        "cotizarle 2 productos para que vea el precio final con envío. Si el contexto dice "
+        "que el 20% de primera compra aplica (Río Cuarto / Las Higueras, o si retira en el "
+        "local), usalo de gancho: su primer pedido lleva 20% OFF."),
     'q_combo': (
         "Calificado sin cotizar · día 10: Combo Emprendedor", 'claudio',
         "Pasaron 10 días desde que lo calificamos y no cotizó nada. Ofrecele el Combo "
         "Emprendedor del contexto (si está activo) como punto de partida, con el total y "
         "qué incluye. Si no hay combo activo, ofrecé cotizar los 3 productos que más "
-        "rotan en su rubro."),
+        "rotan en su rubro. Si el 20% de primera compra aplica (ver contexto), recordale "
+        "que el combo como primer pedido lleva 20% OFF."),
+    # v1.64 — Conversión, punto 3: los leads sin calificar ya no quedan quietos.
+    'l_pregunta_1': (
+        "Lead sin calificar · día 3: segunda pregunta", 'claudio',
+        "Este contacto nos escribió hace unos días pero todavía no sabemos de dónde es ni "
+        "qué hace. En una línea preguntale de qué localidad es y si tiene un comercio o "
+        "revende (o si es para su casa), y ofrecé pasarle la lista mayorista."),
+    'l_pregunta_2': (
+        "Lead sin calificar · día 10: tercera pregunta", 'claudio',
+        "Segundo intento con un contacto que no contestó. Una línea: si tiene un negocio le "
+        "pasamos la lista mayorista, y si es de Río Cuarto o retira en el local su primer "
+        "pedido lleva 20% OFF. Si no le interesa, que nos avise y no le escribimos más "
+        "(mark_opt_out si dice que no)."),
+    # v1.64 — Conversión, punto 4: cierre con plazo real (la cotización se cancela sola
+    # al vencer, automatización 66).
+    'c_vence': (
+        "Cotizado · la cotización vence: cierre con plazo", 'claudio',
+        "Su cotización vence en uno o dos días (número y fecha en el motivo; al vencer se "
+        "cancela sola). Recordale en una línea que si la confirma antes de esa fecha "
+        "mantiene esos precios y ofrecé confirmarla ya: dirección, bidones y forma de pago, "
+        "y confirm_order. Mirá la cotización con search_orders; no repitas el total de "
+        "memoria."),
     'q_oferta_mes': (
         "Calificado sin cotizar · día 30: oferta vigente", 'claudio',
         "Un mes sin cotizar. Buscá la oferta vigente (search_offers only_proactive=true) y "
@@ -160,9 +184,9 @@ ACTIONS = {
 ACTION_SELECTION = [(k, v[0]) for k, v in ACTIONS.items()]
 # Orden de prioridad cuando hay más candidatos que cupo diario: primero la plata parada
 # y fresca (cotizaciones recientes), último lo que lleva meses frío.
-PRIORITY = ['a_ruta_proxima', 'c_objecion', 'c_promo', 'o_ritual', 'n_chequeo',
+PRIORITY = ['a_ruta_proxima', 'c_vence', 'c_objecion', 'c_promo', 'o_ritual', 'n_chequeo',
             'n_producto_top', 'n_segunda_compra', 'a_reposicion', 'n_reposicion',
-            'q_lista_pregunta', 'q_combo', 'r_reactivacion_1', 'r_reactivacion_2', 'c_ultima',
+            'q_lista_pregunta', 'q_combo', 'l_pregunta_1', 'l_pregunta_2', 'r_reactivacion_1', 'r_reactivacion_2', 'c_ultima',
             'q_oferta_mes', 'a_encuesta', 'f_referidos', 'd_reactivacion_3', 'd_visita']
 # v1.57 — encuesta post-compra: plantilla aprobada por Meta con botones.
 SURVEY_TEMPLATE = 'cristal_satisfaccion'
@@ -624,7 +648,35 @@ class CristalAgentNBA(models.Model):
         return ('a_encuesta', f"compró hace {days} días")
 
     @api.model
+    def _expiring_quote(self, partner, today):
+        """v1.64 — Cotización abierta del cliente que vence mañana o pasado."""
+        return self.env['sale.order'].sudo().search([
+            ('partner_id', 'child_of', partner.commercial_partner_id.id),
+            ('state', 'in', ('draft', 'sent')),
+            ('validity_date', '>=', today + timedelta(days=1)),
+            ('validity_date', '<=', today + timedelta(days=2))],
+            order='validity_date, amount_untaxed desc', limit=1)
+
     def _stage_candidate(self, partner, s, today, config, lc, last, cycle, once):
+        if lc == 'lead':
+            # v1.64 — punto 3: segunda y tercera pregunta a los 3 y 10 días (solo leads
+            # recientes, hasta 60 días; los viejos no se reactivan de golpe).
+            days = (today - partner.create_date.date()).days if partner.create_date else 0
+            if days > 60:
+                return None
+            if days >= 10 and 'l_pregunta_1' in last:
+                return once('l_pregunta_2', f"lead de hace {days} días, sin localidad")
+            if days >= 3:
+                return once('l_pregunta_1', f"lead de hace {days} días, sin localidad")
+            return None
+        if lc == 'quoted_no_order':
+            # v1.64 — punto 4: cierre con plazo antes de que la cotización se cancele.
+            quote = self._expiring_quote(partner, today)
+            prev = last.get('c_vence')
+            if quote and (not prev or (today - prev).days >= 10):
+                return ('c_vence', f"cotización {quote.name} vence el "
+                                   f"{quote.validity_date:%d/%m} "
+                                   f"(${quote.amount_untaxed:,.0f} sin IVA)".replace(',', '.'))
         if lc == 'qualified_no_quote':
             since = partner.agent_phase_started_at or partner.create_date
             days = (today - since.date()).days
@@ -734,7 +786,7 @@ class CristalAgentNBA(models.Model):
         cap = limit if limit is not None else (config.lifecycle_daily_cap or 30)
         cands = []
         for p in partners:
-            if p.agent_lifecycle in (False, 'lead', 'lost', 'no_contact'):
+            if p.agent_lifecycle in (False, 'lost', 'no_contact'):
                 continue
             c = self._candidate(p, stats[p.id], today, config)
             if not c:
@@ -793,6 +845,18 @@ class CristalAgentNBA(models.Model):
                 note=f"{instr} Motivo: {reason}.")
         if not config.bot_user_id:
             return False
+        # v1.64 — punto 4: si la cotización que vence es grande, además llama Alejandra.
+        if code == 'c_vence' and config.lifecycle_visit_user_id:
+            quote = self._expiring_quote(partner, today)
+            if quote and quote.amount_untaxed >= (config.lifecycle_visit_min_ticket or 0.0):
+                partner.activity_schedule(
+                    'mail.mail_activity_data_call', date_deadline=today,
+                    summary=f"Llamar: {quote.name} vence el {quote.validity_date:%d/%m}",
+                    user_id=config.lifecycle_visit_user_id.id,
+                    note=(f"La cotización {quote.name} de {partner.name} "
+                          f"(${quote.amount_untaxed:,.0f} sin IVA) vence el "
+                          f"{quote.validity_date:%d/%m} y se cancela sola. Claudio le avisa "
+                          f"por WhatsApp; llamalo para cerrarla.").replace(',', '.'))
         return partner.activity_schedule(
             'mail.mail_activity_data_todo', date_deadline=today, user_id=config.bot_user_id.id,
             summary=f"[NBA] {label}",
