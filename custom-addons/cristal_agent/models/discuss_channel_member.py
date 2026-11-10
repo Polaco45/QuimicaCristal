@@ -94,3 +94,27 @@ class DiscussChannelMember(models.Model):
         _logger.info("cristal_agent: %s chats de WhatsApp silenciados", n)
         self.invalidate_model(["new_message_separator", "mute_until_dt", "message_unread_counter"])
         return n
+
+    @api.model
+    def _cristal_limpiar_bandeja(self, partner_ids=None):
+        """Marca como leída toda la bandeja de entrada (mail.notification tipo inbox) de los
+        partners dados. Limpieza puntual; idempotente."""
+        partner_ids = list(partner_ids or self._cristal_partners_silenciados())
+        if not partner_ids:
+            return 0
+        self.env["mail.notification"].flush_model()
+        self.env.cr.execute(
+            """
+            UPDATE mail_notification
+               SET is_read = TRUE, read_date = NOW() AT TIME ZONE 'UTC'
+             WHERE res_partner_id IN %s
+               AND notification_type = 'inbox'
+               AND is_read IS NOT TRUE
+            """,
+            (tuple(partner_ids),),
+        )
+        n = self.env.cr.rowcount
+        _logger.info("cristal_agent: %s avisos de la bandeja de entrada marcados como leídos", n)
+        self.env["mail.notification"].invalidate_model(["is_read", "read_date"])
+        self.env["mail.message"].invalidate_model()
+        return n
