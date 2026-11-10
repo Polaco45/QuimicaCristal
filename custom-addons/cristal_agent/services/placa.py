@@ -138,6 +138,12 @@ def _load_photo(data):
     lugar. None si no se puede abrir."""
     from PIL import Image, ImageChops
     try:
+        # Odoo arranca Pillow solo con algunos formatos: muchas fotos de producto están en
+        # WEBP y sin este import no se abren (faltaban la lavandina y el limpiador).
+        from PIL import WebPImagePlugin  # noqa: F401
+    except Exception:  # noqa: BLE001
+        pass
+    try:
         im = Image.open(io.BytesIO(data))
         im.load()
     except Exception:  # noqa: BLE001
@@ -153,6 +159,98 @@ def _load_photo(data):
                min(flat.width, box[2] + pad), min(flat.height, box[3] + pad))
         flat = flat.crop(box)
     return flat
+
+
+SCENE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                         'static', 'img', 'escenas')
+# v1.61.3 — Escenarios generados SIN productos ni texto (cocina, lavadero, baño, pileta,
+# almacén, depósito). Los productos se ponen encima con sus fotos reales, así ninguna etiqueta
+# es inventada. La superficie vacía empieza a ~68% del alto de la foto 9:16.
+SCENES = ('cocina', 'lavadero', 'bano', 'pileta', 'almacen', 'deposito')
+SCENE_SURFACE = 0.70
+
+
+def _scene(name, HH, surface_at=None):
+    """Fondo de escenario a 1080×HH con el borde de la mesada en `surface_at` (por defecto a
+    2/3 del alto): si hace falta, agranda y recorta. Devuelve (imagen RGB, y de la superficie)."""
+    from PIL import Image
+    path = os.path.join(SCENE_DIR, f"{name}.jpg")
+    if not name or not os.path.exists(path):
+        return None, None
+    with Image.open(path) as im:
+        img = im.convert('RGB')
+    img = img.resize((W, int(img.height * W / img.width)))
+    target = int(surface_at if surface_at is not None else HH * 0.66)
+    s = img.height * SCENE_SURFACE
+    f = max(1.0, target / s, (HH - target) / max(1.0, img.height - s))
+    if f > 1.0:
+        nw, nh = int(W * f) + 1, int(img.height * f) + 1
+        img = img.resize((nw, nh))
+        left = (nw - W) // 2
+        img = img.crop((left, 0, left + W, nh))
+        s *= f
+    top = int(max(0, min(img.height - HH, s - target)))
+    img = img.crop((0, top, W, top + HH))
+    return img, int(s - top)
+
+
+def _cutout(photo):
+    """Saca el fondo blanco de la foto de estudio (relleno desde los bordes, no por color:
+    un bidón blanco no se agujerea) y devuelve RGBA con bordes suaves."""
+    from PIL import Image, ImageChops, ImageDraw, ImageFilter
+    rgb = photo.convert('RGB')
+    rgb.thumbnail((700, 700))
+    key = (255, 0, 255)
+    work = rgb.copy()
+    w, h = work.size
+    seeds = [(0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1),
+             (w // 2, 0), (w // 2, h - 1), (0, h // 2), (w - 1, h // 2)]
+    for sx, sy in seeds:
+        r, g, b = work.getpixel((sx, sy))[:3]
+        if min(r, g, b) >= 225:
+            ImageDraw.floodfill(work, (sx, sy), key, thresh=38)
+    diff = ImageChops.difference(work, Image.new('RGB', (w, h), key))
+    r_, g_, b_ = diff.split()
+    mask = ImageChops.add(ImageChops.add(r_, g_), b_).point(lambda v: 255 if v > 0 else 0)
+    mask = mask.filter(ImageFilter.MinFilter(3)).filter(ImageFilter.GaussianBlur(1.2))
+    out = rgb.convert('RGBA')
+    out.putalpha(mask)
+    box = mask.point(lambda v: 255 if v > 20 else 0).getbbox()
+    return out.crop(box) if box else out
+
+
+def _lineup(img, photos, base_y, x0, x1, max_h):
+    """Para los productos (recortados) sobre la superficie del escenario, con sombra.
+    Hasta 5 en una fila; más, en dos filas (la de atrás un poco más arriba y más chica)."""
+    from PIL import Image, ImageDraw, ImageFilter
+    cut = [_cutout(p) for p in photos]
+    rows = [cut] if len(cut) <= 5 else [cut[:len(cut) // 2], cut[len(cut) // 2:]]
+    layers = []
+    for ri, row in enumerate(rows):
+        back = len(rows) == 2 and ri == 0
+        h_t = int(max_h * (0.78 if back else 1.0))
+        y_b = base_y - (int(max_h * 0.30) if back else 0)
+        scaled = [p.resize((max(1, int(p.width * h_t / p.height)), h_t)) for p in row]
+        gap = 14
+        total = sum(p.width for p in scaled) + gap * (len(scaled) - 1)
+        avail = x1 - x0
+        if total > avail:
+            f = avail / total
+            scaled = [p.resize((max(1, int(p.width * f)), max(1, int(p.height * f)))) for p in scaled]
+            total = sum(p.width for p in scaled) + gap * (len(scaled) - 1)
+        x = x0 + (avail - total) // 2
+        for p in scaled:
+            layers.append((p, x, y_b))
+            x += p.width + gap
+    canvas = img.convert('RGBA')
+    shadow = Image.new('RGBA', canvas.size, (0, 0, 0, 0))
+    sd = ImageDraw.Draw(shadow)
+    for p, x, y in layers:
+        sd.ellipse((x + p.width * 0.08, y - 14, x + p.width * 0.92, y + 16), fill=(0, 0, 0, 110))
+    canvas = Image.alpha_composite(canvas, shadow.filter(ImageFilter.GaussianBlur(10)))
+    for p, x, y in layers:
+        canvas.alpha_composite(p, (int(x), int(y - p.height)))
+    return canvas.convert('RGB')
 
 
 def _grid(photos, x0, y0, x1, y1, gap=18):
@@ -201,7 +299,7 @@ def _products_background(photos, HH, zone):
 
 
 def render(base, dia, titulo, pueblos, promo, detalle, condiciones, cierre, quality=86, story=False,
-           products=None):
+           products=None, scene=None):
     """Devuelve los bytes JPEG de la placa. Los textos multilínea usan '|' como separador.
     `story=True` arma 1080×1920 (9:16) dejando libres las franjas de arriba y abajo que tapa
     la interfaz de Instagram.
@@ -216,7 +314,12 @@ def render(base, dia, titulo, pueblos, promo, detalle, condiciones, cierre, qual
         n_pueb = len([x for x in (pueblos or '').split('|') if x])
         z0 = top + (82 if dia else 0) + 84 * n_title + 40 * n_pueb + 26
         z1 = HH - 445 - (300 if story else 0) - 24
-        img = _products_background(photos, HH, (z0, z1))
+        sc = _scene(scene, HH, surface_at=z1 - 30)[0] if scene else None
+        if sc is not None:
+            # Escenario sin productos + los productos reales parados en la superficie.
+            img = _lineup(sc, photos[:8], z1 + 20, 50, W - 50, z1 - z0 - 20)
+        else:
+            img = _products_background(photos, HH, (z0, z1))
     else:
         path = BASES.get(base, base)
         if not os.path.isabs(path):
@@ -232,7 +335,11 @@ def render(base, dia, titulo, pueblos, promo, detalle, condiciones, cierre, qual
         cx, cy = (img.width - cw) // 2, (img.height - ch) // 2
         img = img.crop((cx, cy, cx + cw, cy + ch)).resize((W, HH))
     img = img.convert('RGBA')
-    if not photos:
+    if photos and sc is not None:
+        # Con escenario: franjas oscuras solo donde va el texto, los productos quedan limpios.
+        _gradient(img, 0, z0, 235, 150)
+        _gradient(img, z1 + 30, HH, 150, 245)
+    elif not photos:
         _gradient(img, 0, top + 472, 230, 0)
         _gradient(img, HH - 550 - (top - 48), HH, 0, 245)
     draw = ImageDraw.Draw(img)
@@ -275,7 +382,7 @@ def render(base, dia, titulo, pueblos, promo, detalle, condiciones, cierre, qual
     return out.getvalue()
 
 
-def render_combo(name, price, items, loose=None, footer=None, story=False, quality=88):
+def render_combo(name, price, items, loose=None, footer=None, story=False, quality=88, scene=None):
     """v1.61.3 — Placa de un combo para la casa con las FOTOS REALES de lo que trae.
     items = [(nombre corto, bytes de la foto de la variante)], price/loose en pesos.
     Fondo claro, banda naranja con el nombre, grilla de productos con su nombre, precio en
@@ -284,7 +391,9 @@ def render_combo(name, price, items, loose=None, footer=None, story=False, quali
     HH = STORY_H if story else H
     top = 210 if story else 0
     bottom_safe = 260 if story else 0
-    img = Image.new('RGB', (W, HH), CREAM)
+    photos = [(n, p) for n, p in ((n, _load_photo(b)) for n, b in items) if p is not None]
+    sc = _scene(scene, HH, surface_at=HH - bottom_safe - 380)[0] if scene else None
+    img = sc if sc is not None else Image.new('RGB', (W, HH), CREAM)
     d = ImageDraw.Draw(img)
     money = lambda v: '$' + f'{int(round(v or 0)):,}'.replace(',', '.')  # noqa: E731
 
@@ -299,11 +408,14 @@ def render_combo(name, price, items, loose=None, footer=None, story=False, quali
         d.text(((W - tw) / 2, yy), line, font=f, fill=WHITE)
         yy += 92
 
-    # Grilla de productos (foto + nombre)
-    photos = [(n, p) for n, p in ((n, _load_photo(b)) for n, b in items) if p is not None]
     z0 = top + band_h + 28
     z1 = HH - bottom_safe - 330
-    cells = _grid([p for _n, p in photos], 50, z0, W - 50, z1, gap=22)
+    if sc is not None:
+        # Escenario + los productos reales parados en la mesada (sin etiquetas inventadas).
+        img = _lineup(img, [p for _n, p in photos], z1 - 6, 40, W - 40, z1 - z0 - 10)
+        d = ImageDraw.Draw(img)
+        d.rounded_rectangle((28, z1 + 4, W - 28, HH - bottom_safe - 76), radius=26, fill=WHITE)
+    cells = [] if sc is not None else _grid([p for _n, p in photos], 50, z0, W - 50, z1, gap=22)
     for cell, (label, ph) in zip(cells, photos):
         x, y, w, h = cell
         d.rounded_rectangle((x, y, x + w, y + h), radius=18, fill=WHITE)
@@ -343,7 +455,7 @@ def render_combo(name, price, items, loose=None, footer=None, story=False, quali
     return out.getvalue()
 
 
-def render_angle(angle, ctx, base=None, products=None):
+def render_angle(angle, ctx, base=None, products=None, scene=None):
     """Placa de un ángulo con el contexto de la salida:
     ctx = {dia, dia_corto, pueblos (con '|'), promo_l1, promo_l2, promo_corta,
            condiciones, cierre, cierre_urgencia, dia_urgencia}."""
@@ -355,4 +467,4 @@ def render_angle(angle, ctx, base=None, products=None):
     if angle in ('FABRICA', 'MARGEN'):
         condiciones = f"{ctx.get('promo_corta')} · {ctx.get('envio')}"
     return render(base or spec['base'], dia, fmt(spec['titulo']), ctx.get('pueblos'),
-                  fmt(spec['promo']), fmt(spec['detalle']), condiciones, cierre, products=products)
+                  fmt(spec["promo"]), fmt(spec["detalle"]), condiciones, cierre, products=products, scene=scene)

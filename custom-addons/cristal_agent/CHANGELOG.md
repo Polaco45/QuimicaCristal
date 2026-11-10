@@ -7,7 +7,7 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [18.0.1.61.3] — 2026-11-10
+## [18.0.1.61.4] — 2026-11-10
 
 ### Changed — Placas con fotos REALES de los productos (sin IA)
 Joaco: "las publicaciones no están buenas, error en las etiquetas; que las fotos las saque de
@@ -21,6 +21,7 @@ una foto de Higgsfield con etiquetas inventadas ("limpito", "Demogante").
   rotando), aplicado a placas de ruta, orgánico, historias y Río Cuarto;
   `generate_cf_combo_placas()` + cron lunes 8:00 (`placa_cf_<variante>_feed|story.jpg`);
   `regenerate_future_images(from_day)` rearma lo ya programado.
+- Escenarios (static/img/escenas: cocina, lavadero, baño, pileta, almacén, depósito) generados SIN productos ni texto; los productos reales se recortan del fondo blanco y se paran en la mesada con sombra. Las fotos WEBP se abren importando WebPImagePlugin (Odoo no lo carga). El orgánico usa el Combo Emprendedor (no las ofertas de "1 caja de…").
 - Autotest 65.
 
 ## [18.0.1.60.1] — 2026-11-05

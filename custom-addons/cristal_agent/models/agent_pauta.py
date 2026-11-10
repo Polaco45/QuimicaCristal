@@ -190,6 +190,24 @@ class CristalAgentPauta(models.AbstractModel):
         return photos
 
     @api.model
+    def _scene_for(self, angle, seed=0):
+        """Escenario (fondo sin productos) para una placa mayorista."""
+        if angle == 'PRODUCTO':
+            return 'almacen'
+        return ('deposito', 'almacen')[seed % 2]
+
+    @api.model
+    def _cf_scene(self, name):
+        """Escenario para un combo de la casa según lo que trae."""
+        import re
+        n = (name or '').lower()
+        for pat, scene in ((r'pileta|cloro', 'pileta'), (r'ropa|lavader', 'lavadero'),
+                           (r'barrido|mopa|secador|casa limpia', 'bano'), (r'cocina', 'cocina')):
+            if re.search(pat, n):
+                return scene
+        return 'cocina'
+
+    @api.model
     def _short_label(self, product):
         """'Lavandina Doble Rend Crilimp (5 lts)' → 'Lavandina Doble Rend 5 lts'."""
         import re
@@ -223,7 +241,8 @@ class CristalAgentPauta(models.AbstractModel):
             trae = ', '.join(self._short_label(it.product_id) for it in items)
             for fmt, story in (('feed', False), ('story', True)):
                 try:
-                    data = placa.render_combo(c['name'], c['price'], photos, loose=c['loose'], story=story)
+                    data = placa.render_combo(c['name'], c['price'], photos, loose=c['loose'], story=story,
+                                              scene=self._cf_scene(c['name']))
                 except Exception as e:  # noqa: BLE001
                     _logger.exception("Placa CF %s %s falló: %s", c['name'], fmt, e)
                     continue
@@ -353,7 +372,8 @@ class CristalAgentPauta(models.AbstractModel):
                 continue
             try:
                 data = placa.render_angle(angle, ctx, products=self._pauta_photos(
-                    angle, seed=departure.id + ROUTE_ANGLES.index(angle) if angle in ROUTE_ANGLES else departure.id))
+                    angle, seed=departure.id + ROUTE_ANGLES.index(angle) if angle in ROUTE_ANGLES else departure.id),
+                    scene=self._scene_for(angle, departure.id + len(angle)))
             except Exception as e:  # noqa: BLE001
                 _logger.exception("Placa %s de %s falló: %s", angle, departure.name, e)
                 continue
@@ -449,11 +469,25 @@ class CristalAgentPauta(models.AbstractModel):
         """Combos de mayorista vigentes (las promos de consumidor final no van al orgánico
         mayorista)."""
         import re
+        from types import SimpleNamespace
+        # v1.61.3 — Si el Combo Emprendedor está activo, es EL combo del orgánico (Joaco se quejó
+        # de los "Combo Almacén / Kiosco" con "1 caja de…"): lo que trae sale de la config.
+        config = self.env['cristal.agent.config'].sudo().get_active()
+        lines = config.combo_emprendedor_line_ids.filtered('product_id') if config else []
+        if config and getattr(config, 'combo_emprendedor_active', False) and lines:
+            items = ', '.join(f"{ln.qty:g} {ln.product_id.uom_id.name or ''} de "
+                              f"{self._short_label(ln.product_id)}".replace(' Units de', ' de')
+                              for ln in lines)
+            return [SimpleNamespace(
+                id=0, name=config.combo_emprendedor_name or 'Combo Emprendedor',
+                description=f"Para arrancar o reponer tu negocio: {items}. Todo a granel, con bidones de recambio.",
+                product_ids=lines.mapped('product_id'))]
         offers = self.env['cristal.agent.offer'].sudo().search(
             [('active', '=', True), ('offer_type', '=', 'bundle')], order='priority desc, id')
         cf = re.compile(r'\bCF\b|consumidor', re.I)
         return offers.filtered(lambda o: (not o.valid_until or o.valid_until >= ref_date)
-                               and not cf.search(o.name or ''))
+                               and not cf.search(o.name or '')
+                               and '1 caja de' not in (o.description or ''))
 
     @api.model
     def _organic_buyers(self):
@@ -608,6 +642,7 @@ class CristalAgentPauta(models.AbstractModel):
                 continue
             angle, spec, body = self.organic_spec(angle, ctx, offer)
             spec['products'] = self._pauta_photos(angle, offer, seed=day.toordinal())
+            spec['scene'] = self._scene_for(angle, day.toordinal())
             try:
                 data = placa.render(**spec)
             except Exception as e:  # noqa: BLE001
@@ -720,6 +755,7 @@ class CristalAgentPauta(models.AbstractModel):
             angle, spec, body = self.story_spec(day, ctx, offer, self._week_departure(day, sal))
             spec['products'] = self._pauta_photos(angle, offer if angle == 'PRODUCTO' else None,
                                                   seed=day.toordinal(), n=6)
+            spec['scene'] = self._scene_for(angle, day.toordinal())
             try:
                 data = placa.render(story=True, **spec)
             except Exception as e:  # noqa: BLE001
@@ -782,6 +818,7 @@ class CristalAgentPauta(models.AbstractModel):
                 spec['titulo'], spec['promo'] = tit.format(n=buyers), pro
             spec['base'] = bases[(batch + k) % len(bases)]
             spec['products'] = self._pauta_photos(real, offer, seed=batch * 5 + k)
+            spec['scene'] = self._scene_for(real, batch + k)
             spec['dia'] = 'RÍO CUARTO Y LA ZONA'
             body = body.split('\n\n#')[0]
             try:
