@@ -138,6 +138,135 @@ class CristalAgentPauta(models.AbstractModel):
     _name = 'cristal.agent.pauta'
     _description = "Pauta Cristal — contenido automático por salida"
 
+    # ───────────────────────── v1.61.3 — Fotos REALES de los productos ─────────────────────────
+    # Joaco (10/11/2026): "las fotos que las saque de la variante de ese producto, se ven feas,
+    # muy IA" (etiquetas inventadas, bidones "CRISTAL" que no existen). Las placas se arman con
+    # la foto de la variante en Odoo (o la de su producto si la variante no tiene propia).
+
+    @api.model
+    def _product_photo(self, product):
+        import base64
+        raw = product.image_1024 or product.product_tmpl_id.image_1024
+        if not raw:
+            return None
+        try:
+            return base64.b64decode(raw)
+        except Exception:  # noqa: BLE001
+            return None
+
+    @api.model
+    def _top_products(self, limit=12):
+        """Los más vendidos del catálogo mayorista en 120 días que tienen foto, uno por producto
+        (no tres tamaños del mismo jabón)."""
+        since = fields.Datetime.now() - timedelta(days=120)
+        rows = self.env['sale.order.line'].sudo()._read_group(
+            [('order_id.state', 'in', ('sale', 'done')), ('order_id.date_order', '>=', since),
+             ('product_id.sale_ok', '=', True), ('product_id.type', '!=', 'combo'),
+             ('product_id.product_tmpl_id.is_mayorista_catalog', '=', True)],
+            ['product_id'], ['product_uom_qty:sum'])
+        rows = sorted(rows, key=lambda r: -(r[1] or 0))
+        result, seen = [], set()
+        for product, _qty in rows:
+            tmpl = product.product_tmpl_id
+            if tmpl.id in seen or not (product.image_1024 or tmpl.image_1024):
+                continue
+            seen.add(tmpl.id)
+            result.append(product)
+            if len(result) >= limit:
+                break
+        return result
+
+    @api.model
+    def _pauta_photos(self, angle=None, offer=None, seed=0, n=5):
+        """Fotos (bytes) para una placa: los productos de la oferta si es un combo; si no, los
+        más vendidos, rotando según `seed` para que las placas no repitan siempre las mismas."""
+        products = list(offer.product_ids) if offer and offer.product_ids else []
+        if not products:
+            top = self._top_products()
+            if top:
+                start = seed % len(top)
+                products = (top[start:] + top[:start])[:n]
+        photos = [p for p in (self._product_photo(prod) for prod in products[:8]) if p]
+        return photos
+
+    @api.model
+    def _short_label(self, product):
+        """'Lavandina Doble Rend Crilimp (5 lts)' → 'Lavandina Doble Rend 5 lts'."""
+        import re
+        name = re.sub(r'^\[[^\]]*\]\s*', '', product.display_name or '')
+        name = re.sub(r'\bCrilimp\b\s*', '', name)
+        m = re.search(r'\(([^)]*)\)\s*$', name)
+        base = re.sub(r'\s*\([^)]*\)\s*$', '', name).strip()
+        if m:
+            parts = [x.strip() for x in m.group(1).split(',')]
+            size = [x for x in parts if re.search(r'\d', x)]
+            base = f"{base} {size[-1]}" if size else base
+        return base[:34]
+
+    @api.model
+    def generate_cf_combo_placas(self):
+        """Placas de los combos para la casa con las fotos reales de lo que trae cada uno (feed
+        1080×1350 y story 1080×1920). Una por combo y formato; se reemplaza la anterior. La
+        rutina de contenidos de consumidor final las busca por nombre:
+        placa_cf_<variante>_feed.jpg / placa_cf_<variante>_story.jpg. Devuelve {nombre: id}."""
+        from ..services import cf_combos, placa
+        Att = self.env['ir.attachment'].sudo()
+        result = {}
+        for c in cf_combos.catalog(self.env):
+            combo = c['product']
+            items, _missing, _chosen = cf_combos.pick_items(combo)
+            photos = [(self._short_label(it.product_id), self._product_photo(it.product_id))
+                      for it in items]
+            photos = [(lab, ph) for lab, ph in photos if ph]
+            if not photos:
+                continue
+            trae = ', '.join(self._short_label(it.product_id) for it in items)
+            for fmt, story in (('feed', False), ('story', True)):
+                try:
+                    data = placa.render_combo(c['name'], c['price'], photos, loose=c['loose'], story=story)
+                except Exception as e:  # noqa: BLE001
+                    _logger.exception("Placa CF %s %s falló: %s", c['name'], fmt, e)
+                    continue
+                name = f"placa_cf_{combo.id}_{fmt}.jpg"
+                Att.search([('name', '=', name), ('res_model', '=', 'product.product')]).unlink()
+                att = Att.create({
+                    'name': name, 'raw': data, 'mimetype': 'image/jpeg', 'public': True,
+                    'res_model': 'product.product', 'res_id': combo.id,
+                    'description': (f"Placa CF {c['name']} · {fmt} · fotos reales · Pauta Cristal\n"
+                                    f"PRECIO: {round(c['price'])}\nSUELTO: {round(c['loose'])}\n"
+                                    f"AHORRO: {round(c['saving'])}\nTRAE: {trae}\n"
+                                    f"SIN_STOCK: {', '.join(c['missing']) or '-'}")})
+                result[name] = att.id
+        return result
+
+    @api.model
+    def cron_cf_combo_placas(self):
+        """Todos los lunes antes de la rutina de contenidos: placas de combos con precio y
+        stock del día."""
+        return bool(self.generate_cf_combo_placas())
+
+    @api.model
+    def regenerate_future_images(self, from_day=None):
+        """Atajo por RPC (v1.61.3): rearma con fotos reales las placas orgánicas e historias
+        con fecha desde `from_day` (incluido) y una tanda nueva de Río Cuarto. Borra los
+        creativos viejos de esas fechas (y sus adjuntos) y los vuelve a generar con el mismo
+        calendario. Devuelve {fecha: url pública} para reprogramar en Metricool."""
+        day = fields.Date.to_date(from_day) if from_day else fields.Date.context_today(self)
+        Creative = self.env['cristal.agent.creative'].sudo()
+        old = Creative.search([('format', 'in', ('organico', 'story')), ('planned_date', '>=', day)])
+        months = sorted({d.replace(day=1) for d in old.mapped('planned_date')})
+        old.mapped('attachment_id').unlink()
+        old.unlink()
+        created = Creative.browse()
+        for ms in months:
+            created |= self.generate_organic_month(ms)
+            created |= Creative.browse(self.generate_stories_for(ms, from_day=day))
+        created |= self.generate_rc_batch(day)
+        base = self.env['ir.config_parameter'].sudo().get_param('web.base.url')
+        return {f"{c.format}|{c.planned_date or ''}|{c.angle}":
+                f"{base}/web/content/{c.attachment_id.id}/{c.attachment_id.name}"
+                for c in created if c.attachment_id}
+
     # ───────────────────────── Contexto de una salida ─────────────────────────
     @api.model
     def route_context(self, departure, config=None):
@@ -223,7 +352,8 @@ class CristalAgentPauta(models.AbstractModel):
                                       ('format', '=', 'placa')]):
                 continue
             try:
-                data = placa.render_angle(angle, ctx)
+                data = placa.render_angle(angle, ctx, products=self._pauta_photos(
+                    angle, seed=departure.id + ROUTE_ANGLES.index(angle) if angle in ROUTE_ANGLES else departure.id))
             except Exception as e:  # noqa: BLE001
                 _logger.exception("Placa %s de %s falló: %s", angle, departure.name, e)
                 continue
@@ -477,6 +607,7 @@ class CristalAgentPauta(models.AbstractModel):
             if Creative.search_count([('format', '=', 'organico'), ('planned_date', '=', day)]):
                 continue
             angle, spec, body = self.organic_spec(angle, ctx, offer)
+            spec['products'] = self._pauta_photos(angle, offer, seed=day.toordinal())
             try:
                 data = placa.render(**spec)
             except Exception as e:  # noqa: BLE001
@@ -587,6 +718,8 @@ class CristalAgentPauta(models.AbstractModel):
                 offer = offers[oi % len(offers)]
                 oi += 1
             angle, spec, body = self.story_spec(day, ctx, offer, self._week_departure(day, sal))
+            spec['products'] = self._pauta_photos(angle, offer if angle == 'PRODUCTO' else None,
+                                                  seed=day.toordinal(), n=6)
             try:
                 data = placa.render(story=True, **spec)
             except Exception as e:  # noqa: BLE001
@@ -648,6 +781,7 @@ class CristalAgentPauta(models.AbstractModel):
                 tit, pro = variants[batch % len(variants)]
                 spec['titulo'], spec['promo'] = tit.format(n=buyers), pro
             spec['base'] = bases[(batch + k) % len(bases)]
+            spec['products'] = self._pauta_photos(real, offer, seed=batch * 5 + k)
             spec['dia'] = 'RÍO CUARTO Y LA ZONA'
             body = body.split('\n\n#')[0]
             try:

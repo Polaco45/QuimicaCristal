@@ -128,20 +128,101 @@ def _pill(draw, text, font, x, y, bg, fg):
 
 
 STORY_H = 1920  # v1.60: historia 9:16
+CREAM = (247, 244, 238)
+GREY = (90, 90, 90)
 
 
-def render(base, dia, titulo, pueblos, promo, detalle, condiciones, cierre, quality=86, story=False):
-    """Devuelve los bytes JPEG de la placa. `base` es una clave de BASES o una ruta.
-    Los textos multilínea usan '|' como separador. `story=True` arma 1080×1920 (9:16) dejando
-    libres las franjas de arriba y abajo que tapa la interfaz de Instagram."""
+def _load_photo(data):
+    """Foto real de un producto (bytes) → RGBA recortada a su contenido. Las fotos de Odoo
+    vienen sobre fondo blanco: se recorta el blanco sobrante para que el producto llene el
+    lugar. None si no se puede abrir."""
+    from PIL import Image, ImageChops
+    try:
+        im = Image.open(io.BytesIO(data))
+        im.load()
+    except Exception:  # noqa: BLE001
+        return None
+    im = im.convert('RGBA')
+    bg = Image.new('RGBA', im.size, (255, 255, 255, 255))
+    flat = Image.alpha_composite(bg, im).convert('RGB')
+    diff = ImageChops.difference(flat, Image.new('RGB', flat.size, (255, 255, 255)))
+    box = diff.convert('L').point(lambda v: 255 if v > 18 else 0).getbbox()
+    if box:
+        pad = 8
+        box = (max(0, box[0] - pad), max(0, box[1] - pad),
+               min(flat.width, box[2] + pad), min(flat.height, box[3] + pad))
+        flat = flat.crop(box)
+    return flat
+
+
+def _grid(photos, x0, y0, x1, y1, gap=18):
+    """Posiciones (x, y, w, h) de una grilla para N fotos dentro del rectángulo."""
+    n = len(photos)
+    if not n:
+        return []
+    cols = n if n <= 4 else (3 if n in (5, 6, 9) else 4)
+    rows = -(-n // cols)
+    cw = (x1 - x0 - gap * (cols - 1)) // cols
+    ch = (y1 - y0 - gap * (rows - 1)) // rows
+    cells = []
+    for i in range(n):
+        r, c = divmod(i, cols)
+        in_row = min(cols, n - r * cols)
+        off = ((cols - in_row) * (cw + gap)) // 2   # última fila centrada
+        cells.append((x0 + off + c * (cw + gap), y0 + r * (ch + gap), cw, ch))
+    return cells
+
+
+def _paste_fit(img, photo, cell):
+    from PIL import Image
+    x, y, w, h = cell
+    p = photo.copy()
+    p.thumbnail((w, h), Image.LANCZOS)
+    img.paste(p, (x + (w - p.width) // 2, y + (h - p.height) // 2))
+
+
+def _products_background(photos, HH, zone):
+    """v1.61.3 — Fondo con FOTOS REALES de los productos (las de la variante en Odoo), sin
+    imágenes de IA (Joaco, 10/11/2026: "se ven feas, muy IA", etiquetas inventadas). Fondo
+    oscuro de marca y un panel claro con los productos en grilla."""
+    from PIL import Image, ImageDraw
+    img = Image.new('RGB', (W, HH), NAVY)
+    top_c, bot_c = (28, 36, 58), NAVY
+    d = ImageDraw.Draw(img)
+    for yy in range(HH):
+        t = yy / max(1, HH - 1)
+        d.line([(0, yy), (W, yy)], fill=tuple(int(top_c[i] + (bot_c[i] - top_c[i]) * t) for i in range(3)))
+    y0, y1 = zone
+    d.rounded_rectangle((36, y0, W - 36, y1), radius=28, fill=CREAM)
+    d.rectangle((36, y1 - 10, W - 36, y1), fill=ORANGE)
+    for cell, ph in zip(_grid(photos, 60, y0 + 22, W - 60, y1 - 32), photos):
+        _paste_fit(img, ph, cell)
+    return img
+
+
+def render(base, dia, titulo, pueblos, promo, detalle, condiciones, cierre, quality=86, story=False,
+           products=None):
+    """Devuelve los bytes JPEG de la placa. Los textos multilínea usan '|' como separador.
+    `story=True` arma 1080×1920 (9:16) dejando libres las franjas de arriba y abajo que tapa
+    la interfaz de Instagram.
+    `products`: lista de fotos reales (bytes) de las variantes de los productos; si viene, la
+    placa se arma con ellas (v1.61.3). `base` (foto de IA) queda solo como respaldo viejo."""
     from PIL import Image, ImageDraw
     HH = STORY_H if story else H
     top = 250 if story else 48
-    path = BASES.get(base, base)
-    if not os.path.isabs(path):
-        path = os.path.join(BASE_DIR, path)
-    with Image.open(path) as im:
-        img = im.convert('RGB')
+    photos = [p for p in (_load_photo(b) for b in (products or [])) if p is not None]
+    if photos:
+        n_title = len([x for x in (titulo or '').split('|') if x])
+        n_pueb = len([x for x in (pueblos or '').split('|') if x])
+        z0 = top + (82 if dia else 0) + 84 * n_title + 40 * n_pueb + 26
+        z1 = HH - 445 - (300 if story else 0) - 24
+        img = _products_background(photos, HH, (z0, z1))
+    else:
+        path = BASES.get(base, base)
+        if not os.path.isabs(path):
+            path = os.path.join(BASE_DIR, path)
+        with Image.open(path) as im:
+            img = im.convert('RGB')
     if img.size != (W, HH):
         # recorte centrado a la proporción pedida y redimensión
         ratio = W / HH
@@ -151,8 +232,9 @@ def render(base, dia, titulo, pueblos, promo, detalle, condiciones, cierre, qual
         cx, cy = (img.width - cw) // 2, (img.height - ch) // 2
         img = img.crop((cx, cy, cx + cw, cy + ch)).resize((W, HH))
     img = img.convert('RGBA')
-    _gradient(img, 0, top + 472, 230, 0)
-    _gradient(img, HH - 550 - (top - 48), HH, 0, 245)
+    if not photos:
+        _gradient(img, 0, top + 472, 230, 0)
+        _gradient(img, HH - 550 - (top - 48), HH, 0, 245)
     draw = ImageDraw.Draw(img)
 
     y = top
@@ -193,7 +275,75 @@ def render(base, dia, titulo, pueblos, promo, detalle, condiciones, cierre, qual
     return out.getvalue()
 
 
-def render_angle(angle, ctx, base=None):
+def render_combo(name, price, items, loose=None, footer=None, story=False, quality=88):
+    """v1.61.3 — Placa de un combo para la casa con las FOTOS REALES de lo que trae.
+    items = [(nombre corto, bytes de la foto de la variante)], price/loose en pesos.
+    Fondo claro, banda naranja con el nombre, grilla de productos con su nombre, precio en
+    círculo y ahorro contra el precio suelto. Sin imágenes de IA."""
+    from PIL import Image, ImageDraw
+    HH = STORY_H if story else H
+    top = 210 if story else 0
+    bottom_safe = 260 if story else 0
+    img = Image.new('RGB', (W, HH), CREAM)
+    d = ImageDraw.Draw(img)
+    money = lambda v: '$' + f'{int(round(v or 0)):,}'.replace(',', '.')  # noqa: E731
+
+    # Banda superior con el nombre del combo
+    band_h = 230
+    d.rectangle((0, top, W, top + band_h), fill=ORANGE)
+    words = (name or '').upper().replace('COMBO ', 'COMBO|', 1).split('|')
+    yy = top + 30
+    for line in words[:2]:
+        f = _fit(d, line, _FONT_BLACK, 84, W - 120)
+        tw = d.textlength(line, font=f)
+        d.text(((W - tw) / 2, yy), line, font=f, fill=WHITE)
+        yy += 92
+
+    # Grilla de productos (foto + nombre)
+    photos = [(n, p) for n, p in ((n, _load_photo(b)) for n, b in items) if p is not None]
+    z0 = top + band_h + 28
+    z1 = HH - bottom_safe - 330
+    cells = _grid([p for _n, p in photos], 50, z0, W - 50, z1, gap=22)
+    for cell, (label, ph) in zip(cells, photos):
+        x, y, w, h = cell
+        d.rounded_rectangle((x, y, x + w, y + h), radius=18, fill=WHITE)
+        cap = 40 if h > 200 else 32
+        _paste_fit(img, ph, (x + 10, y + 10, w - 20, h - cap - 14))
+        f = _fit(d, label, _FONT_BOLD, 24, w - 16, min_size=14)
+        tw = d.textlength(label, font=f)
+        d.text((x + (w - tw) / 2, y + h - cap), label, font=f, fill=GREY)
+
+    # Precio y ahorro
+    yb = HH - bottom_safe - 300
+    r = 118
+    cx, cy = 48 + r, yb + r + 10
+    d.ellipse((cx - r, cy - r, cx + r, cy + r), fill=ORANGE)
+    ptxt = money(price)
+    f = _fit(d, ptxt, _FONT_BLACK, 62, 2 * r - 26)
+    tw = d.textlength(ptxt, font=f)
+    d.text((cx - tw / 2, cy - 36), ptxt, font=f, fill=WHITE)
+    tx = cx + r + 34
+    if loose and loose > price:
+        d.text((tx, yb + 40), f"Suelto {money(loose)}", font=_font(_FONT_BOLD, 40), fill=GREY)
+        d.text((tx, yb + 96), f"Ahorrás {money(loose - price)}", font=_font(_FONT_BLACK, 56), fill=ORANGE)
+    else:
+        d.text((tx, yb + 70), "Todo junto, un solo pedido", font=_font(_FONT_BOLD, 40), fill=GREY)
+    d.text((tx, yb + 170), "Fabricado en Río Cuarto", font=_font(_FONT_BOLD, 32), fill=DARK)
+
+    # Franja inferior
+    fy = HH - bottom_safe - 64
+    d.rectangle((0, fy, W, fy + 64), fill=WHITE)
+    foot = footer or 'Envío a domicilio $6.500 · GRATIS desde $65.000 · Pedilo por WhatsApp'
+    f = _fit(d, foot, _FONT_BOLD, 30, W - 60)
+    tw = d.textlength(foot, font=f)
+    d.text(((W - tw) / 2, fy + 16), foot, font=f, fill=DARK)
+
+    out = io.BytesIO()
+    img.save(out, format='JPEG', quality=quality, optimize=True)
+    return out.getvalue()
+
+
+def render_angle(angle, ctx, base=None, products=None):
     """Placa de un ángulo con el contexto de la salida:
     ctx = {dia, dia_corto, pueblos (con '|'), promo_l1, promo_l2, promo_corta,
            condiciones, cierre, cierre_urgencia, dia_urgencia}."""
@@ -205,4 +355,4 @@ def render_angle(angle, ctx, base=None):
     if angle in ('FABRICA', 'MARGEN'):
         condiciones = f"{ctx.get('promo_corta')} · {ctx.get('envio')}"
     return render(base or spec['base'], dia, fmt(spec['titulo']), ctx.get('pueblos'),
-                  fmt(spec['promo']), fmt(spec['detalle']), condiciones, cierre)
+                  fmt(spec['promo']), fmt(spec['detalle']), condiciones, cierre, products=products)

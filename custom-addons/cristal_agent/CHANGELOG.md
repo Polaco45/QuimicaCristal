@@ -7,6 +7,22 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.61.3] — 2026-11-10
+
+### Changed — Placas con fotos REALES de los productos (sin IA)
+Joaco: "las publicaciones no están buenas, error en las etiquetas; que las fotos las saque de
+la variante de ese producto, se ven feas, muy IA". Las placas usaban fondos generados con IA
+(Joaco, depósito, pallet con bidones "CRISTAL" que no existen) y los combos de consumidor final
+una foto de Higgsfield con etiquetas inventadas ("limpito", "Demogante").
+- `services/placa.py`: `render(..., products=[...])` arma la placa con las fotos de las variantes
+  sobre un panel claro (sin fondo de IA); `render_combo()` nueva placa de combo para la casa con
+  las fotos reales de lo que trae, su nombre, precio, suelto y ahorro.
+- `cristal.agent.pauta`: `_pauta_photos()` (productos de la oferta o los más vendidos con foto,
+  rotando), aplicado a placas de ruta, orgánico, historias y Río Cuarto;
+  `generate_cf_combo_placas()` + cron lunes 8:00 (`placa_cf_<variante>_feed|story.jpg`);
+  `regenerate_future_images(from_day)` rearma lo ya programado.
+- Autotest 65.
+
 ## [18.0.1.60.1] — 2026-11-05
 
 ### Fixed — Las campañas dejaban a los clientes sin respuesta 12 h
