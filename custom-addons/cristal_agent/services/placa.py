@@ -352,7 +352,7 @@ def render(base, dia, titulo, pueblos, promo, detalle, condiciones, cierre, qual
         sc = _scene(scene, HH, surface_at=z1 - 30)[0] if scene else None
         if sc is not None:
             # Escenario sin productos + los productos reales parados en la superficie.
-            img = _lineup(sc, photos[:8], z1 + 20, 50, W - 50, z1 - z0 - 20)
+            img = _lineup(sc, photos[:6], z1 + 20, 50, W - 50, z1 - z0 - 20)
         else:
             img = _products_background(photos, HH, (z0, z1))
     else:
