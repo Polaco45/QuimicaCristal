@@ -356,10 +356,15 @@ class SendWhatsApp(AgentTool):
         Claudio tenga que elegirla ni escalar. Si no sale, lo dice claro para que
         no anote que le escribió (caso Margarita, run 11768)."""
         from ..helpers import (closed_window_template, template_text_from_html,
-                               recent_unanswered_template, to_ar, TEMPLATE_TEXT_MAX)
+                               recent_unanswered_template, to_ar, TEMPLATE_TEXT_MAX,
+                               order_update_ref, order_update_template)
         not_sent = ("NO SE ENVIÓ NADA: no anotes en observaciones ni en la actividad que le "
                     "escribiste.")
-        pending = recent_unanswered_template(env, partner)
+        # Novedad de un pedido (sin promo) → plantilla de UTILIDAD si está aprobada:
+        # cuesta menos que la genérica de marketing y no espera a que conteste la anterior.
+        order_ref = order_update_ref(template_text_from_html(body_html))
+        utility = order_update_template(env, wa_account_id) if order_ref else None
+        pending = None if utility else recent_unanswered_template(env, partner)
         if pending:
             when = to_ar(env, pending.create_date)
             return {
@@ -370,7 +375,7 @@ class SendWhatsApp(AgentTool):
                     f"mandes otra: agendá el próximo seguimiento con schedule_activity para "
                     f"dentro de unos días. NO escales a Joaco por esto. " + not_sent),
             }
-        template = closed_window_template(env, wa_account_id)
+        template = utility or closed_window_template(env, wa_account_id)
         if not template:
             return {
                 "error": "WINDOW_CLOSED_NO_TEMPLATE", "not_sent": True,
@@ -394,7 +399,8 @@ class SendWhatsApp(AgentTool):
             env=env(context=dict(env.context, from_cristal_agent=True,
                                  wa_policy_skip_window=True)), run=run,
             partner_id=partner.id, template_name=template.template_name,
-            variables=[text], wa_account_id=template.wa_account_id.id) if tool else None
+            variables=[order_ref, text] if utility else [text],
+            wa_account_id=template.wa_account_id.id) if tool else None
         if not (result or {}).get('ok'):
             err = (result or {}).get('error') or 'sin detalle'
             return {"error": f"WINDOW_CLOSED: la plantilla no salió ({err}).",
@@ -403,7 +409,9 @@ class SendWhatsApp(AgentTool):
                      partner.name, template.template_name)
         summary = (f"La ventana de 24 h estaba cerrada: el mensaje salió por la plantilla "
                    f"aprobada '{template.template_name}'. El cliente lo recibe así: "
-                   f"\"Hola {partner.name}. Como estas? {text}\".")
+                   + (f"\"Hola {partner.name}, te escribimos de Química Cristal por tu "
+                      f"pedido {order_ref}. {text}\"." if utility else
+                      f"\"Hola {partner.name}. Como estas? {text}\"."))
         out = {"ok": True, "sent_via_template": template.template_name,
                "window_closed": True, "wa_message_id": result.get('wa_message_id'),
                "summary": summary}
