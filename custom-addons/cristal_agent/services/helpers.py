@@ -224,7 +224,7 @@ _RE_OPERATIVE_TEMPLATE = re.compile(
 # y gratis si el cliente escribió en las últimas 24 h): "Hola {{1}}, te escribimos de
 # Química Cristal por tu pedido {{2}}. {{3}}". Solo para avisos sin contenido
 # promocional: Meta pasa a marketing (o pausa) una utilidad que lleva promos.
-ORDER_UPDATE_TEMPLATE_NAMES = ('novedad_pedido',)
+ORDER_UPDATE_TEMPLATE_NAMES = ('aviso_novedad_pedido', 'novedad_pedido')
 _RE_PROMO_WORDS = re.compile(
     r'(?i)\b(oferta|promo|promoci[oó]n|descuento|regalo|gratis|bonific|combo|'
     r'[uú]ltima oportunidad|aprovech)|\d\s?%|\d\s?\+\s?\d')
