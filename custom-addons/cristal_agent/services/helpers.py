@@ -199,6 +199,128 @@ def recent_unanswered_template(env, partner, hours=TEMPLATE_REPEAT_HOURS):
     return WA if answered else last
 
 
+# ─────────────── Política de envío de plantillas pagas (11/11/2026) ───────────────
+# Joaco: "no cortarlo, pero sí entender cuándo enviar y no enviar por enviar". Meta
+# cobra cada plantilla de marketing entregada. La semana del 12/11 la zona Norte
+# recibió hasta 5 plantillas pagas en 30 horas (aviso, corrección, "hoy cerramos",
+# "última oportunidad", "te mejoro lo de recién"). Reglas, en un solo lugar:
+#   1. Lo del pedido del cliente (texto con S0xxxx) sale siempre; solo se evita
+#      repetir el mismo texto en 24 h.
+#   2. Si el cliente escribió en las últimas 24 h, no se paga plantilla: va texto
+#      libre (gratis) por send_whatsapp.
+#   3. Comercial: una plantilla cada 72 h y dos por semana por número.
+#   4. Quien no abrió ni contestó las últimas 3 comerciales descansa 30 días.
+# Parámetros (ir.config_parameter, prefijo cristal_agent.wa_policy_): enabled,
+# gap_hours, max_week, unread_streak, unread_pause_days.
+WA_POLICY_DEFAULTS = {'enabled': '1', 'gap_hours': '72', 'max_week': '2',
+                      'unread_streak': '3', 'unread_pause_days': '30'}
+_RE_ORDER_REF = re.compile(r'\bS\d{4,6}\b')
+_RE_OPERATIVE_TEMPLATE = re.compile(
+    r'cobranza|pago|vencim|factura|recibo|pedido|orden|cotizacion|alerta|actividades|'
+    r'confirmacion|reprogramada|compras')
+
+
+def _wa_policy_param(env, key):
+    raw = env['ir.config_parameter'].sudo().get_param(
+        'cristal_agent.wa_policy_' + key, WA_POLICY_DEFAULTS[key])
+    try:
+        return int(str(raw).strip())
+    except (TypeError, ValueError):
+        return int(WA_POLICY_DEFAULTS[key])
+
+
+def _wa_free_text(message):
+    data = message.free_text_json or {}
+    if not isinstance(data, dict):
+        return ''
+    return ' '.join(str(v) for v in data.values() if v)
+
+
+def wa_template_policy(env, mobile, text='', template=None):
+    """¿Vale la pena pagar esta plantilla? Devuelve None si se manda, o
+    {'code', 'message'} si NO conviene mandarla. Nunca rompe un envío: ante
+    cualquier error, deja pasar."""
+    try:
+        return _wa_template_policy(env, mobile, text or '', template)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("wa_template_policy falló: se deja pasar")
+        return None
+
+
+def _wa_template_policy(env, mobile, text, template):
+    if env.context.get('wa_policy_bypass') or not _wa_policy_param(env, 'enabled'):
+        return None
+    if template and template.template_type != 'marketing':
+        return None       # utilidad (cobranza, pedido enviado): barata y gratis en ventana
+    if template and (template.model not in ('crm.lead', 'res.partner')
+                     or _RE_OPERATIVE_TEMPLATE.search(template.template_name or '')):
+        return None       # atada a un documento (factura, pedido, pago) o de cobranza
+    digits = re.sub(r'\D', '', mobile or '')[-8:]
+    if len(digits) < 8:
+        return None
+    WA = env['whatsapp.message'].sudo()
+    now = datetime.now()
+    number = [('mobile_number', 'ilike', digits)]
+    paid = number + [('message_type', '=', 'outbound'),
+                     ('wa_template_id.template_type', '=', 'marketing'),
+                     ('state', 'not in', ('error', 'bounced', 'cancel'))]
+    transactional = bool(env.context.get('wa_transactional') or _RE_ORDER_REF.search(text))
+
+    if transactional:
+        same = WA.search(paid + [('create_date', '>=', now - timedelta(hours=24))])
+        clean = ' '.join(text.split())
+        if clean and any(' '.join(_wa_free_text(m).split()) == clean for m in same):
+            return {'code': 'DUPLICATE', 'message':
+                    "Ese mismo mensaje ya se le mandó en las últimas 24 h."}
+        return None
+
+    # La ventana es por cuenta de WhatsApp. Si el envío ya viene de send_whatsapp
+    # (que eligió plantilla porque vio la ventana cerrada), no se vuelve a evaluar.
+    window = number + [('message_type', '=', 'inbound'),
+                       ('create_date', '>=', now - timedelta(hours=24))]
+    if template and template.wa_account_id:
+        window.append(('wa_account_id', '=', template.wa_account_id.id))
+    if not env.context.get('wa_policy_skip_window') and WA.search_count(window):
+        return {'code': 'WINDOW_OPEN', 'message':
+                "El cliente escribió en las últimas 24 h: no hace falta pagar una "
+                "plantilla. Mandale el mensaje con send_whatsapp (texto libre, gratis)."}
+
+    history = WA.search(paid + [('create_date', '>=', now - timedelta(days=60))],
+                        order='create_date desc', limit=40)
+    commercial = history.filtered(lambda m: not _RE_ORDER_REF.search(_wa_free_text(m)))
+    if not commercial:
+        return None
+
+    gap = _wa_policy_param(env, 'gap_hours')
+    last = commercial[0]
+    if gap and last.create_date >= now - timedelta(hours=gap):
+        return {'code': 'TOO_SOON', 'message': (
+            f"Ya recibió una plantilla comercial el {last.create_date:%d/%m} "
+            f"(hace menos de {gap} h). No se le manda otra todavía.")}
+
+    max_week = _wa_policy_param(env, 'max_week')
+    week = commercial.filtered(lambda m: m.create_date >= now - timedelta(days=7))
+    if max_week and len(week) >= max_week:
+        return {'code': 'WEEK_CAP', 'message': (
+            f"Ya recibió {len(week)} plantillas comerciales en los últimos 7 días "
+            f"(tope {max_week}).")}
+
+    streak = _wa_policy_param(env, 'unread_streak')
+    pause = _wa_policy_param(env, 'unread_pause_days')
+    if streak and len(commercial) >= streak:
+        lastn = commercial[:streak]
+        ignored = all(m.state in ('sent', 'delivered') for m in lastn)
+        if ignored and last.create_date >= now - timedelta(days=pause) \
+                and not WA.search_count(number + [
+                    ('message_type', '=', 'inbound'),
+                    ('create_date', '>', lastn[-1].create_date)]):
+            return {'code': 'NO_ENGAGEMENT', 'message': (
+                f"No abrió ni contestó las últimas {streak} plantillas comerciales: "
+                f"descansa {pause} días desde la última ({last.create_date:%d/%m}).")}
+    return None
+
+
 # ─────────────────────── Fecha y hora de ARGENTINA (v1.33) ───────────────────────
 # El servidor de Odoo.sh corre en UTC (3 h adelante). Todo lo que Claudio le dice
 # al cliente ("hoy", "mañana", "martes") tiene que salir de la hora de Argentina,

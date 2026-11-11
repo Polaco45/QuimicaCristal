@@ -391,7 +391,8 @@ class SendWhatsApp(AgentTool):
             }
         tool = ToolRegistry.get('send_whatsapp_template')
         result = tool.execute(
-            env=env(context=dict(env.context, from_cristal_agent=True)), run=run,
+            env=env(context=dict(env.context, from_cristal_agent=True,
+                                 wa_policy_skip_window=True)), run=run,
             partner_id=partner.id, template_name=template.template_name,
             variables=[text], wa_account_id=template.wa_account_id.id) if tool else None
         if not (result or {}).get('ok'):
