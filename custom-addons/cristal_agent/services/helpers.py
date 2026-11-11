@@ -220,6 +220,34 @@ _RE_OPERATIVE_TEMPLATE = re.compile(
     r'confirmacion|reprogramada|compras')
 
 
+# Plantilla de UTILIDAD para novedades de un pedido (más barata que la de marketing
+# y gratis si el cliente escribió en las últimas 24 h): "Hola {{1}}, te escribimos de
+# Química Cristal por tu pedido {{2}}. {{3}}". Solo para avisos sin contenido
+# promocional: Meta pasa a marketing (o pausa) una utilidad que lleva promos.
+ORDER_UPDATE_TEMPLATE_NAMES = ('novedad_pedido',)
+_RE_PROMO_WORDS = re.compile(
+    r'(?i)\b(oferta|promo|promoci[oó]n|descuento|regalo|gratis|bonific|combo|'
+    r'[uú]ltima oportunidad|aprovech)|\d\s?%|\d\s?\+\s?\d')
+
+
+def order_update_ref(text):
+    """Número de pedido (S0xxxx) si el texto es una novedad de pedido sin promo."""
+    match = _RE_ORDER_REF.search(text or '')
+    if not match or _RE_PROMO_WORDS.search(text or ''):
+        return ''
+    return match.group(0)
+
+
+def order_update_template(env, wa_account_id):
+    """Plantilla de utilidad aprobada de la cuenta para novedades de pedido, o vacío."""
+    Template = env['whatsapp.template'].sudo()
+    domain = [('status', '=', 'approved'), ('template_type', '=', 'utility'),
+              ('template_name', 'in', list(ORDER_UPDATE_TEMPLATE_NAMES))]
+    if wa_account_id:
+        domain.append(('wa_account_id', '=', int(wa_account_id)))
+    return Template.search(domain, limit=1)
+
+
 def _wa_policy_param(env, key):
     raw = env['ir.config_parameter'].sudo().get_param(
         'cristal_agent.wa_policy_' + key, WA_POLICY_DEFAULTS[key])
