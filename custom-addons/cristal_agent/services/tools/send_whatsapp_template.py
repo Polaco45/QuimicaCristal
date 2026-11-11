@@ -113,6 +113,25 @@ class SendWhatsappTemplate(AgentTool):
                              f"por Meta (status: {template.status}). Escalá a Joaco."
                 }
 
+        # ─── 2 bis. ¿Vale la pena pagarla? (política de envío, 11/11/2026) ───
+        # Contestarle a un cliente que escribió, o un pedido expreso de Joaco por el
+        # canal interno, no es "enviar por enviar": pasa (solo se evita el duplicado).
+        from ..helpers import wa_template_policy
+        policy_env = env
+        if run and getattr(run, 'trigger', None) in ('whatsapp_message', 'joaco_command'):
+            policy_env = env(context=dict(env.context, wa_transactional=True))
+        blocked = wa_template_policy(
+            policy_env, mobile, ' '.join(str(v) for v in (variables or []) if v), template)
+        if blocked:
+            _logger.info("⏸️ Plantilla '%s' a %s NO enviada (%s)",
+                         template.template_name, partner.name, blocked['code'])
+            return {"error": "TEMPLATE_POLICY", "policy": blocked['code'], "not_sent": True,
+                    "message": (
+                        f"NO SE ENVIÓ la plantilla a {partner.name}: {blocked['message']} "
+                        f"No escales a Joaco por esto ni anotes que le escribiste; si "
+                        f"corresponde, agendá el seguimiento para más adelante.")}
+        env = env(context=dict(env.context, wa_policy_checked=True))
+
         # ─── 3. Detectar modelo del template y resolver res_id correcto ───
         # Los templates suelen estar configurados sobre crm.lead (con variables
         # tipo partner_id.name). El composer necesita un record de ese modelo

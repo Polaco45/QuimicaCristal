@@ -221,7 +221,11 @@ class CristalAgentRouteDeparture(models.Model):
             n = int(''.join(c for c in (var.name or '0') if c.isdigit()) or 0)
             variables.append(str(values_by_index.get(n, '')))
         tool = ToolRegistry.get('send_whatsapp_template')
-        res = tool.execute(env=self.env, run=None, partner_id=partner.id,
+        # Confirmar una entrega o avisar una reprogramación es del pedido del cliente:
+        # sale siempre. El aviso de paso, el rescate y la próxima pasada son comerciales.
+        env = self.env(context=dict(
+            self.env.context, wa_transactional=kind in ('confirmacion', 'reprogramada')))
+        res = tool.execute(env=env, run=None, partner_id=partner.id,
                            template_name=template_name, variables=variables)
         if res.get('error'):
             return False, res['error']
@@ -257,7 +261,16 @@ class CristalAgentRouteDeparture(models.Model):
             if self.state != 'rescate':
                 raise UserError("El rescate solo se manda con la salida en estado Rescate.")
         pending = self._circuit_contacts() - self[done_field]
-        batch = pending[:BATCH_SIZE]
+        # Política de envío: quien ya recibió una plantilla comercial hace poco (o no
+        # abre ninguna) no entra en la tanda, así no traba a los que siguen.
+        from ..services.helpers import wa_template_policy
+        batch = self.env['res.partner']
+        for partner in pending:
+            if wa_template_policy(self.env, partner.mobile or partner.phone):
+                continue
+            batch |= partner
+            if len(batch) >= BATCH_SIZE:
+                break
         if not batch:
             raise UserError("No quedan contactos pendientes para este envío.")
         cutoff = self.get_cutoff_local()
