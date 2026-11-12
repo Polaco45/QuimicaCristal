@@ -183,9 +183,9 @@ ACTIONS = {
         "Más de 3 ciclos sin comprar. Último mensaje: que la puerta queda abierta y que "
         "cuando quiera le cotizamos al precio del día. Sin oferta agresiva, sin insistir."),
     'd_visita': (
-        "Dormido · visita de la vendedora", 'visit',
-        "Cliente dormido de Río Cuarto / Las Higueras con ticket alto: conviene una visita "
-        "presencial en vez de otro mensaje."),
+        "Dormido · llamada", 'visit',
+        "Cliente dormido de Río Cuarto / Las Higueras con ticket alto, sin respuesta al cupón: "
+        "conviene una llamada en vez de otro mensaje."),
     # v1.57 — acciones transversales (no dependen de la etapa)
     'a_ruta_proxima': (
         "Ruta · saltó una pasada: próxima salida", 'claudio',
@@ -222,6 +222,23 @@ NO_HOLDOUT_PREFIXES = ('k_', 'w_')
 COUPON_2ND = (10.0, 8000.0, 21)       # %, tope $, días de vigencia
 WINBACK_DAYS = (30, 40, 55)           # pregunta · envío sin cargo · cupón 10 %
 WINBACK_PERK_DAYS = 14
+# v1.71 — Pruebas A/B de mensajes: dos formas de decir lo mismo; mitad y mitad por cliente
+# (id par = A, impar = B). Se mide la compra a 7 días; el informe semanal las compara.
+ACTION_VARIANTS = {
+    'c_vence': {
+        'A': "Cerrá recordando el plazo: confirmando antes del vencimiento mantiene el precio.",
+        'B': "Cerrá con una pregunta concreta de sí o no: «¿Se lo confirmo así y se lo "
+             "mandamos?» (sin hablar del vencimiento más que la fecha).",
+    },
+    'q_combo': {
+        'A': "Preguntá primero cuánto quiere invertir y recién después ofrecé el combo.",
+        'B': "Ofrecé directamente el Combo Arranque con qué trae, el precio y el ahorro.",
+    },
+    'k_cupon_2': {
+        'A': "Abrí preguntando qué producto le rota mejor y después recordá el cupón.",
+        'B': "Abrí con el cupón y la fecha en que vence, y ofrecé reponer lo mismo.",
+    },
+}
 PRIORITY = ['a_ruta_proxima', 'c_vence', 'c_objecion', 'c_promo', 'o_ritual', 'n_chequeo',
             'k_cupon_3', 'k_cupon_2', 'w_envio', 'w_cupon', 'w_motivo',
             'n_producto_top', 'n_segunda_compra', 'a_reposicion', 'n_reposicion',
@@ -680,6 +697,7 @@ class CristalAgentNBA(models.Model):
                                help="Pedido confirmado dentro de los 7 días siguientes.")
     converted_order_id = fields.Many2one('sale.order', string="Pedido")
     converted_amount = fields.Float(string="Monto (sin IVA)", digits=(12, 0))
+    variant = fields.Char(string="Variante (prueba A/B)", index=True, copy=False)
     origin_code = fields.Char(related='partner_id.agent_origin_code', store=True,
                               string="Origen")
     zone = fields.Selection(related='partner_id.agent_zone', store=True, string="Zona")
@@ -991,9 +1009,13 @@ class CristalAgentNBA(models.Model):
         n_planned = 0
         for p, code, reason in cands:
             label, channel, instr = ACTIONS[code]
+            variant = None
+            if code in ACTION_VARIANTS:
+                variant = 'A' if p.id % 2 == 0 else 'B'
+                instr = f"{instr} {ACTION_VARIANTS[code][variant]}"
             vals = {'partner_id': p.id, 'date': today, 'lifecycle': p.agent_lifecycle,
                     'action_code': code, 'action_label': label, 'channel': channel,
-                    'reason': reason, 'state': 'dry_run'}
+                    'reason': reason, 'state': 'dry_run', 'variant': variant}
             is_live = live_for(code)
             if is_live and n_planned >= cap:
                 continue   # hoy no entra en el cupo; se vuelve a evaluar mañana
@@ -1032,8 +1054,8 @@ class CristalAgentNBA(models.Model):
             if not user:
                 return False
             return partner.activity_schedule(
-                'mail.mail_activity_data_todo', date_deadline=today + timedelta(days=2),
-                summary=f"Visita sugerida: {partner.name}", user_id=user.id,
+                'mail.mail_activity_data_call', date_deadline=today + timedelta(days=1),
+                summary=f"Llamar (cliente dormido): {partner.name}", user_id=user.id,
                 note=f"{instr} Motivo: {reason}.")
         if not config.bot_user_id:
             return False
@@ -1115,6 +1137,48 @@ class CristalAgentNBA(models.Model):
         return True
 
     @api.model
+    def _variant_results(self, days=60):
+        """v1.71 — {acción: {'A': [n, compraron], 'B': [n, compraron]}} de las acciones
+        ejecutadas en los últimos `days` días que ya tienen 7 días de antigüedad."""
+        today = fields.Date.context_today(self)
+        recs = self.search([('variant', '!=', False), ('state', 'in', ('planned', 'done')),
+                            ('date', '>=', today - timedelta(days=days)),
+                            ('date', '<=', today - timedelta(days=CONVERSION_DAYS))])
+        out = {}
+        for n in recs:
+            d = out.setdefault(n.action_label, {'A': [0, 0], 'B': [0, 0]})
+            if n.variant in d:
+                d[n.variant][0] += 1
+                d[n.variant][1] += 1 if n.converted else 0
+        return out
+
+    @api.model
+    def cron_clean_owner_activities(self):
+        """v1.71 — Joaco (12/11/2026): "hay un montón de actividades abiertas a mayoristas…
+        asignadas a mí, necesito que me las limpies y que se encargue Claudio". Las
+        automatizaciones del CRM le cargan a Joaco "Seguimiento de Propuesta" y "Tratar
+        Cliente" también sobre mayoristas que ya lleva Claudio (seguimiento de cotizados y
+        recuperación). Cada hora se borran esas, solo en oportunidades de mayoristas."""
+        config = self.env['cristal.agent.config'].sudo().get_active()
+        owner = config.owner_partner_id.user_ids[:1] if config and config.owner_partner_id else False
+        if not owner:
+            return 0
+        acts = self.env['mail.activity'].sudo().search([
+            ('user_id', '=', owner.id), ('res_model', '=', 'crm.lead'),
+            '|', ('activity_type_id.name', '=', 'Seguimiento de Propuesta'),
+            ('summary', '=', 'Tratar Cliente')])
+        leads = self.env['crm.lead'].sudo().browse(acts.mapped('res_id')).exists()
+        may = leads.filtered(lambda l: l.agent_managed or (
+            l.partner_id and 'Mayorista' in l.partner_id.commercial_partner_id.category_id.mapped('name')
+            or l.partner_id and 'Mayorista' in l.partner_id.category_id.mapped('name')))
+        todo = acts.filtered(lambda a: a.res_id in may.ids)
+        n = len(todo)
+        todo.unlink()
+        if n:
+            _logger.info("🧹 %s actividades de mayoristas sacadas de la lista de Joaco", n)
+        return n
+
+    @api.model
     def summary(self, start, end):
         """Números para el informe semanal: por estado, conversión y control."""
         recs = self.search([('date', '>=', start), ('date', '<', end)])
@@ -1132,4 +1196,5 @@ class CristalAgentNBA(models.Model):
         return {'total': len(recs), 'reached': len(reached), 'dry': len(dry),
                 'holdout': len(hold), 'rate_reached': rate(reached), 'rate_dry': rate(dry),
                 'rate_holdout': rate(hold), 'by_action': by_action,
+                'by_variant': self._variant_results(),
                 'amount': sum(reached.mapped('converted_amount'))}

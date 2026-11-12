@@ -39,5 +39,27 @@
             <field name="active" eval="True"/>
         </record>
 
+        <!-- v1.71 — Cada hora: saca de la lista de Joaco las actividades de mayoristas que lleva Claudio. -->
+        <record id="cron_clean_owner_activities" model="ir.cron">
+            <field name="name">Cristal Agent: limpiar actividades de mayoristas de Joaco</field>
+            <field name="model_id" ref="model_cristal_agent_nba"/>
+            <field name="state">code</field>
+            <field name="code">model.cron_clean_owner_activities()</field>
+            <field name="interval_number">1</field>
+            <field name="interval_type">hours</field>
+            <field name="active" eval="True"/>
+        </record>
+
+        <!-- v1.71 — Cada 2 horas: pedido que el cliente pidió y sigue sin confirmar a las 24 h. -->
+        <record id="cron_requested_unconfirmed" model="ir.cron">
+            <field name="name">Cristal Agent: pedido pedido y sin confirmar (24 h)</field>
+            <field name="model_id" ref="sale.model_sale_order"/>
+            <field name="state">code</field>
+            <field name="code">model.cron_requested_unconfirmed()</field>
+            <field name="interval_number">2</field>
+            <field name="interval_type">hours</field>
+            <field name="active" eval="True"/>
+        </record>
+
     </data>
 </odoo>

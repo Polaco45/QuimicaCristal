@@ -2175,6 +2175,31 @@ class CristalAgentRouteSelftest(models.TransientModel):
             return '1ra compra → cupón 10 % tope $8.000 · 2ª cotización con el tope de $8.000 · se consume · 3 % por frecuencia · recuperación 30/40/55'
         self._case(results, "73. Retención: cupón, frecuencia y recuperación", c_retencion_170)
 
+        # 74) v1.71: limpieza de actividades de Joaco, pruebas A/B y llamadas a Joaco
+        def c_limpieza_171():
+            NBA = env['cristal.agent.nba'].sudo()
+            owner = cfg.owner_partner_id.user_ids[:1]
+            if not owner:
+                return 'sin usuario dueño configurado: no se prueba la limpieza'
+            p = mk_lc('Limpieza may', 'Rio Cuarto', mobile='+5493589990068')
+            pe = Partner.create({'name': 'ZZ Autotest Empresa SA', 'mobile': '+5493589990069'})
+            Lead = env['crm.lead'].sudo()
+            l1 = Lead.create({'name': 'ZZ lead mayorista', 'partner_id': p.id, 'agent_managed': True})
+            l2 = Lead.create({'name': 'ZZ lead empresa', 'partner_id': pe.id})
+            for l in (l1, l2):
+                l.activity_schedule('mail.mail_activity_data_todo', user_id=owner.id, summary='Tratar Cliente')
+            NBA.cron_clean_owner_activities()
+            Act = env['mail.activity'].sudo()
+            assert not Act.search_count([('res_model', '=', 'crm.lead'), ('res_id', '=', l1.id)]), 'no limpió la de mayorista'
+            assert Act.search_count([('res_model', '=', 'crm.lead'), ('res_id', '=', l2.id)]) == 1, 'tocó una de empresa'
+            assert isinstance(NBA._variant_results(), dict)
+            from .agent_lifecycle import ACTION_VARIANTS, ACTIONS as _A
+            assert set(ACTION_VARIANTS) <= set(_A), 'variante de una acción que no existe'
+            assert _A['d_visita'][0] == 'Dormido · llamada'
+            assert SaleOrder.cron_requested_unconfirmed() >= 0
+            return 'limpia solo las de mayoristas · variantes A/B definidas · cliente dormido → llamada'
+        self._case(results, "74. Limpieza de actividades y pruebas A/B", c_limpieza_171)
+
         # 58) Revisión mensual: arma, guarda snapshot y recomienda con reglas fijas
         def c_monthly_review():
             Review = env['cristal.agent.monthly.review'].sudo()
