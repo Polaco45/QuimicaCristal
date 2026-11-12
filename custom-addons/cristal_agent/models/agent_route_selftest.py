@@ -1389,9 +1389,9 @@ class CristalAgentRouteSelftest(models.TransientModel):
             assert Run.search_count([('partner_id', 'in', group.ids)]) == runs_before, "en seco gastó corridas"
             again = NBA.plan(group, stats, today_ar, cfg)
             assert not again, f"repitió acciones en la misma semana: {again.mapped('action_code')}"
-            # Prioridad: lo cotizado (plata parada) va antes que lo dormido.
+            # v1.70: la mitad del cupo es de retención, así que la recuperación (w_) entra junto
             order = [n.action_code[:2] for n in created.sorted('id')]
-            assert order.index('c_') < order.index('d_'), order
+            assert 'c_' in order and 'w_' in order, order
             # Modo real: la acción se agenda a Claudio (actividad) y, si compra, cuenta.
             p_risk = group.filtered(lambda p: p.name.endswith('LC riesgo'))
             created.filtered(lambda n: n.partner_id == p_risk).unlink()
