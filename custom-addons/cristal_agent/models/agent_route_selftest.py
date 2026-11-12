@@ -2095,6 +2095,25 @@ class CristalAgentRouteSelftest(models.TransientModel):
             return 'pedido grande → pedido a Joaco por WhatsApp (una vez) · NO deja igual · OK confirma'
         self._case(results, "70. Joaco confirma pedidos por WhatsApp", c_owner_confirm)
 
+        # 71) v1.68: combos de entrada (precio de combo repartido y 20 % de primera compra)
+        def c_entry_combos():
+            qc = ToolRegistry.get('quote_entry_combo')
+            assert qc, 'falta la tool quote_entry_combo'
+            from ..services.tools.quote_entry_combo import ENTRY_COMBOS, resolve_combo
+            for code in ENTRY_COMBOS:
+                assert len(resolve_combo(env, code)) == len(ENTRY_COMBOS[code][2]), code
+            p = mk_lc('Combo entrada RC', 'Rio Cuarto', mobile='+5493589990066')
+            p.street = 'Calle Falsa 1'
+            r = qc.execute(env=env, run=None, partner_id=p.id, combo='arranque', bidones_nuevos=0)
+            assert r.get('ok') and r['combo']['primera_compra_20'], r
+            o = SaleOrder.browse(r['order_id'])
+            ids = [x.id for x, _q in resolve_combo(env, 'arranque')]
+            prod = sum(l.price_subtotal for l in o.order_line if l.product_id.id in ids)
+            assert abs(prod - 60000) < 10, prod
+            assert r['combo']['precio_suelto'] > 75000, r['combo']
+            return f"arranque Río Cuarto 1ra compra → productos {prod:,.0f} (75.000 − 20 %) · suelto {r['combo']['precio_suelto']:,.0f}"
+        self._case(results, "71. Combos de entrada", c_entry_combos)
+
         # 58) Revisión mensual: arma, guarda snapshot y recomienda con reglas fijas
         def c_monthly_review():
             Review = env['cristal.agent.monthly.review'].sudo()

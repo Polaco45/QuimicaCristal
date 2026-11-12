@@ -125,11 +125,38 @@ def build_system_prompt(env, partner=None, base_prompt=None, client_type=None):
     return stable_text, dynamic_text
 
 
-def _build_combo_context(env, config):
-    """Inyecta el Combo Emprendedor (si está activo) para que el bot lo ofrezca
-    a los que arrancan y lo cotice con create_sale_order."""
-    if not config or not getattr(config, 'combo_emprendedor_active', False):
+def _build_entry_combos_context(env):
+    """v1.68 — Los 3 combos de entrada y cómo elegir uno con preguntas."""
+    try:
+        from .tools.quote_entry_combo import combo_catalog_text
+        catalog = combo_catalog_text(env)
+    except Exception as e:  # noqa: BLE001
+        _logger.warning("combos de entrada: %s", e)
         return ""
+    return "\n".join([
+        "\n## 🎁 COMBOS DE ENTRADA (para el que ARRANCA o no sabe qué llevar)",
+        catalog,
+        "CÓMO ELEGIR — preguntá de a una, cortito, solo lo que no sepas (sin interrogar):",
+        "1) ¿Ya vende limpieza suelta o arranca de cero?  2) ¿Qué negocio tiene?  "
+        "3) Para esta primera compra, ¿cuánto quiere invertir: hasta $60 mil, hasta $75 mil "
+        "o más?  4) ¿Tiene bidones de 20 L vacíos? (para saber cuántos bidones nuevos lleva).",
+        "REGLA: arranca de cero o quiere invertir poco → `prueba`; quiere surtido o hasta "
+        "$75 mil → `arranque`; ya vende con clientela, lavadero o más de $75 mil → "
+        "`completo`. **Ruta del camión: nunca `prueba`** (el mínimo es $75.000). Si duda, "
+        "ofrecé el de un escalón más abajo, nunca más arriba. Ofrecé UNO solo, con qué trae, "
+        "el precio y cuánto ahorra contra comprarlo suelto.",
+        "CÓMO COTIZAR: `quote_entry_combo(partner_id, combo, bidones_nuevos, delivery_mode)` "
+        "(aplica sola el 20 % de primera compra si corresponde) → generate_quote_pdf → PDF. "
+        "Si prefiere elegir producto por producto, cotizá lo que pida como siempre.",
+    ])
+
+
+def _build_combo_context(env, config):
+    """Inyecta los combos de entrada (v1.68) y el Combo Emprendedor (solo si lo piden
+    por nombre o responden al broadcast con "YO")."""
+    entry = _build_entry_combos_context(env)
+    if not config or not getattr(config, 'combo_emprendedor_active', False):
+        return entry
     lines = config.combo_emprendedor_line_ids
     if not lines:
         return ""
@@ -142,16 +169,15 @@ def _build_combo_context(env, config):
         uom = ln.product_id.uom_id.name or ''
         items.append(f"- {ln.qty:g} {uom} de {ln.product_id.display_name}")
     if not items:
-        return ""
-    body = [f"\n## 🎁 {name.upper()} (para clientes que ARRANCAN)"]
+        return entry
+    body = [entry, f"\n## {name.upper()} (solo si lo pide por nombre o responde \"YO\" al aviso del combo)"]
     if pitch:
         body.append(pitch)
     body.append("Incluye:")
     body.extend(items)
     body.append(
-        "CUÁNDO: si el cliente está arrancando / es nuevo y no sabe bien qué llevar, "
-        "ofrecele este combo como punto de partida (en vez de hacerle elegir producto "
-        "por producto). A los que ya saben qué quieren, cotizás lo que pidan (con el 20% off SOLO si el contexto del cliente dice que APLICA)."
+        "CUÁNDO: SOLO si el cliente lo pide por nombre o contesta \"YO\" a la difusión del "
+        "combo. Para el resto de los que arrancan usá los COMBOS DE ENTRADA."
     )
     body.append(
         "CÓMO cotizarlo: create_sale_order con EXACTAMENTE estos productos y cantidades + "

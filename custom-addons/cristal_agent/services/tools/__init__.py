@@ -107,3 +107,6 @@ from . import derive_delivery_issue
 # v1.66 — facturas, saldo y comprobantes (conversión punto 10)
 from . import generate_invoice_pdf
 from . import register_payment_receipt
+
+# v1.68 — combos de entrada
+from . import quote_entry_combo
