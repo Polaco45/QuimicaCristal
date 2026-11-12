@@ -65,11 +65,11 @@ ACTIONS = {
         "que el 20% de primera compra aplica (Río Cuarto / Las Higueras, o si retira en el "
         "local), usalo de gancho: su primer pedido lleva 20% OFF."),
     'q_combo': (
-        "Calificado sin cotizar · día 10: Combo Emprendedor", 'claudio',
-        "Pasaron 10 días desde que lo calificamos y no cotizó nada. Ofrecele el Combo "
-        "Emprendedor del contexto (si está activo) como punto de partida, con el total y "
-        "qué incluye. Si no hay combo activo, ofrecé cotizar los 3 productos que más "
-        "rotan en su rubro. Si el 20% de primera compra aplica (ver contexto), recordale "
+        "Calificado sin cotizar · día 10: combo de entrada", 'claudio',
+        "Pasaron 10 días desde que lo calificamos y no cotizó nada. Ofrecele UNO de los "
+        "COMBOS DE ENTRADA del contexto (el que mejor le quede según lo que sabés de él; si "
+        "no sabés, preguntá cuánto quiere invertir) con qué trae, el precio y cuánto ahorra, "
+        "y cotizalo con quote_entry_combo si dice que sí. Si el 20% de primera compra aplica (ver contexto), recordale "
         "que el combo como primer pedido lleva 20% OFF."),
     # v1.64 — Conversión, punto 3: los leads sin calificar ya no quedan quietos.
     'l_pregunta_1': (
