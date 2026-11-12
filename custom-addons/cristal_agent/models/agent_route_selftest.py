@@ -1831,7 +1831,9 @@ class CristalAgentRouteSelftest(models.TransientModel):
                              ('planned_date', '<', after)]).unlink()
             dates = Pauta._organic_dates(target)
             assert 8 <= len(dates) <= 10 and all(d.weekday() in (1, 4) for d in dates), dates
-            created = Pauta.generate_organic_month(target, config=cfg)
+            # v1.72.1: generate_organic_month también arma las historias del mes (v1.60)
+            created = Pauta.generate_organic_month(target, config=cfg).filtered(
+                lambda c: c.format == 'organico')
             assert len(created) == len(dates), f"{len(created)} posteos (esperaba {len(dates)})"
             for c in created:
                 assert c.format == 'organico' and c.planned_date in dates, (c.name, c.planned_date)
@@ -1839,7 +1841,8 @@ class CristalAgentRouteSelftest(models.TransientModel):
                 assert '#QuímicaCristal' in (c.body or '') and c.name.startswith('[ORGANICO] '), c.name
             angles = set(created.mapped('angle'))
             assert len(angles) >= 3, angles
-            assert not Pauta.generate_organic_month(target, config=cfg), "duplicó posteos"
+            assert not Pauta.generate_organic_month(target, config=cfg).filtered(
+                lambda c: c.format == 'organico'), "duplicó posteos"
             assert Pauta.cron_organic_content(force=True) is True
             spec_angle, spec, body = Pauta.organic_spec('PRODUCTO', {'mes': 'X', 'mes_min': 'x',
                                                                     'clientes': 0, 'salidas': []})
