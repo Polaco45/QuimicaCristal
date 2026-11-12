@@ -103,3 +103,7 @@ from . import set_origin
 
 # v1.65 — entregas y reclamos al responsable (conversión punto 11)
 from . import derive_delivery_issue
+
+# v1.66 — facturas, saldo y comprobantes (conversión punto 10)
+from . import generate_invoice_pdf
+from . import register_payment_receipt

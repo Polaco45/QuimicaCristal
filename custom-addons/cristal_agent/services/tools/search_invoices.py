@@ -28,8 +28,10 @@ class SearchInvoices(AgentTool):
         if not partner_id:
             return {"error": "partner_id es obligatorio"}
 
+        # v1.66: todas las facturas de la empresa (contactos incluidos), no solo del contacto.
+        partner = env['res.partner'].sudo().browse(int(partner_id))
         domain = [
-            ('partner_id', '=', int(partner_id)),
+            ('commercial_partner_id', '=', partner.commercial_partner_id.id or int(partner_id)),
             ('move_type', '=', 'out_invoice'),
             ('state', '=', 'posted'),
         ]
@@ -55,4 +57,15 @@ class SearchInvoices(AgentTool):
                 'payment_state': inv.payment_state,
             })
 
-        return {"ok": True, "count": len(results), "invoices": results}
+        # v1.66 — saldo: lo que debe en total y lo vencido, para contestar "¿cuánto debo?".
+        from datetime import date
+        unpaid = env['account.move'].sudo().search([
+            ('commercial_partner_id', '=', partner.commercial_partner_id.id or int(partner_id)),
+            ('move_type', 'in', ('out_invoice', 'out_refund')), ('state', '=', 'posted'),
+            ('payment_state', 'in', ['not_paid', 'partial'])])
+        sign = lambda m: -1 if m.move_type == 'out_refund' else 1  # noqa: E731
+        saldo = sum(sign(m) * m.amount_residual for m in unpaid)
+        vencido = sum(sign(m) * m.amount_residual for m in unpaid
+                      if m.invoice_date_due and m.invoice_date_due < date.today())
+        return {"ok": True, "count": len(results), "invoices": results,
+                "saldo_pendiente": round(saldo, 2), "saldo_vencido": round(vencido, 2)}

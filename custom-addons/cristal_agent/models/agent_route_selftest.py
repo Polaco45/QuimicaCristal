@@ -2046,6 +2046,33 @@ class CristalAgentRouteSelftest(models.TransientModel):
             return 'faltante → actividad en el pedido para el responsable · aviso de reposición con fecha'
         self._case(results, "68. Conversión: entregas y reposición", c_conversion_165)
 
+        # 69) Conversión (v1.66): saldo, factura de otro cliente y comprobante de transferencia
+        def c_conversion_166():
+            si = ToolRegistry.get('search_invoices')
+            gi = ToolRegistry.get('generate_invoice_pdf')
+            rp = ToolRegistry.get('register_payment_receipt')
+            assert si and gi and rp, 'faltan tools'
+            p = mk_lc('Conv cobro', 'Rio Cuarto', mobile='+5493589990064')
+            r = si.execute(env=env, run=None, partner_id=p.id, only_unpaid=True)
+            assert r.get('ok') and 'saldo_pendiente' in r and 'saldo_vencido' in r, r
+            other = env['account.move'].sudo().search([('move_type', '=', 'out_invoice'),
+                                                       ('state', '=', 'posted')], limit=1)
+            if other:
+                r = gi.execute(env=env, run=None, partner_id=p.id, invoice_id=other.id)
+                assert r.get('error') and 'otro cliente' in r['error'], r
+            user = env['res.users'].sudo().search([], limit=1)
+            cfg.payment_receipt_user_id = user.id
+            o = SaleOrder.browse(quote(p, 60000)['order_id'])
+            before = env['mail.activity'].sudo().search_count([('user_id', '=', user.id)])
+            r = rp.execute(env=env, run=None, partner_id=p.id, amount=60000, order_id=o.id,
+                           note='Galicia 12/11')
+            assert r.get('ok') and r.get('verifier') == user.name and not r.get('receipt_saved'), r
+            after = env['mail.activity'].sudo().search_count([('user_id', '=', user.id)])
+            assert after == before + 1, 'no dejó la verificación'
+            assert 'acreditado' in r['message_for_bot'], r
+            return 'saldo pendiente y vencido · no manda facturas ajenas · comprobante → tarea de verificación'
+        self._case(results, "69. Conversión: facturas, saldo y comprobantes", c_conversion_166)
+
         # 58) Revisión mensual: arma, guarda snapshot y recomienda con reglas fijas
         def c_monthly_review():
             Review = env['cristal.agent.monthly.review'].sudo()

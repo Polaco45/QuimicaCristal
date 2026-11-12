@@ -78,6 +78,8 @@ class ToolRegistry:
             'register_referral',
             'set_origin',
             'derive_delivery_issue',
+            'generate_invoice_pdf',
+            'register_payment_receipt',
             # NOTA: create_lead y schedule_activity quedan disponibles para el bot
             # institucional como respaldo, pero su uso normal es vía la tool atómica
             # complete_institutional_qualification.
