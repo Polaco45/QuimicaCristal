@@ -2073,6 +2073,28 @@ class CristalAgentRouteSelftest(models.TransientModel):
             return 'saldo pendiente y vencido · no manda facturas ajenas · comprobante → tarea de verificación'
         self._case(results, "69. Conversión: facturas, saldo y comprobantes", c_conversion_166)
 
+        # 70) v1.67: Joaco confirma por WhatsApp (sin mandar nada real: se reemplaza el envío)
+        def c_owner_confirm():
+            from ..services import owner_confirm as oc
+            sent = []
+            orig = oc._send_to_owner
+            oc._send_to_owner = lambda env_, cfg_, text: sent.append(text) or {'ok': True}
+            try:
+                p = mk_lc('Conv Joaco OK', 'Rio Cuarto', mobile='+5493589990065')
+                o = SaleOrder.browse(quote(p, 250000)['order_id'])
+                if cfg.owner_whatsapp_partner_id:
+                    r = oc.request_owner_confirmation(env, o, 'supera el monto')
+                    assert r.get('ok') and o.cristal_owner_confirm_at and o.name in sent[-1], (r, sent)
+                    assert oc.request_owner_confirmation(env, o).get('already_requested')
+                assert oc.handle_owner_reply(env, 'hola, todo bien?') is False
+                assert oc.handle_owner_reply(env, f'NO {o.name}') and o.state in ('draft', 'sent')
+                assert oc.handle_owner_reply(env, f'ok {o.name}') and o.state == 'sale', o.state
+                assert any('Confirmé' in s for s in sent), sent
+            finally:
+                oc._send_to_owner = orig
+            return 'pedido grande → pedido a Joaco por WhatsApp (una vez) · NO deja igual · OK confirma'
+        self._case(results, "70. Joaco confirma pedidos por WhatsApp", c_owner_confirm)
+
         # 58) Revisión mensual: arma, guarda snapshot y recomienda con reglas fijas
         def c_monthly_review():
             Review = env['cristal.agent.monthly.review'].sudo()
@@ -2191,7 +2213,8 @@ class CristalAgentRouteSelftest(models.TransientModel):
             o4 = cso.execute(env=env, run=None, partner_id=p4.id,
                              lines=[{'product_id': product.id, 'qty': 1, 'price_unit': 90000}])['order_id']
             r = co.execute(env=env, run=None, partner_id=p4.id, order_id=o4, payment='efectivo')
-            assert r.get('not_confirmed'), r
+            # v1.67: los de la ruta también los confirma Claudio
+            assert r.get('confirmed') or not any('ruta' in x for x in r.get('problems', [])), r
             r = co.execute(env=env, run=None, partner_id=p.id, order_id=oid, payment='cheque')
             assert r.get('not_confirmed'), r
             cfg.auto_confirm_enabled = False
@@ -2200,5 +2223,5 @@ class CristalAgentRouteSelftest(models.TransientModel):
             assert r.get('tool_disabled') or r.get('not_confirmed'), r
             cfg.auto_confirm_enabled = True
             return ("Río Cuarto con dirección y $60.000 → confirmado · $200.000 → no · sin dirección → no · "
-                    "ruta del camión → no · cheque → no · apagado → no")
+                    "ruta del camión → confirmado · cheque → no · apagado → no")
         self._case(results, "48. confirm_order: lista de control", c_confirm_order)

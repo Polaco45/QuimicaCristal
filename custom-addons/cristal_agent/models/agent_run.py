@@ -425,7 +425,7 @@ class CristalAgentRun(models.Model):
             ('agent_strategy_phase', '=', 'phase_2_quoted'),
         ])
         CADENCE_DAYS_QUOTED = [1, 3]   # seguimientos suaves
-        CANCEL_DAY = 7                 # +7 días sin confirmar → cancelar + reenganche
+        CANCEL_DAY = 14                 # v1.67 (Joaco 12/11): igual que la validez de la cotización (14 días)
 
         # El partner operador (WhatsApp de Joaco) NO es un cliente: nunca le
         # mandamos cadencias aunque tenga una opp/cotización histórica.

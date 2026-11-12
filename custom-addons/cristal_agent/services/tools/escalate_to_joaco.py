@@ -58,6 +58,24 @@ class EscalateToJoaco(AgentTool):
         if not message:
             return {"error": "message es obligatorio"}
 
+        # v1.67 — "PEDIDO PARA CONFIRMAR" le llega a Joaco por WhatsApp (pedido de Joaco
+        # 12/11/2026), no al canal interno. Si no se puede mandar, sigue el camino de siempre.
+        import re as _re_pc
+        if 'PEDIDO PARA CONFIRMAR' in (message or '').upper():
+            m = _re_pc.search(r'\bS\d{4,6}\b', message)
+            order = env['sale.order'].sudo().search([('name', '=', m.group(0))], limit=1) \
+                if m else env['sale.order']
+            if order:
+                from ..owner_confirm import request_owner_confirmation
+                plain = _re_pc.sub(r'<[^>]+>', ' ', message)
+                motivo = _re_pc.search(r'Motivo:\s*([^.]+)', plain)
+                res = request_owner_confirmation(env, order, motivo.group(1) if motivo else '')
+                if res.get('ok'):
+                    return {"ok": True, "sent_to_owner_whatsapp": True,
+                            "summary": (f"Le pedí a Joaco por WhatsApp que confirme {order.name}. "
+                                        f"Al cliente: queda pendiente de confirmación de Joaquín "
+                                        f"y le avisás apenas se confirme.")}
+
         config = env['cristal.agent.config'].sudo().get_active()
         bot_partner = config.bot_partner_id
         if not bot_partner:

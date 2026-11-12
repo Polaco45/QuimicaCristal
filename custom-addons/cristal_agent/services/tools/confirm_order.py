@@ -70,8 +70,11 @@ class ConfirmOrder(AgentTool):
             problems.append(f"la cotización está en estado {order.state}")
         if order.pricelist_id.name != MAYORISTA_PRICELIST:
             problems.append("no está cotizada con la Lista Mayorista")
-        if order.route_departure_id:
-            problems.append("es un pedido de la ruta del camión: lo confirma Joaquín")
+        # v1.67 — Joaco (12/11/2026): "confirma todos los pedidos hasta 200k, no solo los de
+        # ruta". Los de la ruta del camión también los confirma Claudio (con salida asignada).
+        route = bool(order.route_departure_id)
+        if route and order.route_departure_id.state in ('realizada', 'postergada'):
+            problems.append("la salida del camión ya salió o se postergó")
         limit = config.auto_confirm_max_amount or 0.0
         if limit and order.amount_untaxed > limit:
             problems.append(f"supera el monto de confirmación automática "
@@ -79,7 +82,7 @@ class ConfirmOrder(AgentTool):
         pickup = getattr(order, 'cristal_delivery_mode', False) == 'retiro'
         if not pickup:
             zone = partner.agent_zone
-            if zone not in ('rio_cuarto', 'las_higueras'):
+            if zone not in ('rio_cuarto', 'las_higueras') and not route:
                 kind = env['cristal.agent.circuit'].sudo().classify_city(partner.city).get('kind')
                 if kind != 'rio_cuarto':
                     problems.append(f"envío fuera de Río Cuarto / Las Higueras "

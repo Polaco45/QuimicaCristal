@@ -94,6 +94,15 @@ class WhatsAppMessage(models.Model):
             # "no sirve"). Sus mensajes por WhatsApp ya NO disparan al bot; para
             # darle órdenes o preguntarle algo a Claudio, Joaco usa el CANAL
             # INTERNO de Odoo. Igual NUNCA se lo trata como cliente.
+            # v1.67 — excepción: la confirmación de pedidos (Joaco 12/11/2026: "que me
+            # escriba por WhatsApp para confirmar pedidos"). "OK S07123" / "NO S07123".
+            try:
+                from ..services.owner_confirm import handle_owner_reply
+                if handle_owner_reply(self.env, plain_body):
+                    _logger.info("🧑‍💼 Joaco respondió una confirmación de pedido por WhatsApp.")
+                    return
+            except Exception as e:  # noqa: BLE001
+                _logger.exception("Confirmación de Joaco por WhatsApp falló: %s", e)
             _logger.info("🧑‍💼 Mensaje de Joaco por WhatsApp IGNORADO (el chat con "
                          "Joaco es solo por el canal interno de Odoo).")
             return
