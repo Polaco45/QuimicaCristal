@@ -7,6 +7,12 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.72.1] — 2026-11-12
+
+### Fixed — Autotest 57 (orgánico mensual)
+`generate_organic_month` también arma las historias del mes desde la v1.60; el autotest contaba
+todo junto (38 en vez de 8). Ahora cuenta solo los posteos orgánicos.
+
 ## [18.0.1.63.5] — 2026-11-10
 
 ### Changed — Kits en tarjetas, palos acostados y "Fabricado" solo para la categoría Fabricación
