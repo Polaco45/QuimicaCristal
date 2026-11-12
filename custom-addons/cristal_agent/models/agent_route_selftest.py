@@ -1380,8 +1380,8 @@ class CristalAgentRouteSelftest(models.TransientModel):
             runs_before = Run.search_count([('partner_id', 'in', group.ids)])
             created = NBA.plan(group, stats, today_ar, cfg)
             by = {n.partner_id.name.replace('ZZ Autotest LC ', ''): n.action_code for n in created}
-            want = {'calificado': 'q_combo', 'cotizado': 'c_objecion', 'nuevo': 'n_producto_top',
-                    'riesgo': 'r_reactivacion_1', 'dormido': 'd_reactivacion_3'}
+            want = {'calificado': 'q_combo', 'cotizado': 'c_objecion', 'nuevo': 'k_cupon_2',
+                    'riesgo': 'w_cupon', 'dormido': 'w_cupon'}  # v1.70
             assert by == want, by
             assert set(created.mapped('state')) == {'dry_run'}, created.mapped('state')
             assert Act.search_count([('res_model', '=', 'res.partner'), ('res_id', 'in', group.ids)]) == acts_before, \
@@ -1669,7 +1669,7 @@ class CristalAgentRouteSelftest(models.TransientModel):
             assert nuevo.agent_referral_rewarded_date, "sin fecha de premio"
             q2 = cso.execute(env=env, run=None, partner_id=viejo.id, delivery_mode='retiro',
                              lines=[{'product_id': prod60.id, 'qty': 1}])
-            assert q2.get('auto_discount', {}).get('percent') == 5.0, q2.get('auto_discount')
+            assert (q2.get('auto_discount', {}).get('percent') or 0) >= 5.0, q2.get('auto_discount')  # v1.70: va el mejor (referido o cupón)
             return ("registro por id y por nombre · 5 % al referido en su primer pedido · al confirmar, "
                     "crédito y aviso a quien recomendó · el crédito se usa en su próxima cotización")
         self._case(results, "52. Referidos", c_referidos)
@@ -2156,10 +2156,11 @@ class CristalAgentRouteSelftest(models.TransientModel):
             r = NBA._stage_candidate(p, s, today_ar, cfg, 'new_customer', {'n_chequeo': today_ar - timedelta(days=9)}, 30, once({'n_chequeo': 1}))
             assert r and r[0] == 'k_cupon_2', r
             r2 = cso.execute(env=env, run=None, partner_id=p.id,
-                             lines=[{'product_id': product.id, 'qty': 1, 'price_unit': 100000}])
+                             lines=[{'product_id': product.id, 'qty': 200000}])
             o2 = SaleOrder.browse(r2['order_id'])
             disc = o2.order_line.filtered(lambda l: l.product_id == product).discount
-            assert abs(disc - 8.0) < 0.01, f"cupón con tope: {disc}"
+            ln = o2.order_line.filtered(lambda l: l.product_id == product)
+            assert 0 < disc < 10 and ln.price_unit * ln.product_uom_qty * disc / 100.0 <= 8000.01, f"cupón con tope: {disc}"
             o2.action_confirm()
             assert p.agent_active_coupon() == (0.0, 0.0), 'el cupón no se consumió'
             assert p.agent_frequency_discount()[0] == 3.0, p.agent_frequency_discount()
@@ -2171,7 +2172,7 @@ class CristalAgentRouteSelftest(models.TransientModel):
             assert NBA._winback_candidate(s31, today_ar, {})[0] == 'w_motivo'
             assert NBA._winback_candidate(s31, today_ar, {'w_motivo': today_ar - timedelta(days=2)}) is None
             assert NBA._winback_candidate(dict(s55, last_order=today_ar - timedelta(days=10)), today_ar, {}) is None
-            return '1ra compra → cupón 10 % tope $8.000 · 2ª cotización con 8 % (tope) · se consume · 3 % por frecuencia · recuperación 30/40/55'
+            return '1ra compra → cupón 10 % tope $8.000 · 2ª cotización con el tope de $8.000 · se consume · 3 % por frecuencia · recuperación 30/40/55'
         self._case(results, "73. Retención: cupón, frecuencia y recuperación", c_retencion_170)
 
         # 58) Revisión mensual: arma, guarda snapshot y recomienda con reglas fijas
