@@ -172,6 +172,14 @@ class WhatsAppMessage(models.Model):
         memory = Memory.get_or_create(partner)
         memory.increment_received()
 
+        # 5.5) v1.70 — La respuesta a la encuesta se registra SIEMPRE, antes de cualquier
+        # corte (takeover, bypass): hasta el 12/11 no había quedado guardada ninguna.
+        try:
+            if hasattr(partner, 'agent_capture_survey'):
+                partner.agent_capture_survey(plain_body, when=wa_message.create_date)
+        except Exception as e:  # noqa: BLE001
+            _logger.warning("No se pudo registrar la encuesta de %s: %s", partner.name, e)
+
         # 6) Takeover humano activo? Bot pausado?
         if memory.is_takeover_active():
             # v1.60.1 — Si lo único que "intervino" fue una PLANTILLA mandada por campaña
