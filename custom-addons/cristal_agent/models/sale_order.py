@@ -64,6 +64,9 @@ class SaleOrder(models.Model):
         string="Aviso de confirmación", copy=False, readonly=True)
     cristal_confirm_notice_note = fields.Char(
         string="Detalle del aviso", copy=False, readonly=True)
+    # v1.67 — Cuándo se le pidió a Joaco por WhatsApp que confirme este pedido.
+    cristal_owner_confirm_at = fields.Datetime(
+        string="Confirmación pedida a Joaco (WhatsApp)", copy=False, readonly=True)
 
     # ───────────────────── Flete de la ruta (v1.37) ─────────────────────
     def _cristal_freight_product(self, config):
