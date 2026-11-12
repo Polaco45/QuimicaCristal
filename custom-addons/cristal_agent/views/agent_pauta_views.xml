@@ -1,0 +1,219 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- v1.58 — Pauta Cristal: creativos y experimentos -->
+    <record id="view_cristal_agent_creative_list" model="ir.ui.view">
+        <field name="name">cristal.agent.creative.list</field>
+        <field name="model">cristal.agent.creative</field>
+        <field name="arch" type="xml">
+            <list decoration-success="state == 'active'" decoration-muted="state == 'done'">
+                <field name="departure_date"/>
+                <field name="planned_date" optional="show"/>
+                <field name="zone"/>
+                <field name="angle"/>
+                <field name="format"/>
+                <field name="version"/>
+                <field name="name"/>
+                <field name="state" widget="badge"/>
+                <field name="spend" sum="Gasto"/>
+                <field name="conversations" sum="Conv."/>
+                <field name="cost_per_conversation"/>
+                <field name="orders" sum="Pedidos"/>
+                <field name="cpa_real"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_cristal_agent_creative_form" model="ir.ui.view">
+        <field name="name">cristal.agent.creative.form</field>
+        <field name="model">cristal.agent.creative</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <h1><field name="name"/></h1>
+                    <group>
+                        <group string="Pieza">
+                            <field name="zone"/>
+                            <field name="circuit_id"/>
+                            <field name="departure_id"/>
+                            <field name="angle"/>
+                            <field name="format"/>
+                            <field name="version"/>
+                            <field name="state"/>
+                            <field name="activate_on"/>
+                            <field name="planned_date"/>
+                            <field name="metricool_id"/>
+                        </group>
+                        <group string="Archivo y Meta">
+                            <field name="attachment_id"/>
+                            <field name="public_url" widget="url"/>
+                            <field name="meta_image_hash"/>
+                            <field name="meta_video_id"/>
+                            <field name="meta_creative_id"/>
+                            <field name="meta_ad_id"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Copy">
+                            <field name="headline"/>
+                            <field name="body"/>
+                        </page>
+                        <page string="Guion del video">
+                            <field name="script"/>
+                        </page>
+                        <page string="Resultados">
+                            <group>
+                                <field name="results_date"/>
+                                <field name="spend"/>
+                                <field name="conversations"/>
+                                <field name="cost_per_conversation"/>
+                                <field name="orders"/>
+                                <field name="cpa_real"/>
+                            </group>
+                            <field name="notes"/>
+                        </page>
+                    </notebook>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_cristal_agent_creative_search" model="ir.ui.view">
+        <field name="name">cristal.agent.creative.search</field>
+        <field name="model">cristal.agent.creative</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="name"/>
+                <field name="zone"/>
+                <field name="departure_id"/>
+                <filter name="placa" string="Placas" domain="[('format', '=', 'placa')]"/>
+                <filter name="video" string="Videos" domain="[('format', '=', 'video')]"/>
+                <filter name="organico" string="Orgánico" domain="[('format', '=', 'organico')]"/>
+                <filter name="live" string="Activos" domain="[('state', '=', 'active')]"/>
+                <group expand="0" string="Agrupar por">
+                    <filter name="g_angle" string="Ángulo" context="{'group_by': 'angle'}"/>
+                    <filter name="g_zone" string="Zona" context="{'group_by': 'zone'}"/>
+                    <filter name="g_dep" string="Salida" context="{'group_by': 'departure_id'}"/>
+                    <filter name="g_format" string="Formato" context="{'group_by': 'format'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="view_cristal_agent_creative_pivot" model="ir.ui.view">
+        <field name="name">cristal.agent.creative.pivot</field>
+        <field name="model">cristal.agent.creative</field>
+        <field name="arch" type="xml">
+            <pivot>
+                <field name="angle" type="row"/>
+                <field name="format" type="col"/>
+                <field name="spend" type="measure"/>
+                <field name="conversations" type="measure"/>
+                <field name="orders" type="measure"/>
+            </pivot>
+        </field>
+    </record>
+
+    <record id="action_cristal_agent_creative" model="ir.actions.act_window">
+        <field name="name">Creativos de pauta</field>
+        <field name="res_model">cristal.agent.creative</field>
+        <field name="view_mode">list,form,pivot</field>
+        <field name="context">{'search_default_g_dep': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">Todavía no hay creativos</p>
+            <p>El cron genera las placas por ángulo 7 días antes de cada salida de la ruta.</p>
+        </field>
+    </record>
+
+    <record id="view_cristal_agent_experiment_list" model="ir.ui.view">
+        <field name="name">cristal.agent.experiment.list</field>
+        <field name="model">cristal.agent.experiment</field>
+        <field name="arch" type="xml">
+            <list decoration-success="verdict == 'win'" decoration-danger="verdict == 'lose'">
+                <field name="date"/>
+                <field name="name"/>
+                <field name="metric"/>
+                <field name="value_before"/>
+                <field name="value_after"/>
+                <field name="evaluate_on"/>
+                <field name="verdict" widget="badge"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_cristal_agent_experiment_form" model="ir.ui.view">
+        <field name="name">cristal.agent.experiment.form</field>
+        <field name="model">cristal.agent.experiment</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <h1><field name="name" placeholder="Hipótesis"/></h1>
+                    <group>
+                        <group>
+                            <field name="date"/>
+                            <field name="evaluate_on"/>
+                            <field name="verdict"/>
+                        </group>
+                        <group>
+                            <field name="metric"/>
+                            <field name="value_before"/>
+                            <field name="value_after"/>
+                        </group>
+                    </group>
+                    <field name="action" placeholder="Qué se hizo"/>
+                    <field name="creative_ids" widget="many2many_tags"/>
+                    <field name="notes" placeholder="Aprendizaje"/>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_cristal_agent_experiment" model="ir.actions.act_window">
+        <field name="name">Experimentos de pauta</field>
+        <field name="res_model">cristal.agent.experiment</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <!-- v1.59 — Revisión mensual del mayorista -->
+    <record id="view_cristal_agent_monthly_review_list" model="ir.ui.view">
+        <field name="name">cristal.agent.monthly.review.list</field>
+        <field name="model">cristal.agent.monthly.review</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="month"/>
+                <field name="name"/>
+                <field name="posted"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_cristal_agent_monthly_review_form" model="ir.ui.view">
+        <field name="name">cristal.agent.monthly.review.form</field>
+        <field name="model">cristal.agent.monthly.review</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <h1><field name="name"/></h1>
+                    <group>
+                        <field name="month"/>
+                        <field name="posted"/>
+                    </group>
+                    <field name="body_html" readonly="1"/>
+                    <group string="Recomendaciones">
+                        <field name="recommendations" nolabel="1" colspan="2"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_cristal_agent_monthly_review" model="ir.actions.act_window">
+        <field name="name">Revisión mensual</field>
+        <field name="res_model">cristal.agent.monthly.review</field>
+        <field name="view_mode">list,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">Todavía no hay revisiones</p>
+            <p>El día 1 de cada mes se arma sola la revisión del mes anterior y se publica en el canal interno.</p>
+        </field>
+    </record>
+</odoo>
