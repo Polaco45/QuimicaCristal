@@ -311,6 +311,50 @@ class SaleOrder(models.Model):
             self.env.cr.commit()
         return True
 
+    @api.model
+    def cron_requested_unconfirmed(self, limit=5):
+        """v1.71 — Cotización mayorista que el cliente PIDIÓ por WhatsApp ("quiero el
+        pedido", "confirmo", "dale") y sigue sin confirmar 24 h después: se le pide a Joaco
+        por WhatsApp que la confirme (responde "OK S0xxxx"). Casos reales de la auditoría de
+        recompra: 80928 escribió "quiero el pedido" y la cotización seguía en borrador."""
+        import re
+        from ..services.helpers import within_contact_hours
+        from ..services.owner_confirm import request_owner_confirmation
+        if not within_contact_hours(self.env):
+            return 0
+        intent = re.compile(
+            r'\b(quiero el pedido|lo quiero|confirm[oa]\b|confirmame|dale|mandame(lo)?|'
+            r'hacelo|hac[eé] el pedido|s[ií],? (lo )?(quiero|confirmo))', re.IGNORECASE)
+        now = fields.Datetime.now()
+        orders = self.sudo().search([
+            ('state', 'in', ('draft', 'sent')), ('cristal_owner_confirm_at', '=', False),
+            ('pricelist_id.name', '=', 'Lista Mayorista'),
+            ('create_date', '<', now - timedelta(hours=24)),
+            ('create_date', '>', now - timedelta(days=14))], order='create_date desc')
+        sent = 0
+        for order in orders:
+            if sent >= limit:
+                break
+            partner = order.partner_id
+            channel = self.env['discuss.channel'].sudo().search([
+                ('channel_type', '=', 'whatsapp'), ('channel_partner_ids', 'in', partner.ids)],
+                order='write_date desc', limit=1)
+            if not channel:
+                continue
+            msgs = self.env['mail.message'].sudo().search([
+                ('model', '=', 'discuss.channel'), ('res_id', '=', channel.id),
+                ('author_id', '=', partner.id), ('date', '>', order.create_date),
+                ('date', '<', now - timedelta(hours=24))], order='id desc', limit=8)
+            text = ' '.join(re.sub(r'<[^>]+>', ' ', m.body or '') for m in msgs)
+            if not intent.search(text):
+                continue
+            res = request_owner_confirmation(
+                self.env, order, "el cliente lo pidió hace más de 24 h y sigue sin confirmar")
+            if res.get('ok') and not res.get('already_requested'):
+                sent += 1
+                self.env.cr.commit()
+        return sent
+
     def _cristal_referral_on_confirm(self):
         partner = self.partner_id.sudo()
         if not partner or 'agent_referral_credit_pct' not in partner._fields:

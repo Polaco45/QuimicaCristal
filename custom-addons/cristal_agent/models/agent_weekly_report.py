@@ -70,7 +70,109 @@ class CristalAgentWeeklyReport(models.Model):
         start = today - timedelta(days=today.weekday() + 7)
         rep = self.build_report(start, start + timedelta(days=7))
         rep._post_to_internal_channel()
+        try:
+            self.review_sample_auto()
+            self._post_variants()
+        except Exception as e:  # noqa: BLE001
+            _logger.warning("revisión automática / pruebas A/B: %s", e)
         return rep
+
+    # ───────────── v1.71 — Revisión de calidad automática y pruebas A/B ─────────────
+    @api.model
+    def review_sample_auto(self, limit=20):
+        """La muestra semanal (20 conversaciones) nadie la revisaba a mano (40 sin revisar
+        al 12/11). Ahora la califica el modelo base contra las reglas de venta y a Joaco le
+        llegan solo las que tienen error."""
+        import json
+        import requests
+        Config = self.env['cristal.agent.config'].sudo()
+        config = Config.get_active()
+        key = Config.get_api_key()
+        if not config or not key:
+            return 0
+        runs = self.env['cristal.agent.run'].sudo().search(
+            [('review_sample', '=', True), ('review_result', '=', False)],
+            order='id desc', limit=limit)
+        rules = (
+            "Sos el supervisor de Claudio, vendedor mayorista por WhatsApp de una fábrica de "
+            "productos de limpieza. Calificá esta respuesta. Es ERROR si: inventa precios, "
+            "stock o fechas; promete entrega con día y hora en Río Cuarto; ofrece cuenta "
+            "corriente, cheque, tarjeta o Mercado Pago; ofrece descuentos no estipulados; "
+            "presenta una cotización sin ofrecer un complementario; no contesta lo que el "
+            "cliente preguntó; manda más de 3 o 4 líneas sin necesidad; trata mal o deja "
+            "al cliente sin próximo paso. Respondé SOLO un JSON: "
+            '{"ok": true|false, "nota": "motivo en una línea"}')
+        bad = []
+        for r in runs:
+            try:
+                log = json.loads(r.tool_calls_log or '[]') or []
+            except Exception:  # noqa: BLE001
+                log = []
+            sent = [str((t.get('input') or {}).get('body') or '') for t in log
+                    if t.get('tool_name') == 'send_whatsapp']
+            tools = ', '.join(t.get('tool_name') or '' for t in log)[:300]
+            convo = (f"Cliente escribió: {(r.incoming_text or '')[:800]}\n"
+                     f"Herramientas que usó Claudio: {tools}\n"
+                     f"Claudio respondió: {' | '.join(sent)[:1500] or (r.final_response or '')[:800]}")
+            try:
+                resp = requests.post(
+                    config.anthropic_api_url, timeout=40,
+                    headers={"x-api-key": key, "anthropic-version": config.anthropic_version,
+                             "content-type": "application/json"},
+                    json={"model": config.anthropic_model, "max_tokens": 200,
+                          "system": rules,
+                          "messages": [{"role": "user", "content": convo}]})
+                resp.raise_for_status()
+                text = ''.join(b.get('text', '') for b in resp.json().get('content', [])
+                               if b.get('type') == 'text')
+                m = re.search(r'\{.*\}', text, re.S)
+                verdict = json.loads(m.group(0)) if m else {}
+            except Exception as e:  # noqa: BLE001
+                _logger.warning("revisión automática de la corrida %s: %s", r.id, e)
+                continue
+            ok = bool(verdict.get('ok'))
+            r.write({'review_result': 'ok' if ok else 'error',
+                     'review_note': ('[auto] ' + str(verdict.get('nota') or ''))[:200]})
+            if not ok:
+                bad.append(r)
+            self.env.cr.commit()
+        if runs and config.internal_channel_id:
+            base = self.env['ir.config_parameter'].sudo().get_param('web.base.url', '')
+            items = ''.join(
+                f'<li><a href="{base}/web#model=cristal.agent.run&amp;id={r.id}&amp;view_type=form">'
+                f'{r.partner_id.name or "sin nombre"}</a>: {(r.review_note or "")[7:]}</li>'
+                for r in bad)
+            config.internal_channel_id.sudo().with_context(from_cristal_agent=True).message_post(
+                body=(f"<p><b>🔎 Revisión automática de calidad</b>: {len(runs)} conversaciones "
+                      f"revisadas, <b>{len(bad)} con error</b>.</p>"
+                      + (f"<ul>{items}</ul>" if bad else "")),
+                message_type='comment', subtype_xmlid='mail.mt_comment')
+        return len(bad)
+
+    @api.model
+    def _post_variants(self):
+        """Resultado de las pruebas A/B del motor (compra a 7 días por variante)."""
+        if 'cristal.agent.nba' not in self.env:
+            return
+        res = self.env['cristal.agent.nba'].sudo()._variant_results()
+        config = self.env['cristal.agent.config'].sudo().get_active()
+        if not res or not config or not config.internal_channel_id:
+            return
+        rows = []
+        for label, d in res.items():
+            (na, ca), (nb, cb) = d['A'], d['B']
+            ra = 100.0 * ca / na if na else 0.0
+            rb = 100.0 * cb / nb if nb else 0.0
+            verdict = "faltan casos (mínimo 30 por variante)"
+            if na >= 30 and nb >= 30:
+                verdict = ("gana A" if ra - rb >= 5 else "gana B" if rb - ra >= 5
+                           else "sin diferencia clara")
+            rows.append(f"<li>{label}: A {ca}/{na} ({ra:.0f}%) · B {cb}/{nb} ({rb:.0f}%) — "
+                        f"{verdict}</li>")
+        config.internal_channel_id.sudo().with_context(from_cristal_agent=True).message_post(
+            body="<p><b>🧪 Pruebas A/B de mensajes</b> (compra a 7 días)</p><ul>"
+                 + ''.join(rows) + "</ul>",
+            message_type='comment', subtype_xmlid='mail.mt_comment')
 
     @api.model
     def _utc_bounds(self, start, end):
