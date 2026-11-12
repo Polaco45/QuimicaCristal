@@ -1404,6 +1404,7 @@ class CristalAgentRouteSelftest(models.TransientModel):
             assert live.converted and live.converted_amount > 0, live.read(['converted', 'converted_amount'])
             # Modo real acotado: solo las acciones habilitadas se agendan; el resto sigue en seco.
             p_dorm = group.filtered(lambda p: p.name.endswith('LC dormido'))
+            created = created.exists()
             created.filtered(lambda n: n.partner_id == p_dorm).unlink()
             cfg.lifecycle_live_actions = 'c_'
             limited = NBA.plan(p_dorm, stats, today_ar, cfg)
@@ -1605,6 +1606,7 @@ class CristalAgentRouteSelftest(models.TransientModel):
             p = mk_lc('Nivel plata', 'Rio Cuarto')
             p.write({'agent_level': 'plata', 'street': 'Calle Nivel 1'})
             _confirmed(p, 40, amount=60000)   # ya compró: no hay 20 % de primera compra
+            p.write({'agent_coupon_pct': 0.0, 'agent_coupon_expires': False})   # v1.70: sin cupón, se prueba el nivel
             r = cso.execute(env=env, run=None, partner_id=p.id, delivery_mode='retiro',
                             lines=[{'product_id': prod60.id, 'qty': 1}])
             assert r.get('order_id') and r.get('auto_discount', {}).get('percent') == 5.0, r.get('auto_discount')
@@ -1934,6 +1936,9 @@ class CristalAgentRouteSelftest(models.TransientModel):
             p.mobile = phone
             mem = env['cristal.agent.memory'].sudo().get_or_create(p)
             mem.activate_takeover(reason="Intervención manual de Joaquin", duration_hours=12)
+            # El autotest corre en una sola transacción larga: la plantilla queda con la hora de
+            # inicio de la transacción, así que el takeover se ancla a esa misma hora.
+            mem.takeover_until = env.cr.now() + timedelta(hours=12)
             base = {'mobile_number': phone, 'message_type': 'outbound', 'state': 'sent',
                     'wa_account_id': tpl.wa_account_id.id}
             WaMsg.create(dict(base, wa_template_id=tpl.id))
