@@ -28,5 +28,16 @@
             <field name="active" eval="True"/>
         </record>
 
+        <!-- v1.69 — Cada hora: aviso a los clientes cuando una salida del camión cambia de día. -->
+        <record id="cron_route_reschedule_notices" model="ir.cron">
+            <field name="name">Cristal Agent: Ruta — aviso de cambio de día a clientes con pedido</field>
+            <field name="model_id" ref="model_cristal_agent_route_departure"/>
+            <field name="state">code</field>
+            <field name="code">model.cron_reschedule_notices()</field>
+            <field name="interval_number">1</field>
+            <field name="interval_type">hours</field>
+            <field name="active" eval="True"/>
+        </record>
+
     </data>
 </odoo>

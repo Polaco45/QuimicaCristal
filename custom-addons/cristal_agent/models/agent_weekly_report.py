@@ -153,7 +153,9 @@ class CristalAgentWeeklyReport(models.Model):
         vals.update({k: funnel[k] for k in ('funnel_new_contacts', 'funnel_new_quoted',
                                              'funnel_new_buyers', 'funnel_first_buyers',
                                              'funnel_first_amount')})
-        vals['body'] = self._render(vals, reasons, guards, sample) + self._render_funnel(funnel)
+        controls = self._conversion_controls(runs, a, b, funnel, escal)
+        vals['body'] = (self._render(vals, reasons, guards, sample) + self._render_funnel(funnel)
+                        + self._render_controls(controls))
         rep = self.search([('week_start', '=', start)], limit=1)
         if rep:
             rep.write(vals)
@@ -260,6 +262,100 @@ class CristalAgentWeeklyReport(models.Model):
             f"<table class='table table-sm'><thead><tr><th>Origen</th><th>Nuevos</th>"
             f"<th>Cotizados</th><th>Compraron</th></tr></thead><tbody>{rows or '<tr><td colspan=4>—</td></tr>'}"
             f"</tbody></table>")
+
+    # ───────────────────── Controles de conversión (v1.69) ─────────────────────
+    # Joaco (12/11/2026): "que la conversión sea automática y totalmente efectiva, con
+    # controles de mejora". Cada lunes se miden estos números contra un umbral; los que
+    # quedan abajo salen marcados con ⚠️ y lo que hay que revisar.
+    @api.model
+    def _conversion_controls(self, runs, a, b, funnel, escal):
+        import json
+        offer_re = re.compile(
+            r'\b(sum(ar|amos|o|ale)|agreg(ar|o|amos|ale)|le falta|te falta|también|tambien|'
+            r'complement|aprovech|recomiendo|muchos clientes)', re.IGNORECASE)
+        quoted_runs, offered, sug_by_order = 0, 0, {}
+        for r in runs:
+            try:
+                log = json.loads(r.tool_calls_log or '[]') or []
+            except Exception:  # noqa: BLE001
+                continue
+            q = [t.get('output') for t in log if t.get('tool_name') in
+                 ('create_sale_order', 'quote_entry_combo')
+                 and isinstance(t.get('output'), dict) and t['output'].get('sugerencias')]
+            if not q:
+                continue
+            quoted_runs += 1
+            for out in q:
+                if out.get('order_id'):
+                    sug_by_order.setdefault(out['order_id'], set()).update(
+                        s.get('product_id') for s in out['sugerencias'] if s.get('product_id'))
+            bodies = ' '.join(str((t.get('input') or {}).get('body') or '') for t in log
+                              if t.get('tool_name') == 'send_whatsapp')
+            if offer_re.search(bodies):
+                offered += 1
+        SO = self.env['sale.order'].sudo()
+        pl = self.env['product.pricelist'].sudo().search([('name', '=', 'Lista Mayorista')],
+                                                         limit=1)
+        dom = [('state', 'in', ('sale', 'done')), ('pricelist_id', '=', pl.id)]
+        week = SO.search(dom + [('date_order', '>=', a), ('date_order', '<', b)])
+        prev = SO.search(dom + [('date_order', '>=', a - timedelta(days=28)),
+                                ('date_order', '<', a)])
+        accepted = sum(1 for o in week if sug_by_order.get(o.id) and
+                       sug_by_order[o.id] & set(o.order_line.mapped('product_id').ids))
+        with_sug = sum(1 for o in week if sug_by_order.get(o.id))
+        tickets = [o.amount_untaxed for o in week if o.amount_untaxed > 0]
+        prev_tickets = [o.amount_untaxed for o in prev if o.amount_untaxed > 0]
+        auto = len(week.filtered(lambda o: (o.cristal_confirm_notice_note or '') ==
+                                 'Lo confirmó Claudio'))
+        hours = [((o.date_order - o.create_date).total_seconds() / 3600.0) for o in week
+                 if o.date_order and o.create_date and o.date_order >= o.create_date]
+        n, q, c = (funnel['funnel_new_contacts'], funnel['funnel_new_quoted'],
+                   funnel['funnel_new_buyers'])
+
+        def pct(x, y):
+            return 100.0 * x / y if y else None
+        med = median(tickets) if tickets else 0.0
+        med_prev = median(prev_tickets) if prev_tickets else 0.0
+        rows = [
+            # (nombre, valor mostrado, ok?, qué hacer si no)
+            ("Cotizan (nuevos que cotizaron)", pct(q, n), lambda v: v >= 20,
+             "mirar los leads sin cotizar y las preguntas de calificación", '%'),
+            ("Compran (nuevos que compraron / cotizados)", pct(c, q), lambda v: v >= 25,
+             "revisar los motivos de pérdida de las cotizaciones vencidas", '%'),
+            ("Cotizaciones con complementario ofrecido", pct(offered, quoted_runs),
+             lambda v: v >= 90, "endurecer el control de venta cruzada", '%'),
+            ("Pedidos que aceptaron un complementario", pct(accepted, with_sug),
+             lambda v: v >= 25, "probar otro texto de oferta (prueba A/B)", '%'),
+            ("Ticket mediano mayorista", med,
+             lambda v: not med_prev or v >= 0.9 * med_prev,
+             "cayó 10 % o más contra las 4 semanas previas", '$'),
+            ("Pedidos de $65.000 o más", pct(sum(1 for t in tickets if t >= 65000), len(tickets)),
+             lambda v: v >= 55, "empujar el envío sin cargo con productos concretos", '%'),
+            ("Pedidos confirmados por Claudio", pct(auto, len(week)), lambda v: v >= 60,
+             "ver por qué confirm_order no confirma (motivos en los logs)", '%'),
+            ("Horas de cotización a pedido (mediana)", median(hours) if hours else None,
+             lambda v: v <= 24, "acelerar el cierre (aviso de vencimiento, llamada)", 'h'),
+            ("Pases a Joaco por día", escal / 7.0, lambda v: v <= 8,
+             "clasificar los pases y convertir los repetidos en reglas", 'n'),
+        ]
+        return {'rows': rows, 'med_prev': med_prev}
+
+    @api.model
+    def _render_controls(self, ctrl):
+        items, alerts = [], []
+        for name, val, ok, todo, unit in ctrl['rows']:
+            if val is None:
+                items.append(f"<li>{name}: sin datos</li>")
+                continue
+            shown = (f"{val:.0f}%" if unit == '%' else f"${val:,.0f}".replace(',', '.')
+                     if unit == '$' else f"{val:.0f} h" if unit == 'h' else f"{val:.1f}")
+            good = ok(val)
+            items.append(f"<li>{'✅' if good else '⚠️'} {name}: <b>{shown}</b></li>")
+            if not good:
+                alerts.append(f"<li>{name} ({shown}): {todo}.</li>")
+        return ("<p><b>🎯 Controles de conversión</b></p><ul>" + ''.join(items) + "</ul>"
+                + (("<p><b>Para mejorar esta semana:</b></p><ul>" + ''.join(alerts) + "</ul>")
+                   if alerts else "<p>Todo dentro de los umbrales.</p>"))
 
     def _post_to_internal_channel(self):
         config = self.env['cristal.agent.config'].sudo().get_active()

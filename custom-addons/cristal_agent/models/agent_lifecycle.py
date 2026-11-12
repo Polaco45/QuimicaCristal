@@ -738,6 +738,11 @@ class CristalAgentNBA(models.Model):
             return "no contactar"
         if not (partner.mobile or partner.phone):
             return "sin teléfono"
+        # v1.69 — teléfono incompleto ("+54"): el motor no le puede escribir y antes Claudio
+        # se lo escalaba a Joaco cada vez (47 de 243 pases en 14 días).
+        digits = re.sub(r'\D', '', partner.mobile or partner.phone or '')
+        if len(digits) < 10:
+            return "teléfono incompleto"
         if partner.parent_id and partner.parent_id.is_company and partner.parent_id.agent_lifecycle:
             return "contacto de una empresa que ya se gestiona"
         since = today - timedelta(days=GAP_DAYS)
