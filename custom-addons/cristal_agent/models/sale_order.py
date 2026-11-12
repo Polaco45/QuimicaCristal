@@ -167,6 +167,37 @@ class SaleOrder(models.Model):
             self._cristal_referral_on_confirm()
         except Exception as e:  # noqa: BLE001
             _logger.warning("referidos al confirmar %s: %s", self.name, e)
+        # v1.70 — Retención: el pedido consume el cupón y el envío sin cargo vigentes; la
+        # PRIMERA compra mayorista deja un cupón de 2ª compra (10 %, tope $8.000, 21 días).
+        try:
+            self._cristal_retention_on_confirm()
+        except Exception as e:  # noqa: BLE001
+            _logger.warning("retención al confirmar %s: %s", self.name, e)
+
+    def _cristal_retention_on_confirm(self):
+        partner = self.partner_id.sudo().commercial_partner_id
+        if not partner or 'agent_coupon_pct' not in partner._fields:
+            return
+        from .agent_lifecycle import COUPON_2ND
+        if self.name and self.name in (partner.agent_coupon_note or ''):
+            return                      # ya se procesó esta confirmación
+        others = self.env['sale.order'].sudo().search_count([
+            ('partner_id', 'child_of', partner.id), ('state', 'in', ('sale', 'done')),
+            ('id', '!=', self.id)])
+        pos = self.env['pos.order'].sudo().search_count([
+            ('partner_id', 'child_of', partner.id),
+            ('state', 'in', ('paid', 'done', 'invoiced'))]) if 'pos.order' in self.env else 0
+        vals = {}
+        if partner.agent_coupon_pct:
+            vals.update(agent_coupon_pct=0.0, agent_coupon_cap=0.0,
+                        agent_coupon_expires=False, agent_coupon_note=False)
+        if partner.agent_free_shipping_until:
+            vals['agent_free_shipping_until'] = False
+        if vals:
+            partner.write(vals)
+        if not others and not pos and self._cristal_is_mayorista():
+            partner.agent_grant_coupon(COUPON_2ND[0], COUPON_2ND[1], COUPON_2ND[2],
+                                       f"segunda compra (por su primer pedido {self.name})")
         # v1.62 — Aviso de confirmación: solo si lo confirmó una persona (Claudio ya
         # le avisa al cliente cuando confirma él).
         if not self.cristal_confirm_notice:

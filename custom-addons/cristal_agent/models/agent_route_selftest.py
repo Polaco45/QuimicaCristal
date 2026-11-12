@@ -2143,6 +2143,37 @@ class CristalAgentRouteSelftest(models.TransientModel):
             return 'cotización sin oferta → frenada con Skip y envío · +54 salteado · cambio de día pendiente · controles en el informe'
         self._case(results, "72. Conversión: venta cruzada y controles", c_conversion_169)
 
+        # 73) v1.70: retención — cupón de 2ª compra, frecuencia, recuperación y mostrador
+        def c_retencion_170():
+            NBA = env['cristal.agent.nba'].sudo()
+            once = lambda last: (lambda code, reason: None if code in last else (code, reason))
+            p = mk_lc('Ret cupon', 'Rio Cuarto', mobile='+5493589990067')
+            p.street = 'Calle Falsa 2'
+            o = SaleOrder.browse(quote(p, 60000)['order_id'])
+            o.action_confirm()
+            assert p.agent_active_coupon() == (10.0, 8000.0), p.agent_active_coupon()
+            s = {'first_order': today_ar - timedelta(days=12), 'last_order': today_ar - timedelta(days=12)}
+            r = NBA._stage_candidate(p, s, today_ar, cfg, 'new_customer', {'n_chequeo': today_ar - timedelta(days=9)}, 30, once({'n_chequeo': 1}))
+            assert r and r[0] == 'k_cupon_2', r
+            r2 = cso.execute(env=env, run=None, partner_id=p.id,
+                             lines=[{'product_id': product.id, 'qty': 1, 'price_unit': 100000}])
+            o2 = SaleOrder.browse(r2['order_id'])
+            disc = o2.order_line.filtered(lambda l: l.product_id == product).discount
+            assert abs(disc - 8.0) < 0.01, f"cupón con tope: {disc}"
+            o2.action_confirm()
+            assert p.agent_active_coupon() == (0.0, 0.0), 'el cupón no se consumió'
+            assert p.agent_frequency_discount()[0] == 3.0, p.agent_frequency_discount()
+            s55 = {'first_order': today_ar - timedelta(days=90), 'last_order': today_ar - timedelta(days=56)}
+            assert NBA._winback_candidate(s55, today_ar, {})[0] == 'w_cupon'
+            s41 = dict(s55, last_order=today_ar - timedelta(days=41))
+            assert NBA._winback_candidate(s41, today_ar, {})[0] == 'w_envio'
+            s31 = dict(s55, last_order=today_ar - timedelta(days=31))
+            assert NBA._winback_candidate(s31, today_ar, {})[0] == 'w_motivo'
+            assert NBA._winback_candidate(s31, today_ar, {'w_motivo': today_ar - timedelta(days=2)}) is None
+            assert NBA._winback_candidate(dict(s55, last_order=today_ar - timedelta(days=10)), today_ar, {}) is None
+            return '1ra compra → cupón 10 % tope $8.000 · 2ª cotización con 8 % (tope) · se consume · 3 % por frecuencia · recuperación 30/40/55'
+        self._case(results, "73. Retención: cupón, frecuencia y recuperación", c_retencion_170)
+
         # 58) Revisión mensual: arma, guarda snapshot y recomienda con reglas fijas
         def c_monthly_review():
             Review = env['cristal.agent.monthly.review'].sudo()

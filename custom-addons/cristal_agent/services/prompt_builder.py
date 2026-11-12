@@ -315,6 +315,26 @@ def _build_partner_context(env, partner):
                      "ofrecé el combo (sección 4b); si revende, lista mayorista. No mandes la lista mayorista "
                      "sin saberlo.")
 
+    # v1.70 — Beneficios de retención vigentes (se aplican solos al cotizar).
+    try:
+        cpct, ccap = partner.agent_active_coupon()
+        if cpct:
+            lines.append((f"- CUPÓN vigente: {cpct:g}% (tope ${ccap:,.0f}) hasta el "
+                          f"{partner.sudo().agent_coupon_expires:%d/%m} — "
+                          f"{partner.sudo().agent_coupon_note or ''}. Se aplica solo en la "
+                          f"cotización; decíselo con la fecha.").replace(',', '.'))
+        fs = partner.sudo().agent_free_shipping_until
+        if fs and fs >= datetime.now().date():
+            lines.append(f"- ENVÍO SIN CARGO en su próximo pedido hasta el {fs:%d/%m} "
+                         f"(en la ruta se mantiene el mínimo de compra).")
+        fpct, fwhy = partner.agent_frequency_discount()
+        if fpct:
+            lines.append(f"- DESCUENTO POR FRECUENCIA: {fpct:g}% ({fwhy}); se aplica solo. "
+                         f"Lo mantiene mientras no pasen 45 días sin comprar; con 5 pedidos "
+                         f"en 60 días sube a 5%.")
+    except Exception:  # noqa: BLE001
+        pass
+
     # Nivel
     if partner.agent_level and partner.agent_level != 'none':
         lines.append(f"- nivel: {partner.agent_level.upper()}")

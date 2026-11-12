@@ -116,7 +116,39 @@ ACTIONS = {
     'n_chequeo': (
         "Cliente nuevo · día 3: chequeo post-compra", 'claudio',
         "Hizo su primera compra hace 3 días. Preguntale cómo le fueron los productos y "
-        "cómo viene la venta. Guardá lo que diga con update_observation."),
+        "cómo viene la venta. Guardá lo que diga con update_observation. Si en su contexto "
+        "figura un CUPÓN vigente, contáselo en una línea: por ser su primera compra tiene "
+        "ese descuento en el próximo pedido, con la fecha de vencimiento."),
+    # v1.70 — Retención (Joaco 12/11/2026): seguimiento del cupón de 2ª compra.
+    'k_cupon_2': (
+        "Cliente nuevo · día 11: recordatorio del cupón", 'claudio',
+        "Tiene un cupón de segunda compra vigente (porcentaje, tope y vencimiento en su "
+        "contexto). Preguntale cuál de los productos que llevó le rota mejor y recordale el "
+        "cupón con la fecha exacta en que vence. Ofrecé reponer lo que llevó (search_orders) "
+        "y sumá UN complemento. Si es de la ruta, pasale la próxima fecha del camión."),
+    'k_cupon_3': (
+        "Cliente nuevo · día 18: el cupón vence", 'claudio',
+        "Su cupón de segunda compra vence en pocos días (fecha en su contexto). Último "
+        "aviso, corto: si repone antes de esa fecha lo usa; ofrecé armarle la cotización "
+        "ya con lo que llevó la primera vez. Sin presionar."),
+    # v1.70 — Recuperación escalonada y adelantada (el 83 % de las recompras pasa antes
+    # del día 45): día 30 pregunta, día 40 envío sin cargo, día 55 cupón 10 %.
+    'w_motivo': (
+        "Sin recompra · día 30: ¿qué pasó?", 'claudio',
+        "Hace un mes que no pide. SIN oferta: preguntale en una línea, con interés real, "
+        "cómo le fue con los productos y si hubo algo que no le cerró (producto, entrega, "
+        "precio, bidones). Guardá el motivo con update_observation. Si fue un problema "
+        "nuestro, pedí disculpas y usá derive_delivery_issue."),
+    'w_envio': (
+        "Sin recompra · día 40: envío sin cargo", 'claudio',
+        "Hace 40 días que no pide. Ya tiene cargado ENVÍO SIN CARGO para su próximo pedido "
+        "por dos semanas (figura en su contexto; en la ruta del camión se mantiene el "
+        "mínimo de compra). Contáselo en una línea y ofrecé reponer lo que llevaba."),
+    'w_cupon': (
+        "Sin recompra · día 55: cupón 10 % por única vez", 'claudio',
+        "Casi dos meses sin pedir. Ya tiene cargado un cupón del 10 % por única vez (tope y "
+        "vencimiento en su contexto). Contáselo en una línea, con la fecha, y ofrecé armarle "
+        "la cotización con lo que llevaba. Si dice que no vende más, mark_opt_out."),
     'n_producto_top': (
         "Cliente nuevo · día 10: producto que más rota", 'claudio',
         "Preguntale cuál de los productos que llevó le está rotando mejor; guardalo con "
@@ -184,7 +216,14 @@ ACTIONS = {
 ACTION_SELECTION = [(k, v[0]) for k, v in ACTIONS.items()]
 # Orden de prioridad cuando hay más candidatos que cupo diario: primero la plata parada
 # y fresca (cotizaciones recientes), último lo que lleva meses frío.
+RETENTION_PREFIXES = ('n_', 'k_', 'w_', 'a_reposicion', 'r_', 'd_')
+# v1.70 — beneficios de retención (Joaco: "de arranque" a todos, sin grupo de control).
+NO_HOLDOUT_PREFIXES = ('k_', 'w_')
+COUPON_2ND = (10.0, 8000.0, 21)       # %, tope $, días de vigencia
+WINBACK_DAYS = (30, 40, 55)           # pregunta · envío sin cargo · cupón 10 %
+WINBACK_PERK_DAYS = 14
 PRIORITY = ['a_ruta_proxima', 'c_vence', 'c_objecion', 'c_promo', 'o_ritual', 'n_chequeo',
+            'k_cupon_3', 'k_cupon_2', 'w_envio', 'w_cupon', 'w_motivo',
             'n_producto_top', 'n_segunda_compra', 'a_reposicion', 'n_reposicion',
             'q_lista_pregunta', 'q_combo', 'l_pregunta_1', 'l_pregunta_2', 'r_reactivacion_1', 'r_reactivacion_2', 'c_ultima',
             'q_oferta_mes', 'a_encuesta', 'f_referidos', 'd_reactivacion_3', 'd_visita']
@@ -247,11 +286,25 @@ class ResPartnerLifecycle(models.Model):
         if not body or len(body) > 80:
             return None
         today = (when or fields.Datetime.now()).date()
+        since = today - timedelta(days=SURVEY_ANSWER_DAYS)
         sent = self.env['cristal.agent.nba'].sudo().search([
             ('partner_id', '=', self.id), ('action_code', '=', 'a_encuesta'),
-            ('state', '=', 'done'), ('date', '>=', today - timedelta(days=SURVEY_ANSWER_DAYS))],
+            ('state', 'in', ('done', 'planned')), ('date', '>=', since)],
             order='date desc', limit=1)
-        if not sent or (self.agent_survey_answer_date and self.agent_survey_answer_date >= sent.date):
+        sent_date = sent.date if sent else None
+        if not sent_date:
+            # v1.70 — hasta el 12/11 no se registró NINGUNA respuesta (0 en toda la base):
+            # si la acción no quedó en "hecha", igual vale la plantilla que salió por WhatsApp.
+            digits = re.sub(r'\D', '', self.mobile or self.phone or '')[-8:]
+            if len(digits) == 8:
+                wa = self.env['whatsapp.message'].sudo().search([
+                    ('mobile_number', 'ilike', digits), ('message_type', '=', 'outbound'),
+                    ('wa_template_id.template_name', '=', SURVEY_TEMPLATE),
+                    ('create_date', '>=', fields.Datetime.to_datetime(since))],
+                    order='create_date desc', limit=1)
+                sent_date = wa.create_date.date() if wa else None
+        if not sent_date or (self.agent_survey_answer_date
+                             and self.agent_survey_answer_date >= sent_date):
             return None
         low = body.lower()
         answer = next((a for a, rx in _SURVEY_PATTERNS if rx.search(low)), None)
@@ -264,6 +317,20 @@ class ResPartnerLifecycle(models.Model):
             self.append_agent_observation(f"📋 Encuesta post-compra: {label} («{body[:60]}»).")
         except Exception:  # noqa: BLE001
             pass
+        # v1.70 — "Mal" o "Regular": aviso a Joaco el mismo día (los reclamos sin atender
+        # preceden al abandono: "muy aguado", faltantes, producto equivocado).
+        if answer in ('mal', 'regular'):
+            try:
+                config = self.env['cristal.agent.config'].sudo().get_active()
+                if config and config.internal_channel_id:
+                    config.internal_channel_id.sudo().with_context(
+                        from_cristal_agent=True).message_post(
+                        body=(f"⚠️ Encuesta: {self.name} respondió «{label}». Claudio le "
+                              f"pregunta qué pasó (producto, entrega o precio); conviene "
+                              f"llamarlo hoy."),
+                        message_type='comment', subtype_xmlid='mail.mt_comment')
+            except Exception:  # noqa: BLE001
+                pass
         return answer
     agent_origin_code = fields.Char(
         string="Origen (código del anuncio)", index=True, copy=False,
@@ -284,6 +351,68 @@ class ResPartnerLifecycle(models.Model):
         string="Referido ya premiado", copy=False,
         help="Quien lo recomendó ya recibió su crédito por la primera compra de este cliente.")
     agent_referral_rewarded_date = fields.Date(string="Premiado el", copy=False)
+    # v1.70 — Retención (Joaco 12/11/2026): cupón con vencimiento y envío sin cargo.
+    agent_coupon_pct = fields.Float(string="Cupón (%)", copy=False)
+    agent_coupon_cap = fields.Float(string="Tope del cupón ($)", copy=False)
+    agent_coupon_expires = fields.Date(string="Cupón vence el", copy=False)
+    agent_coupon_note = fields.Char(string="Motivo del cupón", copy=False)
+    agent_free_shipping_until = fields.Date(
+        string="Envío sin cargo hasta", copy=False,
+        help="Beneficio de recuperación: el próximo pedido va con envío sin cargo.")
+
+    def agent_grant_coupon(self, pct, cap, days, note):
+        for p in self.sudo():
+            expires = fields.Date.context_today(p) + timedelta(days=days)
+            p.write({'agent_coupon_pct': pct, 'agent_coupon_cap': cap,
+                     'agent_coupon_expires': expires, 'agent_coupon_note': note})
+            try:
+                tope = f"{cap:,.0f}".replace(',', '.')
+                p.append_agent_observation(
+                    f"🎟️ Cupón {pct:g}% (tope ${tope}) hasta el {expires:%d/%m}: {note}.")
+            except Exception:  # noqa: BLE001
+                pass
+
+    def agent_active_coupon(self, today=None):
+        """(pct, tope) del cupón vigente, o (0, 0)."""
+        self.ensure_one()
+        p = self.sudo()
+        today = today or fields.Date.context_today(p)
+        if p.agent_coupon_pct and p.agent_coupon_expires and p.agent_coupon_expires >= today:
+            return p.agent_coupon_pct, p.agent_coupon_cap or 0.0
+        return 0.0, 0.0
+
+    def agent_frequency_discount(self, today=None):
+        """v1.70 — Descuento por frecuencia: 3 % desde el 3er pedido en 60 días y 5 %
+        desde el 5º; se pierde si pasan 45 días sin comprar. Devuelve (pct, motivo)."""
+        self.ensure_one()
+        today = today or fields.Date.context_today(self)
+        dates = self._agent_purchase_dates(today - timedelta(days=60))
+        if not dates or (today - max(dates)).days > 45:
+            return 0.0, None
+        n = len(dates)
+        if n >= 4:
+            return 5.0, f"cliente frecuente ({n} pedidos en 60 días)"
+        if n >= 2:
+            return 3.0, f"cliente frecuente ({n} pedidos en 60 días)"
+        return 0.0, None
+
+    def _agent_purchase_dates(self, since=None):
+        """Fechas de compras confirmadas (pedidos + mostrador) de la empresa."""
+        self.ensure_one()
+        ids = self.env['res.partner'].sudo().search(
+            [('id', 'child_of', self.commercial_partner_id.id)]).ids
+        dom = [('partner_id', 'in', ids), ('state', 'in', ('sale', 'done'))]
+        if since:
+            dom.append(('date_order', '>=', fields.Datetime.to_datetime(since)))
+        dates = [o.date_order.date() for o in self.env['sale.order'].sudo().search(dom)
+                 if o.date_order]
+        if 'pos.order' in self.env:
+            pdom = [('partner_id', 'in', ids), ('state', 'in', ('paid', 'done', 'invoiced'))]
+            if since:
+                pdom.append(('date_order', '>=', fields.Datetime.to_datetime(since)))
+            dates += [o.date_order.date() for o in self.env['pos.order'].sudo().search(pdom)
+                      if o.date_order]
+        return dates
 
     def agent_grant_referral_credit(self, pct, note):
         """Deja (o sube a) `pct` el crédito por referido, con su motivo."""
@@ -402,6 +531,22 @@ class CristalAgentLifecycle(models.AbstractModel):
             s = stats[partner.id]
             s.update(orders=count, last_order=dmax.date() if dmax else None,
                      first_order=dmin.date() if dmin else None)
+        # v1.70 — las compras de MOSTRADOR también son compras: antes el motor mandaba
+        # "hace 20 días que no comprás" a clientes que habían comprado en el local.
+        if 'pos.order' in self.env:
+            try:
+                for partner, dmax, dmin, count in self.env['pos.order'].sudo()._read_group(
+                        [('partner_id', 'in', partners.ids),
+                         ('state', 'in', ('paid', 'done', 'invoiced'))],
+                        ['partner_id'], ['date_order:max', 'date_order:min', '__count']):
+                    s = stats.get(partner.id)
+                    if not s or not dmax:
+                        continue
+                    s['orders'] += count
+                    s['last_order'] = max(filter(None, [s['last_order'], dmax.date()]))
+                    s['first_order'] = min(filter(None, [s['first_order'], dmin.date()]))
+            except Exception as e:  # noqa: BLE001
+                _logger.warning("ciclo de vida: no pude leer las compras de mostrador: %s", e)
         for partner, cmax, count in SO._read_group(
                 [('partner_id', 'in', partners.ids), ('state', 'in', ('draft', 'sent', 'cancel'))],
                 ['partner_id'], ['create_date:max', '__count']):
@@ -657,6 +802,23 @@ class CristalAgentNBA(models.Model):
             ('validity_date', '<=', today + timedelta(days=2))],
             order='validity_date, amount_untaxed desc', limit=1)
 
+    @api.model
+    def _winback_candidate(self, s, today, last):
+        """v1.70 — Día 30 pregunta sin oferta, día 40 envío sin cargo, día 55 cupón 10 %.
+        Cada paso una sola vez por "ausencia" (desde su última compra)."""
+        days = (today - s['last_order']).days
+        d1, d2, d3 = WINBACK_DAYS
+        if days < d1:
+            return None
+
+        def fresh(code):
+            return not last.get(code) or last[code] <= s['last_order']
+        if days >= d3:
+            return ('w_cupon', f"{days} días sin comprar") if fresh('w_cupon') else None
+        if days >= d2:
+            return ('w_envio', f"{days} días sin comprar") if fresh('w_envio') else None
+        return ('w_motivo', f"{days} días sin comprar") if fresh('w_motivo') else None
+
     def _stage_candidate(self, partner, s, today, config, lc, last, cycle, once):
         if lc == 'lead':
             # v1.64 — punto 3: segunda y tercera pregunta a los 3 y 10 días (solo leads
@@ -698,8 +860,24 @@ class CristalAgentNBA(models.Model):
                 return once('c_promo', f"{days} días desde la última cotización")
             if days >= 15:
                 return once('c_objecion', f"{days} días desde la última cotización")
-        elif lc == 'new_customer':
+        # v1.70 — Recuperación escalonada y adelantada para cualquiera que ya compró.
+        if lc in ('new_customer', 'active', 'at_risk', 'dormant') and s.get('last_order'):
+            wb = self._winback_candidate(s, today, last)
+            if wb:
+                return wb
+        if lc == 'new_customer':
             days = (today - s['first_order']).days
+            if partner.agent_active_coupon(today)[0]:
+                # Seguimiento del cupón de 2ª compra (días 3, 11 y 18).
+                if days >= 18:
+                    return once('k_cupon_3', f"cupón vence el {partner.agent_coupon_expires:%d/%m}")
+                if days >= 11:
+                    return once('k_cupon_2', f"cupón vigente hasta el {partner.agent_coupon_expires:%d/%m}")
+                if days >= 3:
+                    return once('n_chequeo', f"{days} días desde la primera compra")
+                return None
+            if days >= 30:
+                return None            # de acá en más lo lleva la recuperación
             if days >= 45:
                 return once('n_reposicion', f"{days} días desde la primera compra, sin recompra")
             if days >= 20:
@@ -714,16 +892,12 @@ class CristalAgentNBA(models.Model):
                 prev = last.get('a_reposicion')
                 if not prev or (today - prev).days >= cycle:
                     return ('a_reposicion', f"{days} días desde el último pedido (ciclo {cycle})")
-        elif lc == 'at_risk':
-            r1 = last.get('r_reactivacion_1')
-            if not r1:
-                return ('r_reactivacion_1', f"{(today - s['last_order']).days} días sin comprar")
-            if 'r_reactivacion_2' not in last and (today - r1).days >= 14:
-                return ('r_reactivacion_2', "sin respuesta a la reactivación 1")
         elif lc == 'dormant':
-            r3 = last.get('d_reactivacion_3')
+            # v1.70: las reactivaciones viejas (r_*, d_reactivacion_3) las reemplaza la
+            # recuperación escalonada; queda la visita después del cupón sin respuesta.
+            r3 = last.get('w_cupon') or last.get('d_reactivacion_3')
             if not r3:
-                return ('d_reactivacion_3', f"{(today - s['last_order']).days} días sin comprar")
+                return None
             if 'd_visita' not in last and (today - r3).days >= 14 \
                     and partner.agent_zone in ('rio_cuarto', 'las_higueras'):
                 ticket = getattr(partner, 'cristal_avg_ticket', 0.0) or 0.0
@@ -800,6 +974,12 @@ class CristalAgentNBA(models.Model):
                 continue
             cands.append((p, c[0], c[1]))
         cands.sort(key=lambda x: PRIORITY.index(x[1]) if x[1] in PRIORITY else 99)
+        # v1.70 — la mitad del cupo diario queda reservada para retención: hasta el 12/11
+        # no había salido NINGUNA reactivación porque los leads llenaban los 30 lugares.
+        reserved = [c for c in cands if c[1].startswith(RETENTION_PREFIXES)][:max(cap // 2, 1)]
+        if reserved:
+            rest = [c for c in cands if c not in reserved]
+            cands = reserved + rest
         # En modo real solo se ejecutan las acciones habilitadas (config); el resto queda
         # en seco. Vacío = todas. Se aceptan códigos o prefijos ("c_" = las de cotizados).
         allowed = [a.strip() for a in (config.lifecycle_live_actions or '').split(',') if a.strip()]
@@ -817,10 +997,17 @@ class CristalAgentNBA(models.Model):
             is_live = live_for(code)
             if is_live and n_planned >= cap:
                 continue   # hoy no entra en el cupo; se vuelve a evaluar mañana
-            if is_live and self._in_holdout(p, code, config.lifecycle_holdout_pct):
+            if is_live and not code.startswith(NO_HOLDOUT_PREFIXES) \
+                    and self._in_holdout(p, code, config.lifecycle_holdout_pct):
                 vals['state'] = 'holdout'
             elif is_live:
                 vals['state'] = 'planned'
+                # v1.70 — el beneficio se carga ANTES de que Claudio lo comunique.
+                if code == 'w_envio':
+                    p.sudo().agent_free_shipping_until = today + timedelta(days=WINBACK_PERK_DAYS)
+                elif code == 'w_cupon':
+                    p.agent_grant_coupon(COUPON_2ND[0], COUPON_2ND[1], WINBACK_PERK_DAYS,
+                                         "recuperación (10 % por única vez)")
                 act = self._schedule(p, code, label, channel, instr, reason, config, today)
                 if act is True:                 # plantilla: ya salió, no hay actividad
                     vals['state'] = 'done'

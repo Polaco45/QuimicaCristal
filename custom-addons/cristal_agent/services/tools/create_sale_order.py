@@ -18,6 +18,9 @@ Reglas de negocio (v1.21):
   producen a pedido → siempre disponibles.
 """
 import logging
+
+from odoo import fields
+
 from .base import AgentTool
 from ..tool_registry import ToolRegistry
 
@@ -325,6 +328,11 @@ class CreateSaleOrder(AgentTool):
                 rate = carrier.rate_shipment(order) or {}
                 price = float(rate.get('price', 0.0)) if rate.get('success') \
                     else float(carrier.fixed_price or 0.0)
+                # v1.70 — beneficio de recuperación: envío sin cargo en el próximo pedido.
+                until = order.partner_id.sudo().agent_free_shipping_until \
+                    if 'agent_free_shipping_until' in order.partner_id._fields else False
+                if not is_cf and until and until >= fields.Date.context_today(order):
+                    price = 0.0
                 order.set_delivery_line(carrier, price)
         except Exception as e:  # noqa: BLE001 — el envío nunca frena la cotización
             _logger.warning("No pude poner la línea de envío en %s: %s", order.name, e)
@@ -469,6 +477,16 @@ class CreateSaleOrder(AgentTool):
             block['bidones_note'] = bid_info['note'] if bid_info else None
             return block
 
+        # v1.70 — beneficio de recuperación: envío sin cargo también en la ruta (el mínimo
+        # de compra de la ruta se mantiene).
+        try:
+            until = order.partner_id.sudo().agent_free_shipping_until
+            if until and until >= fields.Date.context_today(order) \
+                    and not order.sudo().route_free_shipping_granted:
+                order.sudo().with_context(from_cristal_agent=False).write(
+                    {'route_free_shipping_granted': True})
+        except Exception as e:  # noqa: BLE001
+            _logger.warning("envío sin cargo de recuperación: %s", e)
         freight, shipping_base = order._cristal_apply_route_freight(config, free_from)
         block['freight'] = freight
         block['shipping_base'] = shipping_base
@@ -920,6 +938,24 @@ class CreateSaleOrder(AgentTool):
                     target = order.order_line.filtered(
                         lambda l: l.product_id.id not in fixed_price_pids
                         and not getattr(l, 'is_delivery', False) and (l.discount or 0.0) < 15.0)
+                    # v1.70 — Retención (Joaco 12/11/2026): descuento por frecuencia (3 % desde
+                    # el 3er pedido en 60 días, 5 % desde el 5º) y cupón con tope y vencimiento
+                    # (2ª compra o recuperación). No se acumulan: va el mejor.
+                    try:
+                        fpct, fwhy = partner.agent_frequency_discount()
+                        if fpct > pct:
+                            pct, why = fpct, fwhy
+                        cpct, ccap = partner.agent_active_coupon()
+                        if cpct:
+                            base = sum(l.price_unit * l.product_uom_qty for l in target)
+                            eff = cpct if not ccap or not base else min(
+                                cpct, int(ccap / base * 10000) / 100.0)
+                            if eff > pct:
+                                vence = partner.sudo().agent_coupon_expires
+                                pct, why = eff, (f"cupón {cpct:g}% (tope ${ccap:,.0f}, vence "
+                                                 f"el {vence:%d/%m})").replace(',', '.')
+                    except Exception as e:  # noqa: BLE001
+                        _logger.warning("descuentos de retención: %s", e)
                     if pct > 0 and target and not keeps_first:
                         target.write({'discount': pct})
                         auto_discount = (pct, why)

@@ -338,6 +338,21 @@ class CristalAgentWeeklyReport(models.Model):
             ("Pases a Joaco por día", escal / 7.0, lambda v: v <= 8,
              "clasificar los pases y convertir los repetidos en reglas", 'n'),
         ]
+        # v1.70 — Retención: de los que hicieron su PRIMERA compra hace 30 a 60 días,
+        # cuántos ya volvieron a comprar (pedidos + mostrador). Hoy 36 %; meta 45 %.
+        try:
+            today = fields.Date.context_today(self)
+            firsts, again = 0, 0
+            for partner, dmin in SO._read_group(dom, ['partner_id'], ['date_order:min']):
+                if not dmin or not (30 <= (today - dmin.date()).days <= 60):
+                    continue
+                firsts += 1
+                again += 1 if len(set(partner._agent_purchase_dates())) >= 2 else 0
+            rows.append(("Recompra a 30 días (primeras compras de hace 30-60 días)",
+                         pct(again, firsts), lambda v: v >= 30,
+                         "revisar el seguimiento del cupón de 2ª compra y los reclamos", '%'))
+        except Exception as e:  # noqa: BLE001
+            _logger.warning("control de recompra: %s", e)
         return {'rows': rows, 'med_prev': med_prev}
 
     @api.model
