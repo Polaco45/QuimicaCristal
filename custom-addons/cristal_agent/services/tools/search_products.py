@@ -113,7 +113,8 @@ def variant_score(product, tokens):
     for t in tokens:
         if not t:
             continue
-        if any(v == t or v == 'n' + t or v.lstrip('n') == t for v in vals):
+        # v1.72: "Nº5" normalizado queda "no5" (º → o): hay que sacar "n", "no" o "nro".
+        if any(v == t or re.sub(r'^n(?:ro|o)?', '', v) == t for v in vals):
             score += 3
         elif t in label:
             score += 1
@@ -186,7 +187,25 @@ class SearchProducts(AgentTool):
             domain += _word_domain(w)
         products = Product.search(domain, limit=limit)
         if products:
-            return products, False
+            # v1.72 — Un producto que justo tiene todas las palabras no puede tapar al
+            # catálogo mayorista. Caso real (12/11/2026): al cargarse "Dispenser Jabón
+            # Líquido" y "SEIQ (jabón líquido p/ ropa)", pedir "jabón líquido" dejó de traer
+            # los jabones a granel; y "quitasarro" traía solo "Dwc-100: Quitasarro y Óxido"
+            # y no el "Quita Sarro" a granel. Se suman los del catálogo que coinciden por la
+            # palabra distintiva o escritos separado; el orden final pone el catálogo primero.
+            catalog = [('sale_ok', '=', True), ('product_tmpl_id.is_mayorista_catalog', '=', True)]
+            extra = Product.browse()
+            distinct = distinct_tokens(words)
+            if distinct and len(distinct) < len(words):
+                d = list(catalog)
+                for w in distinct:
+                    d += _word_domain(w)
+                extra |= Product.search(d, limit=limit)
+            compact = _norm(' '.join(distinct or words))
+            if len(compact) >= 5:
+                pool = Product.search(catalog + [('name', 'ilike', compact[:4])], limit=500)
+                extra |= pool.filtered(lambda p: compact in _norm(p.name))
+            return (extra | products)[:limit * 2] if extra else products, False
 
         # 2) Palabras distintivas solamente ("desod de pisos" → "desod"; "lampazo numero 7"
         #    → "lampazo 7").

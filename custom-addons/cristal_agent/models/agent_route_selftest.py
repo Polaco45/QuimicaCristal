@@ -101,7 +101,7 @@ class CristalAgentRouteSelftest(models.TransientModel):
             return
 
         # Salidas fijas para el caso del 29/09/2026 (idempotente).
-        for circ, d in ((so, date(2026, 10, 14)), (este, date(2026, 10, 28))):
+        for circ, d in ((so, date(2026, 10, 15)), (este, date(2026, 10, 29))):
             dep = Dep.search([('circuit_id', '=', circ.id), ('date', '=', d)], limit=1)
             if not dep:
                 dep = Dep.create({'circuit_id': circ.id, 'date': d})
@@ -162,12 +162,12 @@ class CristalAgentRouteSelftest(models.TransientModel):
         def c_fechas():
             ref = self._utc_from_local(date(2026, 9, 29), 12)
             d = so.get_next_departure(ref)
-            assert d and d.date == date(2026, 10, 14), f"Sampacho: {d.date if d else None}"
+            assert d and d.date == date(2026, 10, 15), f"Sampacho: {d.date if d else None}"
             cl = d.get_cutoff_local()
-            assert (cl.date(), cl.hour, cl.minute) == (date(2026, 10, 12), 18, 0), (
+            assert (cl.date(), cl.hour, cl.minute) == (date(2026, 10, 14), 18, 0), (  # miércoles previo (v1.54.2)
                 f"Cierre Sampacho: {cl}")
             d2 = este.get_next_departure(ref)
-            assert d2 and d2.date == date(2026, 10, 28), f"Ucacha: {d2.date if d2 else None}"
+            assert d2 and d2.date == date(2026, 10, 29), f"Ucacha: {d2.date if d2 else None}"
             p = mk_partner('InfoSampacho', 'Sampacho')
             gi = gri.execute(env=env, run=None, partner_id=p.id)
             assert gi.get('zone') == 'ruta_camion' and gi.get('circuit') == 'Sur-Oeste', gi
@@ -224,20 +224,20 @@ class CristalAgentRouteSelftest(models.TransientModel):
             return "$95.000 → flete → total s/IVA $104.000, sigue con flete"
         self._case(results, "4. Umbrales sin contar el flete", c_sin_flete)
 
-        # 5) Zona horaria: martes 17:59 entra, 18:01 pasa a la siguiente
+        # 5) Zona horaria: miércoles 17:59 entra, 18:01 pasa a la siguiente
         def c_timezone():
             tc = Circuit.create({'name': 'ZZ Autotest TZ', 'sequence': 99,
                                  'first_departure_date': next_dep})
             d1 = Dep.create({'circuit_id': tc.id, 'date': next_dep})
             d2 = Dep.create({'circuit_id': tc.id, 'date': next_dep + timedelta(days=28)})
             cl = d1.get_cutoff_local()
-            assert (cl.weekday(), cl.hour, cl.minute) == (1, 18, 0), f"cierre local {cl}"
+            assert (cl.weekday(), cl.hour, cl.minute) == (2, 18, 0), f"cierre local {cl}"
             cut = d1.get_preventa_cutoff()
             got1 = tc.get_next_departure(cut - timedelta(minutes=1))
             got2 = tc.get_next_departure(cut + timedelta(minutes=1))
             assert got1 == d1, f"17:59 → {got1.date if got1 else None}"
             assert got2 == d2, f"18:01 → {got2.date if got2 else None}"
-            return f"cierre mar {cl.strftime('%d/%m')} 18:00 (Córdoba); 17:59 entra, 18:01 pasa"
+            return f"cierre mié {cl.strftime('%d/%m')} 18:00 (Córdoba); 17:59 entra, 18:01 pasa"
         self._case(results, "5. Cierre de preventa y zona horaria", c_timezone)
 
         # 6) Rescate (Plan B)
@@ -621,7 +621,7 @@ class CristalAgentRouteSelftest(models.TransientModel):
             _b, err = guard("<p>Te lo llevamos el lunes 19/10 a las 11 h.</p>", prc)
             assert err and err['guard'] == 'entrega_rc', err
             _b, err = guard("<p>Pasamos por Sampacho el jueves 12/11; tomamos pedidos "
-                            "hasta el martes 10/11 a las 18 h.</p>", pz)
+                            "hasta el miércoles 11/11 a las 18 h.</p>", pz)
             assert not err, f"bloqueó la fecha de la ruta: {err}"
             _b, err = guard("<p>¿Cuántos litros llevás hoy?</p>", prc)
             assert not err, f"bloqueó una pregunta común: {err}"
@@ -1404,6 +1404,7 @@ class CristalAgentRouteSelftest(models.TransientModel):
             assert live.converted and live.converted_amount > 0, live.read(['converted', 'converted_amount'])
             # Modo real acotado: solo las acciones habilitadas se agendan; el resto sigue en seco.
             p_dorm = group.filtered(lambda p: p.name.endswith('LC dormido'))
+            created = created.exists()
             created.filtered(lambda n: n.partner_id == p_dorm).unlink()
             cfg.lifecycle_live_actions = 'c_'
             limited = NBA.plan(p_dorm, stats, today_ar, cfg)
@@ -1605,6 +1606,7 @@ class CristalAgentRouteSelftest(models.TransientModel):
             p = mk_lc('Nivel plata', 'Rio Cuarto')
             p.write({'agent_level': 'plata', 'street': 'Calle Nivel 1'})
             _confirmed(p, 40, amount=60000)   # ya compró: no hay 20 % de primera compra
+            p.write({'agent_coupon_pct': 0.0, 'agent_coupon_expires': False})   # v1.70: sin cupón, se prueba el nivel
             r = cso.execute(env=env, run=None, partner_id=p.id, delivery_mode='retiro',
                             lines=[{'product_id': prod60.id, 'qty': 1}])
             assert r.get('order_id') and r.get('auto_discount', {}).get('percent') == 5.0, r.get('auto_discount')
@@ -1922,6 +1924,33 @@ class CristalAgentRouteSelftest(models.TransientModel):
             return "apagado no corre · sin plantilla aprobada no manda"
         self._case(results, "62. Aviso de paso automático", c_aviso_auto)
 
+        # 63) Una plantilla de campaña no deja al cliente sin Claudio (v1.60.1)
+        def c_takeover_plantilla():
+            from types import SimpleNamespace
+            WaMsg = env['whatsapp.message'].sudo()
+            tpl = env['whatsapp.template'].sudo().search([('status', '=', 'approved')], limit=1)
+            if not tpl:
+                return "sin plantillas aprobadas en esta base (nada que probar)"
+            phone = '+5493589990060'
+            p = mk_partner('Takeover Plantilla', 'Rio Cuarto')
+            p.mobile = phone
+            mem = env['cristal.agent.memory'].sudo().get_or_create(p)
+            mem.activate_takeover(reason="Intervención manual de Joaquin", duration_hours=12)
+            # El autotest corre en una sola transacción larga: la plantilla queda con la hora de
+            # inicio de la transacción, así que el takeover se ancla a esa misma hora.
+            mem.takeover_until = env.cr.now() + timedelta(hours=12)
+            base = {'mobile_number': phone, 'message_type': 'outbound', 'state': 'sent',
+                    'wa_account_id': tpl.wa_account_id.id}
+            WaMsg.create(dict(base, wa_template_id=tpl.id))
+            inbound = SimpleNamespace(id=0, mobile_number=phone)
+            assert WaMsg._takeover_only_templates(mem, inbound, config), "plantilla sola no liberó a Claudio"
+            WaMsg.create(dict(base))   # alguien escribió a mano
+            assert not WaMsg._takeover_only_templates(mem, inbound, config), "liberó con un humano atendiendo"
+            mem.activate_takeover(reason="Comando /off de Joaquin", duration_hours=0)
+            assert not WaMsg._takeover_only_templates(mem, inbound, config), "liberó un /off"
+            return "plantilla de campaña → contesta Claudio · mensaje a mano → sigue pausado · /off → sigue pausado"
+        self._case(results, "63. Plantilla de campaña no pausa a Claudio", c_takeover_plantilla)
+
         # 64) Referidos: activo que compró hace poco, solo los días 1-5 y 15-19, uno cada 60 días
         def c_referidos():
             NBA = env['cristal.agent.nba'].sudo()
@@ -1960,7 +1989,6 @@ class CristalAgentRouteSelftest(models.TransientModel):
             return (f"{len(top)} productos con foto · placa y historia con fotos reales · "
                     f"{len(res)} placas de combos ({any_feed})")
         self._case(results, "65. Placas con fotos reales", c_fotos_reales)
-
         # 66) Aviso de pedido confirmado: solo si confirma una persona, mayorista y con chat
         def c_aviso_confirmado():
             p = mk_lc('Aviso conf Claudio', 'Rio Cuarto')
@@ -2270,30 +2298,6 @@ class CristalAgentRouteSelftest(models.TransientModel):
             return (f"{len(data)} combos en el prompt con lo que traen · {combo['name']} cotizado con "
                     f"{len(kids)} productos a {total:,.0f}" + (f" · eligió {choice}" if choice else ""))
         self._case(results, "59. Combos para la casa", c_cf_combos)
-
-        # 63) Una plantilla de campaña no deja al cliente sin Claudio (v1.60.1)
-        def c_takeover_plantilla():
-            from types import SimpleNamespace
-            WaMsg = env['whatsapp.message'].sudo()
-            tpl = env['whatsapp.template'].sudo().search([('status', '=', 'approved')], limit=1)
-            if not tpl:
-                return "sin plantillas aprobadas en esta base (nada que probar)"
-            phone = '+5493589990060'
-            p = mk_partner('Takeover Plantilla', 'Rio Cuarto')
-            p.mobile = phone
-            mem = env['cristal.agent.memory'].sudo().get_or_create(p)
-            mem.activate_takeover(reason="Intervención manual de Joaquin", duration_hours=12)
-            base = {'mobile_number': phone, 'message_type': 'outbound', 'state': 'sent',
-                    'wa_account_id': tpl.wa_account_id.id}
-            WaMsg.create(dict(base, wa_template_id=tpl.id))
-            inbound = SimpleNamespace(id=0, mobile_number=phone)
-            assert WaMsg._takeover_only_templates(mem, inbound, config), "plantilla sola no liberó a Claudio"
-            WaMsg.create(dict(base))   # alguien escribió a mano
-            assert not WaMsg._takeover_only_templates(mem, inbound, config), "liberó con un humano atendiendo"
-            mem.activate_takeover(reason="Comando /off de Joaquin", duration_hours=0)
-            assert not WaMsg._takeover_only_templates(mem, inbound, config), "liberó un /off"
-            return "plantilla de campaña → contesta Claudio · mensaje a mano → sigue pausado · /off → sigue pausado"
-        self._case(results, "63. Plantilla de campaña no pausa a Claudio", c_takeover_plantilla)
 
         # 48) confirm_order: confirma solo lo que cumple la lista de control
         def c_confirm_order():
