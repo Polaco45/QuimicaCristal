@@ -1854,6 +1854,18 @@ class CristalAgentRouteSelftest(models.TransientModel):
             _a, _s, body = Pauta.organic_spec('PRODUCTO', {'mes': 'X', 'mes_min': 'x', 'clientes': 0,
                                                            'salidas': []}, offer)
             assert 'Claudio' not in body and 'Precio' not in body and 'cloro.' in body, body
+            # v1.72.2 — cada ángulo tiene varias variantes: no se repite el mismo texto ni placa
+            vctx = {'mes': 'X', 'mes_min': 'x', 'clientes': 120, 'salidas': []}
+            for ang in ('MARGEN', 'FABRICA', 'PRUEBA_SOCIAL'):
+                seen = [Pauta.organic_spec(ang, vctx, variant=v) for v in range(3)]
+                assert len({s[2] for s in seen}) == 3, f"{ang}: textos repetidos"
+                assert len({s[1]['titulo'] for s in seen}) == 3, f"{ang}: títulos repetidos"
+                for _a2, sp, _b2 in seen:
+                    for line in (sp['titulo'] + '|' + sp['promo']).split('|'):
+                        assert len(line) <= 18, f"{ang}: línea larga en la placa: {line}"
+            for v in range(4):
+                fab = Pauta.organic_spec('FABRICA', vctx, variant=v)[2].lower()
+                assert 'lavandina' not in fab and 'cloro' not in fab, "FABRICA nombra lavandina/cloro"
             return (f"{len(created)} posteos martes/viernes con placa pública y texto, "
                     f"ángulos {', '.join(sorted(angles))} · idempotente · sin oferta → FABRICA")
         self._case(results, "57. Pauta: orgánico mensual", c_pauta_organico)

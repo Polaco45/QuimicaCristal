@@ -44,6 +44,77 @@ ORGANIC_ROTATION = ('LOGISTICA', 'FABRICA', 'PRODUCTO', 'MARGEN', 'PRUEBA_SOCIAL
 ORGANIC_SKIP = {(12, 25), (1, 1)}  # Navidad y Año Nuevo: sin posteo
 BASES_ORDER = ('joaco_deposito', 'camion_cargado', 'pallet_regalo', 'joaco_camion')
 ORGANIC_HASHTAGS ="#QuímicaCristal #RíoCuarto #ProductosDeLimpieza #Mayorista #VentaPorMayor"
+# v1.72.2 — Variantes por ángulo: Joaco vio "el mismo post" dos veces porque cada ángulo tenía
+# un solo texto y una sola placa. Cada variante es (título, promo, texto). El texto solo
+# presenta como "de nuestra fábrica" lo de la categoría Fabricación (lavandina y cloro, aparte).
+ORGANIC_VARIANTS = {
+    'MARGEN': [
+        ('COMPRÁS A GRANEL|GANÁS POR LITRO', 'FRACCIONÁS|Y REVENDÉS',
+         "💰 Comprás a granel en bidones de 20 L, fraccionás en tu local y ganás por "
+         "litro.\n\nJabón líquido, suavizante, detergente y desengrasante hechos en "
+         "nuestra fábrica de Río Cuarto, y también lavandina y cloro.\n\n"
+         "Pedí la lista de precios por WhatsApp 👇"),
+        ('LIMPIEZA SUELTA|PARA TU NEGOCIO', 'BIDONES DE 20 L|CON RECAMBIO',
+         "🧴 ¿Vendés productos de limpieza sueltos? El negocio está en el litro.\n\n"
+         "Te llevás bidones de 20 L a precio de fábrica, fraccionás en tu local y le ponés "
+         "tu precio. Los bidones son con recambio: cuando se terminan, los canjeás por "
+         "llenos.\n\nEscribinos por WhatsApp y te pasamos la lista de precios 👇"),
+        ('SUMÁ UN RUBRO|QUE SE VENDE', 'COMPRÁS A GRANEL|VENDÉS SUELTO',
+         "📦 Sumá a tu negocio un rubro que se vende todos los días: limpieza suelta.\n\n"
+         "Jabón líquido para ropa, suavizante, detergente y desengrasante de nuestra "
+         "fábrica, más lavandina y cloro. Todo en bidones de 20 L para fraccionar y "
+         "revender.\n\nPedí la lista de precios por WhatsApp 👇"),
+        ('VENDÉ SUELTO|GANÁ POR LITRO', 'DIRECTO|DE FÁBRICA',
+         "💡 Con pocos bidones armás tu rincón de limpieza suelta: el cliente trae su "
+         "envase, vos cargás y cobrás por litro.\n\nComprás directo de fábrica en Río "
+         "Cuarto, sin intermediarios y con bidones de recambio.\n\n"
+         "Consultanos por WhatsApp 👇"),
+    ],
+    'FABRICA': [
+        ('SOMOS FÁBRICA|SIN INTERMEDIARIOS', 'PRECIO DE FÁBRICA|PARA TU NEGOCIO',
+         "🏭 Somos fábrica: hacemos nuestros productos en Río Cuarto hace más de 20 "
+         "años.\n\nSi tenés un almacén, kiosco, lavadero o revendés productos de "
+         "limpieza, comprás directo y sin intermediarios.\n\n"
+         "Escribinos por WhatsApp y te pasamos la lista de precios 👇"),
+        ('LO FABRICAMOS|EN RÍO CUARTO', 'PRECIO DE FÁBRICA|PARA TU NEGOCIO',
+         "🏭 Del tanque al bidón: lo que vendemos lo fabricamos nosotros, acá en Río "
+         "Cuarto.\n\nPor eso el precio es de fábrica y sabés siempre qué estás comprando. "
+         "Jabón líquido, suavizante, detergente y desengrasante en bidones de 20 L para tu "
+         "negocio.\n\nPedinos la lista de precios por WhatsApp 👇"),
+        ('COMPRALE|AL QUE FABRICA', 'MÁS DE 20 AÑOS|EN RÍO CUARTO',
+         "🤝 Sin intermediarios: le comprás al que fabrica.\n\nHace más de 20 años que "
+         "hacemos productos de limpieza en Río Cuarto para almacenes, kioscos, lavaderos y "
+         "revendedores de la zona.\n\n"
+         "¿Tenés un negocio? Escribinos por WhatsApp y te pasamos los precios 👇"),
+        ('FÁBRICA DE|LIMPIEZA', 'VENTA POR MAYOR|A NEGOCIOS',
+         "🧪 ¿Sabías que en Río Cuarto hay una fábrica de productos de limpieza? Somos "
+         "Química Cristal.\n\nVendemos por mayor a negocios y revendedores: bidones de "
+         "20 L, precio de fábrica y reparto en la ciudad y en los pueblos de la zona.\n\n"
+         "Escribinos por WhatsApp 👇"),
+    ],
+    'PRUEBA_SOCIAL': [
+        ('+{n} NEGOCIOS|YA NOS COMPRAN', 'DIRECTO DE FÁBRICA|A TU LOCAL',
+         "🤝 Más de {n} negocios de Río Cuarto y la zona ya compran directo de "
+         "fábrica en Química Cristal: almacenes, kioscos, lavaderos y revendedores.\n\n"
+         "Precio de fábrica, bidones de 20 L y te lo llevamos al negocio.\n\n"
+         "¿Querés la lista de precios? Escribinos por WhatsApp 👇"),
+        ('+{n} NEGOCIOS|NOS ELIGEN', 'SUMÁ|EL TUYO',
+         "🏪 Almacenes, kioscos, lavaderos y revendedores: más de {n} negocios de la zona "
+         "ya venden limpieza de Química Cristal.\n\nCompran directo de fábrica, en bidones "
+         "de 20 L con recambio, y reciben el pedido en el local.\n\n"
+         "Sumá tu negocio: escribinos por WhatsApp 👇"),
+        ('YA SON +{n}|NEGOCIOS', 'DIRECTO DE FÁBRICA|A TU LOCAL',
+         "🙌 Ya son más de {n} los negocios que nos eligen para vender limpieza suelta en "
+         "Río Cuarto y la zona.\n\nSi tenés un local o revendés, pedinos la lista de "
+         "precios mayorista por WhatsApp 👇"),
+    ],
+}
+ORGANIC_COMBO_CLOSINGS = (
+    "Lo armamos para tu negocio a precio de fábrica. Pedilo por WhatsApp 👇",
+    "Sirve para arrancar con limpieza suelta o para reponer lo que más sale. "
+    "Consultá el precio por WhatsApp 👇",
+    "Se pide por WhatsApp y te lo llevamos al negocio 👇",
+)
 ROUTE_ANGLES = ('REGALO', 'LOGISTICA', 'FABRICA', 'MARGEN', 'URGENCIA')
 MESES = ['', 'ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO',
          'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE']
@@ -602,10 +673,18 @@ class CristalAgentPauta(models.AbstractModel):
         return f"{best[1]}|{best[2]}"
 
     @api.model
-    def organic_spec(self, angle, ctx, offer=None):
+    def organic_spec(self, angle, ctx, offer=None, variant=0):
         """Textos de la placa (para services/placa.render) y del posteo de un ángulo.
+        `variant` elige entre los textos del ángulo (ORGANIC_VARIANTS) para no repetir.
         Devuelve (ángulo efectivo, spec, texto del posteo)."""
         cierre = 'ESCRIBINOS POR WHATSAPP'
+        variant = int(variant or 0)
+
+        def pick(key):
+            options = ORGANIC_VARIANTS[key]
+            tit, pro, txt = options[variant % len(options)]
+            n = ctx.get('clientes', 0)
+            return tit.format(n=n), pro, txt.format(n=n)
         if angle == 'LOGISTICA':
             sal = ctx['salidas']
             half = (len(sal) + 1) // 2
@@ -624,16 +703,11 @@ class CristalAgentPauta(models.AbstractModel):
                     + "\n\nSi tenés un negocio en la zona, pedís por WhatsApp hasta el miércoles "
                       "a las 18 h y te lo dejamos en el local 👇")
         elif angle == 'PRUEBA_SOCIAL':
-            n = ctx['clientes']
+            titulo, promo, body = pick('PRUEBA_SOCIAL')
             spec = dict(base='camion_cargado', dia='CLIENTES DE QUÍMICA CRISTAL',
-                        titulo=f"+{n} NEGOCIOS|YA NOS COMPRAN", pueblos='',
-                        promo='DIRECTO DE FÁBRICA|A TU LOCAL',
+                        titulo=titulo, pueblos='', promo=promo,
                         detalle='Almacenes, kioscos, lavaderos y revendedores de la zona',
                         condiciones='Bidones de 20 L a precio de fábrica', cierre=cierre)
-            body = (f"🤝 Más de {n} negocios de Río Cuarto y la zona ya compran directo de "
-                    "fábrica en Química Cristal: almacenes, kioscos, lavaderos y revendedores.\n\n"
-                    "Precio de fábrica, bidones de 20 L y te lo llevamos al negocio.\n\n"
-                    "¿Querés la lista de precios? Escribinos por WhatsApp 👇")
         elif angle == 'PRODUCTO' and offer:
             import re
             # Solo la primera oración es pública: el resto de la descripción de la oferta
@@ -647,28 +721,20 @@ class CristalAgentPauta(models.AbstractModel):
                         pueblos='', promo='ARMADO PARA|TU NEGOCIO', detalle=short,
                         condiciones='Precio de fábrica · pedilo por WhatsApp', cierre=cierre)
             body = (f"🎁 {offer.name}\n\n{desc}\n\n"
-                    "Lo armamos para tu negocio a precio de fábrica. Pedilo por WhatsApp 👇")
+                    f"{ORGANIC_COMBO_CLOSINGS[variant % len(ORGANIC_COMBO_CLOSINGS)]}")
         elif angle == 'MARGEN':
+            titulo, promo, body = pick('MARGEN')
             spec = dict(base='camion_cargado', dia='PARA REVENDEDORES',
-                        titulo='COMPRÁS A GRANEL|GANÁS POR LITRO', pueblos='',
-                        promo='FRACCIONÁS|Y REVENDÉS',
+                        titulo=titulo, pueblos='', promo=promo,
                         detalle='Bidones de 20 L a precio de fábrica, directo al negocio',
                         condiciones='Jabón, suavizante, lavandina, cloro, detergente', cierre=cierre)
-            body = ("💰 Comprás a granel en bidones de 20 L, fraccionás en tu local y ganás por "
-                    "litro.\n\nJabón líquido, suavizante, detergente y desengrasante hechos en "
-                    "nuestra fábrica de Río Cuarto, y también lavandina y cloro.\n\n"
-                    "Pedí la lista de precios por WhatsApp 👇")
         else:  # FABRICA (y PRODUCTO sin oferta)
             angle = 'FABRICA'
+            titulo, promo, body = pick('FABRICA')
             spec = dict(base='joaco_deposito', dia='FÁBRICA EN RÍO CUARTO',
-                        titulo='SOMOS FÁBRICA|SIN INTERMEDIARIOS', pueblos='',
-                        promo='PRECIO DE FÁBRICA|PARA TU NEGOCIO',
+                        titulo=titulo, pueblos='', promo=promo,
                         detalle='Jabón, suavizante, lavandina, cloro, detergente y desengrasante',
                         condiciones='Bidones de 20 L · lista de precios por WhatsApp', cierre=cierre)
-            body = ("🏭 Somos fábrica: hacemos nuestros productos en Río Cuarto hace más de 20 "
-                    "años.\n\nSi tenés un almacén, kiosco, lavadero o revendés productos de "
-                    "limpieza, comprás directo y sin intermediarios.\n\n"
-                    "Escribinos por WhatsApp y te pasamos la lista de precios 👇")
         return angle, spec, f"{body}\n\n{ORGANIC_HASHTAGS}"
 
     @api.model
@@ -705,7 +771,9 @@ class CristalAgentPauta(models.AbstractModel):
                 angle = 'FABRICA'
             if Creative.search_count([('format', '=', 'organico'), ('planned_date', '=', day)]):
                 continue
-            angle, spec, body = self.organic_spec(angle, ctx, offer)
+            # Variante = cuántos posteos de ese ángulo ya existen: rota y no repite seguido.
+            used = Creative.search_count([('format', '=', 'organico'), ('angle', '=', angle)])
+            angle, spec, body = self.organic_spec(angle, ctx, offer, variant=used)
             spec['products'] = self._pauta_photos(angle, offer, seed=day.toordinal())
             spec['scene'] = self._scene_for(angle, day.toordinal())
             try:
@@ -779,7 +847,8 @@ class CristalAgentPauta(models.AbstractModel):
         angle = by_wd[wd]
         if angle == 'PRUEBA_SOCIAL' and ctx.get('clientes', 0) < 20:
             angle = 'FABRICA'
-        angle, spec, body = self.organic_spec(angle, ctx, offer if angle == 'PRODUCTO' else None)
+        angle, spec, body = self.organic_spec(angle, ctx, offer if angle == 'PRODUCTO' else None,
+                                              variant=day.toordinal())
         body = body.split('\n\n#')[0]
         return angle, spec, body
 
