@@ -306,6 +306,7 @@
                                 <field name="pauta_rc_every_days"/>
                                 <field name="route_aviso_auto" widget="boolean_toggle"/>
                                 <field name="delivery_issue_user_id"/>
+                                <field name="payment_receipt_user_id"/>
                                 <field name="order_confirm_notice" widget="boolean_toggle"/>
                                 <field name="monthly_review_enabled" widget="boolean_toggle"/>
                             </group>

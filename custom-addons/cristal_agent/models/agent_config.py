@@ -681,6 +681,10 @@ class CristalAgentConfig(models.Model):
         'res.users', string="Responsable de entregas y reclamos",
         help="Claudio le deriva directo las consultas de entrega, faltantes y reclamos de "
              "pedidos confirmados, con el pedido identificado (v1.65).")
+    payment_receipt_user_id = fields.Many2one(
+        'res.users', string="Verifica los comprobantes de transferencia",
+        help="Cuando un cliente manda un comprobante por WhatsApp, Claudio lo guarda en el "
+             "pedido y le deja a esta persona la tarea de verificarlo en el banco (v1.66).")
     route_aviso_auto = fields.Boolean(
         string="Aviso de paso automático por WhatsApp", default=True,
         help="Entre 2 y 6 días antes de cada salida manda solo el aviso de paso a los contactos "
