@@ -97,6 +97,69 @@ def _prior_guards(run):
     return seen
 
 
+_RE_OFFER = re.compile(
+    r'\b(sum(ar|amos|o|ale|ás)|agreg(ar|o|amos|ale|ás)|le falta|te falta|también|tambien|'
+    r'complement|aprovech|le recomiendo|te recomiendo|muchos clientes)', re.IGNORECASE)
+_RE_QUOTE_MSG = re.compile(r'(total|cotizaci|presupuesto)', re.IGNORECASE)
+
+
+def _last_quote_output(run):
+    """Salida de la última create_sale_order / quote_entry_combo de esta corrida."""
+    if not run:
+        return None
+    try:
+        calls = json.loads(run.tool_calls_log or '[]')
+    except Exception:  # noqa: BLE001
+        return None
+    for c in reversed(calls):
+        if c.get('tool_name') in ('create_sale_order', 'quote_entry_combo'):
+            out = c.get('output') or {}
+            return out if isinstance(out, dict) and out.get('ok') else None
+    return None
+
+
+def cross_sell_missing(env, run, channel_id, plain):
+    """v1.69 — Si el mensaje presenta una cotización y no ofrece ningún complementario (ni
+    el envío sin cargo cuando falta poco), devuelve la instrucción y el texto corregido.
+    No insiste si ya se ofreció en este chat en las últimas 24 h (el cliente lo vio)."""
+    out = _last_quote_output(run)
+    if not out or not _RE_QUOTE_MSG.search(plain or '') or _RE_OFFER.search(plain or ''):
+        return None
+    sugs = out.get('sugerencias') or []
+    envio = out.get('envio') or {}
+    falta = float(envio.get('falta_para_gratis') or 0.0)
+    if not sugs:
+        return None
+    names = [s.get('name', '') for s in sugs if s.get('name')]
+    if any(n and n.split(']')[-1].strip()[:18].lower() in (plain or '').lower() for n in names):
+        return None
+    # ¿Ya se le ofreció hace poco? (no repetir la misma sugerencia en el mismo chat)
+    try:
+        recent = env['mail.message'].sudo().search([
+            ('model', '=', 'discuss.channel'), ('res_id', '=', int(channel_id or 0)),
+            ('date', '>=', datetime.now() - timedelta(hours=24))], limit=30)
+        txt = ' '.join(_plain(m.body or '') for m in recent).lower()
+        if any(n and n.split(']')[-1].strip()[:18].lower() in txt for n in names):
+            return None
+    except Exception:  # noqa: BLE001
+        pass
+    first = sugs[0].get('text') or names[0]
+    gancho = ""
+    if 0 < falta <= 25000:
+        gancho = (f" Le faltan ${falta:,.0f} para el envío sin cargo: usalo de gancho."
+                  ).replace(',', '.')
+    line = f"¿Le sumo {first}?" + (
+        f" Con eso le queda más cerca del envío sin cargo." if gancho else "")
+    instruction = (
+        "NO MANDÉ EL MENSAJE: presentás una cotización sin ofrecer ningún complementario. "
+        f"Sumá UNA línea al final ofreciendo, con el precio tal cual: {first}.{gancho} Una "
+        "sola oferta, sin presionar; si acepta, la sumás a la misma cotización.")
+
+    def fixed(body_html):
+        return (body_html or '') + f"<p>{line}</p>"
+    return {"instruction": instruction, "fixed_body": fixed}
+
+
 def confusion_signal(env, channel_id, hours=24):
     """(veces que dijo 'no entiendo' en las últimas horas, pidió audio/llamada en el
     último mensaje). Mira solo mensajes ENTRANTES del canal del cliente."""
@@ -273,6 +336,13 @@ def apply_send_guards(env, run, channel_id, body_html, partner=None):
                 "NO MANDÉ EL MENSAJE: para Río Cuarto NO se compromete día ni horario de "
                 "entrega. Decí 'le confirmamos el día de entrega' y escalá el pedido a Joaco.",
                 _strip_sentences(body_html, _RE_ENTREGA_FECHA))
+
+    # 5b) v1.69 — Venta cruzada obligatoria (Joaco 12/11/2026: "un agente de ventas
+    # completísimo, todo el tiempo ofreciendo complementarios"). La auditoría mostró que la
+    # sugerencia llegaba en cada cotización pero se ofrecía en ≤28 % de los mensajes.
+    miss = cross_sell_missing(env, run, channel_id, plain)
+    if miss:
+        return block('venta_cruzada', miss['instruction'], miss['fixed_body'](body_html))
 
     # 6) Cliente que no entiende / pide audio o llamada: mensaje corto + escalar.
     count, wants_call = confusion_signal(env, channel_id)

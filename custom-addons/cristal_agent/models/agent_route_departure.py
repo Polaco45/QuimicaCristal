@@ -114,15 +114,87 @@ class CristalAgentRouteDeparture(models.Model):
                     total += line.price_subtotal
             dep.preventa_amount = total
 
+    # v1.69 — Fecha anterior de una salida a la que le cambiaron el día y todavía no se le
+    # avisó a los clientes con pedido o cotización (lo manda el cron cada hora).
+    reschedule_pending_from = fields.Date(
+        string="Aviso de cambio de día pendiente (fecha anterior)", copy=False, readonly=True)
+
     def write(self, vals):
         # Postergar = cambiarle la fecha al registro. Guardamos la fecha original la
         # primera vez (la usa la plantilla de salida reprogramada).
+        moved = {}
         if 'date' in vals:
             for dep in self:
                 if not dep.original_date and dep.date and \
                         str(dep.date) != str(vals['date']):
                     dep.original_date = dep.date
-        return super().write(vals)
+                # v1.69 — caso Kitty Rivero (04/11): confirmó, se cambió el día del camión
+                # y nadie le avisó ("lo esperaba hoy… otro día hago la compra").
+                if dep.date and str(dep.date) != str(vals['date']) \
+                        and not dep.reschedule_pending_from \
+                        and not self.env.context.get('no_reschedule_notice'):
+                    moved[dep.id] = dep.date
+        res = super().write(vals)
+        for dep in self.filtered(lambda d: d.id in moved):
+            super(type(dep), dep).write({'reschedule_pending_from': moved[dep.id]})
+        return res
+
+    @api.model
+    def cron_reschedule_notices(self):
+        """Cada hora: a los clientes con pedido o cotización abierta en una salida que cambió
+        de día, un mensaje con su número de pedido y la fecha nueva (sale como novedad de
+        pedido, que no es publicidad). Se avisa una sola vez por cambio."""
+        from ..services.helpers import fmt_day, within_contact_hours
+        if not within_contact_hours(self.env):
+            return True
+        from ..services.tool_registry import ToolRegistry
+        tool = ToolRegistry.get('send_whatsapp')
+        config = self.env['cristal.agent.config'].sudo().get_active()
+        for dep in self.search([('reschedule_pending_from', '!=', False)]):
+            old, new = dep.reschedule_pending_from, dep.date
+            orders = dep.order_ids.filtered(lambda o: o.state in ('draft', 'sent', 'sale'))
+            sent = 0
+            if old != new and new and new >= self._local_today() and tool:
+                for order in orders:
+                    partner = order.partner_id
+                    ch = self.env['discuss.channel'].sudo().search([
+                        ('channel_type', '=', 'whatsapp'),
+                        ('channel_partner_ids', 'in', partner.ids)],
+                        order='write_date desc', limit=1)
+                    if not ch or not ch.wa_account_id or not ch.whatsapp_number:
+                        continue
+                    que = "pedido" if order.state == 'sale' else "cotización"
+                    text = (f"Te aviso por tu {que} {order.name}: el camión a "
+                            f"{partner.city or dep.circuit_id.name} cambia del "
+                            f"{fmt_day(old)} al {fmt_day(new)}. "
+                            + ("Te lo llevamos ese día, no tenés que hacer nada."
+                               if order.state == 'sale' else
+                               "Tu cotización sigue vigente para esa fecha.")
+                            + " Si necesitás cambiar algo, respondé este mensaje.")
+                    env2 = self.env(context=dict(self.env.context, from_cristal_agent=True,
+                                                 wa_transactional=True))
+                    try:
+                        res = tool.execute(env=env2, run=None, channel_id=ch.id, body=text,
+                                           wa_account_id=ch.wa_account_id.id,
+                                           mobile_number=ch.whatsapp_number) or {}
+                    except Exception as e:  # noqa: BLE001
+                        _logger.warning("Aviso de cambio de día a %s falló: %s", partner.name, e)
+                        res = {}
+                    if res.get('ok'):
+                        sent += 1
+                        order.message_post(body=f"📲 Aviso de cambio de día del camión enviado "
+                                                f"({fmt_day(old)} → {fmt_day(new)}).",
+                                           subtype_xmlid='mail.mt_note')
+            dep.with_context(no_reschedule_notice=True).write(
+                {'reschedule_pending_from': False})
+            if orders and config and config.internal_channel_id:
+                config.internal_channel_id.sudo().with_context(
+                    from_cristal_agent=True).message_post(
+                    body=(f"🚚 {dep.name}: cambió del {fmt_day(old)} al {fmt_day(new)}. Avisé a "
+                          f"{sent} de {len(orders)} clientes con pedido o cotización."),
+                    message_type='comment', subtype_xmlid='mail.mt_comment')
+            self.env.cr.commit()
+        return True
 
     # ───────────────────────── Fechas (hora Córdoba → UTC) ─────────────────────────
     def _tz(self):

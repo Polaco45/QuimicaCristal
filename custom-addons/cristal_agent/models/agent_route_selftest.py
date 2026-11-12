@@ -2114,6 +2114,35 @@ class CristalAgentRouteSelftest(models.TransientModel):
             return f"arranque Río Cuarto 1ra compra → productos {prod:,.0f} (75.000 − 20 %) · suelto {r['combo']['precio_suelto']:,.0f}"
         self._case(results, "71. Combos de entrada", c_entry_combos)
 
+        # 72) v1.69: venta cruzada obligatoria, teléfono incompleto, cambio de día y controles
+        def c_conversion_169():
+            import json as _json
+            from ..services.send_guards import cross_sell_missing
+            run = env['cristal.agent.run'].sudo().create({'trigger': 'cron_cadence', 'state': 'done'})
+            run.tool_calls_log = _json.dumps([{'tool_name': 'create_sale_order', 'output': {
+                'ok': True, 'order_id': 1, 'envio': {'falta_para_gratis': 8000},
+                'sugerencias': [{'product_id': 1, 'name': '[PQ0213] Jabon B/E Skip a granel',
+                                 'text': '20 L de Jabón Skip a $13.120'}]}}])
+            miss = cross_sell_missing(env, run, 0, 'Le paso la cotización: total $57.000.')
+            assert miss and 'Skip' in miss['instruction'] and 'envío sin cargo' in miss['instruction'], miss
+            assert 'Skip' in miss['fixed_body']('<p>x</p>')
+            assert cross_sell_missing(env, run, 0, 'Total $57.000. ¿Le sumo 20 L de Skip?') is None
+            assert cross_sell_missing(env, run, 0, 'Hola, ¿cómo va?') is None
+            NBA = env['cristal.agent.nba'].sudo()
+            pbad = env['res.partner'].sudo().create({'name': 'ZZ Tel incompleto', 'mobile': '+54'})
+            assert NBA._blocked_reason(pbad, today_ar) == 'teléfono incompleto'
+            dep = Dep.search([('date', '>=', today_ar)], order='date', limit=1)
+            if dep:
+                old = dep.date
+                dep.date = old + timedelta(days=7)
+                assert dep.reschedule_pending_from == old, dep.reschedule_pending_from
+            Rep = env['cristal.agent.weekly.report'].sudo()
+            start = today_ar - timedelta(days=today_ar.weekday() + 7)
+            rep = Rep.build_report(start, start + timedelta(days=7))
+            assert 'Controles de conversión' in (rep.body or ''), 'sin controles'
+            return 'cotización sin oferta → frenada con Skip y envío · +54 salteado · cambio de día pendiente · controles en el informe'
+        self._case(results, "72. Conversión: venta cruzada y controles", c_conversion_169)
+
         # 58) Revisión mensual: arma, guarda snapshot y recomienda con reglas fijas
         def c_monthly_review():
             Review = env['cristal.agent.monthly.review'].sudo()
