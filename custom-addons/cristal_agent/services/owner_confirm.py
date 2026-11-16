@@ -83,18 +83,44 @@ def request_owner_confirmation(env, order, reason=''):
     return res
 
 
-def pending_order_for_reply(env, text):
+def pending_requests(env, at=None):
+    """Pedidos sin confirmar que se le pidieron a Joaco en las 48 h previas a `at`,
+    del pedido más reciente al más viejo."""
+    at = at or fields.Datetime.now()
+    return env['sale.order'].sudo().search(
+        [('state', 'in', ('draft', 'sent')),
+         ('cristal_owner_confirm_at', '>=', at - timedelta(hours=48)),
+         ('cristal_owner_confirm_at', '<=', at + timedelta(seconds=5))],
+        order='cristal_owner_confirm_at desc, id desc')
+
+
+def pending_order_for_reply(env, text, at=None):
     """v1.72.3 — Pedido al que se refiere una respuesta LIBRE de Joaco (ni OK ni NO).
     Joaco (16/11/2026) respondió con indicaciones ("modifiqué la cotización, mandásela
-    corregida") y nadie lo atendió. Es el pedido que nombra, o el único que se le pidió
-    confirmar en las últimas 48 h. Vacío si no se puede saber cuál es."""
+    corregida") y nadie lo atendió. Es el pedido que nombra o, si no nombra ninguno, el
+    último que se le pidió confirmar antes de su mensaje (`at`). Si se le pidieron varios
+    casi juntos (menos de 2 minutos entre los dos últimos) no se adivina: vacío."""
     SO = env['sale.order'].sudo()
     m = _RE_ORDER.search(text or '')
     if m:
         return SO.search([('name', '=ilike', m.group(1))], limit=1)
-    orders = SO.search([('cristal_owner_confirm_at', '>=',
-                         fields.Datetime.now() - timedelta(hours=48))])
-    return orders if len(orders) == 1 else SO
+    orders = pending_requests(env, at)
+    if len(orders) <= 1:
+        return orders
+    gap = orders[0].cristal_owner_confirm_at - orders[1].cristal_owner_confirm_at
+    return orders[0] if gap > timedelta(minutes=2) else SO
+
+
+def ask_owner_which_order(env, at=None):
+    """Joaco dio una indicación y hay varios pedidos esperando: se le pregunta cuál."""
+    orders = pending_requests(env, at)
+    if not orders:
+        return False
+    config = env['cristal.agent.config'].sudo().get_active()
+    names = ', '.join(f"{o.name} ({o.partner_id.name})" for o in orders[:5])
+    _send_to_owner(env, config, f"¿De qué pedido me hablás? Tengo esperando: {names}. "
+                                f"Mandame el mensaje de nuevo con el número adelante.")
+    return True
 
 
 def handle_owner_reply(env, text):
