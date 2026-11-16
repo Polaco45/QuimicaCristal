@@ -507,7 +507,36 @@ def dispatch_agent_for_internal_message(env, channel, plain_text, mail_message_i
         return None
 
 
-def dispatch_agent_for_owner_whatsapp(env, wa_message, plain_text):
+def _owner_order_context(order):
+    """v1.72.3 — Cómo está AHORA el pedido sobre el que Joaco da una indicación."""
+    if not order:
+        return ''
+    order = order.sudo()
+    p = order.partner_id
+    money = lambda v: f"${v:,.0f}".replace(',', '.')  # noqa: E731
+    lines = '\n'.join(
+        f"  - {ln.product_uom_qty:g} x {ln.name.splitlines()[0] if ln.name else ''} "
+        f"= {money(ln.price_subtotal)}"
+        for ln in order.order_line.filtered(lambda l: not l.display_type))
+    state = dict(order._fields['state'].selection).get(order.state, order.state)
+    return (
+        f"PEDIDO DEL QUE HABLA JOACO: {order.name} (sale_order_id {order.id}), estado "
+        f"{state}, cliente {p.name} (partner_id {p.id}).\n"
+        f"Así está AHORA (Joaco pudo haberlo corregido a mano en Odoo; esto es lo vigente):\n"
+        f"{lines}\n  Subtotal sin IVA {money(order.amount_untaxed)} · total {money(order.amount_total)}\n"
+        "Qué hacer con este pedido:\n"
+        "• Si Joaco pide mandárselo al cliente (corregido, actualizado, etc.): read_partner del "
+        "cliente y send_whatsapp AL CLIENTE con el detalle de arriba tal cual (productos, "
+        "cantidades y total), sin inventar ni cambiar líneas, y preguntale si necesita algo "
+        "más o si lo confirmamos. Si Joaco agrega un comentario para el cliente, incluilo.\n"
+        "• NO confirmes el pedido salvo que Joaco diga explícitamente que lo confirmes.\n"
+        "• NO modifiques las líneas: Joaco ya las dejó como quiere.\n"
+        "• Al terminar, avisale a Joaco en UNA línea qué hiciste (por ejemplo: 'Le mandé a "
+        f"{p.name} la cotización {order.name} corregida').\n\n"
+    )
+
+
+def dispatch_agent_for_owner_whatsapp(env, wa_message, plain_text, order=None):
     """
     v1.22 — Joaco (operador) le escribió al bot por WhatsApp (su número).
     Se lo trata como OPERADOR (comandos), NUNCA como cliente. El bot obedece,
@@ -542,6 +571,7 @@ def dispatch_agent_for_owner_whatsapp(env, wa_message, plain_text):
             f"wa_account_id: {wa_account_id}\n"
             f"mobile de Joaco: {mobile}\n\n"
             f'Joaco te escribió: "{plain_text}"\n\n'
+            + _owner_order_context(order) +
             "PASO 1 — Contexto: read_message_history(channel_id=" + str(channel_id) +
             ", limit=6) UNA vez.\n"
             "PASO 2 — Identificá y ACTUÁ (Joaco confía en vos, no le pidas confirmación):\n"

@@ -2130,6 +2130,13 @@ class CristalAgentRouteSelftest(models.TransientModel):
                     assert r.get('ok') and o.cristal_owner_confirm_at and o.name in sent[-1], (r, sent)
                     assert oc.request_owner_confirmation(env, o).get('already_requested')
                 assert oc.handle_owner_reply(env, 'hola, todo bien?') is False
+                # v1.72.3 — respuesta libre de Joaco: no es OK/NO y se sabe de qué pedido habla
+                libre = f'No, ahí modifiqué la cotización {o.name}, mandásela corregida al cliente'
+                assert oc.handle_owner_reply(env, libre) is False and o.state in ('draft', 'sent')
+                assert oc.pending_order_for_reply(env, libre) == o
+                from ..services.claude_client import _owner_order_context
+                octx = _owner_order_context(o)
+                assert o.name in octx and p.name in octx and 'NO confirmes' in octx, octx
                 assert oc.handle_owner_reply(env, f'NO {o.name}') and o.state in ('draft', 'sent')
                 assert oc.handle_owner_reply(env, f'ok {o.name}') and o.state == 'sale', o.state
                 assert any('Confirmé' in s for s in sent), sent
