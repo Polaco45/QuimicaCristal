@@ -839,11 +839,18 @@ class CreateSaleOrder(AgentTool):
                     ('stage_id', 'not in', [4, 13]),
                 ], limit=1, order='create_date desc')
                 if not opp:
+                    # v1.72.6: vendedor = bot y equipo = Cristal Mayorista, para
+                    # que no caiga en el CRM del usuario que ejecuta (Joaco).
+                    _cfg = env['cristal.agent.config'].sudo().get_active()
+                    _team = env['crm.team'].sudo().search(
+                        [('name', '=', 'Cristal Mayorista')], limit=1)
                     opp = Lead.create({
                         'name': partner.name or 'Cliente mayorista',
                         'partner_id': partner.id,
                         'type': 'opportunity',
                         'agent_managed': True,
+                        'user_id': _cfg.bot_user_id.id if _cfg.bot_user_id else 1,
+                        'team_id': _team.id if _team else False,
                     })
 
                 SaleOrder = env['sale.order'].sudo()

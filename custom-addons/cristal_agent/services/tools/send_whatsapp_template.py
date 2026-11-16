@@ -253,10 +253,19 @@ class SendWhatsappTemplate(AgentTool):
 
             # No hay opp abierta: creamos UNA opportunity nueva (no lead).
             # Esto pasa típicamente con broadcasts a partners que nunca compraron.
+            # v1.72.6: vendedor = bot y equipo = Cristal Mayorista. Sin esto la
+            # oportunidad caía al usuario que ejecuta el envío (Joaco) y le
+            # llenaba el CRM con registros automáticos de promos.
+            config = env['cristal.agent.config'].sudo().get_active()
+            bot_uid = config.bot_user_id.id if config.bot_user_id else 1
+            team = env['crm.team'].sudo().search(
+                [('name', '=', 'Cristal Mayorista')], limit=1)
             new_opp = env['crm.lead'].sudo().create({
                 'name': f'{partner.name}',  # nombre simple, sin [Auto]
                 'partner_id': partner.id,
                 'type': 'opportunity',  # ← OPPORTUNITY, no lead
+                'user_id': bot_uid,
+                'team_id': team.id if team else False,
                 'stage_id': 1,  # Nuevo
                 'description': (
                     f'Oportunidad creada al enviar el template "{template_name}" '

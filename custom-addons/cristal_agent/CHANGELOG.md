@@ -7,6 +7,15 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.72.6] — 2026-11-16
+
+### Fixed — Las oportunidades automáticas ya no caen en el CRM de Joaco
+Al mandar una plantilla a un cliente sin oportunidad abierta (`send_whatsapp_template`) o al armar
+un pedido (`create_sale_order`), la oportunidad se creaba sin vendedor ni equipo y Odoo le ponía el
+usuario que ejecutaba el envío (Joaco) y el equipo Ventas. Ahora nace con el bot como vendedor y en
+el equipo Cristal Mayorista. Joaco (16/11): "está bien que las cree, lo que está mal es si se cargan
+en MI CRM".
+
 ## [18.0.1.72.1] — 2026-11-12
 
 ### Fixed — Autotest 57 (orgánico mensual)
