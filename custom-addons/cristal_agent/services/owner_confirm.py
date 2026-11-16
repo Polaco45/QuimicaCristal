@@ -83,18 +83,19 @@ def request_owner_confirmation(env, order, reason=''):
     return res
 
 
-def pending_requests(env, at=None):
+def pending_requests(env, at=None, open_only=True):
     """Pedidos sin confirmar que se le pidieron a Joaco en las 48 h previas a `at`,
     del pedido más reciente al más viejo."""
     at = at or fields.Datetime.now()
+    states = [('state', 'in', ('draft', 'sent'))] if open_only else []
     return env['sale.order'].sudo().search(
-        [('state', 'in', ('draft', 'sent')),
+        states + [
          ('cristal_owner_confirm_at', '>=', at - timedelta(hours=48)),
          ('cristal_owner_confirm_at', '<=', at + timedelta(seconds=5))],
         order='cristal_owner_confirm_at desc, id desc')
 
 
-def pending_order_for_reply(env, text, at=None):
+def pending_order_for_reply(env, text, at=None, open_only=True):
     """v1.72.3 — Pedido al que se refiere una respuesta LIBRE de Joaco (ni OK ni NO).
     Joaco (16/11/2026) respondió con indicaciones ("modifiqué la cotización, mandásela
     corregida") y nadie lo atendió. Es el pedido que nombra o, si no nombra ninguno, el
@@ -104,7 +105,7 @@ def pending_order_for_reply(env, text, at=None):
     m = _RE_ORDER.search(text or '')
     if m:
         return SO.search([('name', '=ilike', m.group(1))], limit=1)
-    orders = pending_requests(env, at)
+    orders = pending_requests(env, at, open_only=open_only)
     if len(orders) <= 1:
         return orders
     gap = orders[0].cristal_owner_confirm_at - orders[1].cristal_owner_confirm_at

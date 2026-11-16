@@ -55,18 +55,37 @@ class WhatsAppMessage(models.Model):
         """v1.72.3 — Atiende las indicaciones de Joaco por WhatsApp sobre pedidos que se le
         pidió confirmar. Una por vez, desmarcando antes para no repetir si algo falla."""
         from ..services.claude_client import dispatch_agent_for_owner_whatsapp
-        from ..services.owner_confirm import pending_order_for_reply
+        from ..services.owner_confirm import pending_order_for_reply, _send_to_owner
         for msg in self.sudo().search([('cristal_owner_pending', '=', True)], order='id', limit=5):
             msg.cristal_owner_pending = False
             self.env.cr.commit()
             text = _clean_html(msg.body or "")
+            order, failed = self.env['sale.order'], ''
             try:
-                order = pending_order_for_reply(self.env, text, at=msg.create_date)
-                dispatch_agent_for_owner_whatsapp(self.env, msg, text, order=order)
+                # v1.72.5 — el pedido pudo confirmarse mientras el mensaje esperaba: se busca
+                # igual (open_only=False) y a Claudio se le dice en qué estado está.
+                order = pending_order_for_reply(self.env, text, at=msg.create_date,
+                                                open_only=False)
+                if not order:
+                    failed = "no pude saber de qué pedido me hablás"
+                elif dispatch_agent_for_owner_whatsapp(self.env, msg, text, order=order) is None:
+                    failed = f"algo falló al ocuparme de {order.name}"
                 self.env.cr.commit()
             except Exception as e:  # noqa: BLE001
                 self.env.cr.rollback()
+                failed = f"algo falló al ocuparme de {order.name if order else 'tu indicación'}"
                 _logger.exception("Indicación de Joaco (wa.msg %s) falló: %s", msg.id, e)
+            if failed:
+                # v1.72.5 — nunca en silencio: Joaco se entera de que su indicación no se hizo.
+                try:
+                    config = self.env['cristal.agent.config'].sudo().get_active()
+                    _send_to_owner(self.env, config,
+                                   f"Recibí tu mensaje pero {failed}. Mandámelo de nuevo con el "
+                                   f"número de pedido adelante, o hacelo desde Odoo.")
+                    self.env.cr.commit()
+                except Exception as e:  # noqa: BLE001
+                    self.env.cr.rollback()
+                    _logger.exception("No pude avisarle a Joaco del fallo: %s", e)
 
     @api.model_create_multi
     def create(self, vals_list):
