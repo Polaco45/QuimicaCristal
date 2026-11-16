@@ -200,8 +200,14 @@ class CristalFidEngine(models.AbstractModel):
             if not due or not prev_ok or 'reactivacion_%s' % step in sent:
                 continue
             fav = Cycle.search([('partner_id', '=', p.id)], order='purchases desc', limit=1)
-            variables = [_label(fav.family_id)] if step == 1 else [flow.offer_text or 'un regalo']
-            if step == 3:
+            # v1.7.0 — Si el paso tiene oferta cargada ({{2}} = oferta) se usa en cualquier paso
+            # (16/11/2026: "te extrañamos" sin oferta no vendía; el regalo sí). Si la plantilla
+            # pide fecha ({{3}}), vence a los 10 días.
+            if flow.offer_text:
+                variables = [flow.offer_text]
+            else:
+                variables = [_label(fav.family_id)] if step == 1 else ['un regalo']
+            if step == 3 or '{{3}}' in (flow.template_id.body or ''):
                 variables.append((today + timedelta(days=10)).strftime('%d/%m'))
             result.append((p, variables, fav.family_id, p.cristal_last_purchase))
         return result
@@ -210,7 +216,11 @@ class CristalFidEngine(models.AbstractModel):
     @api.model
     def _send(self, flow, partner, variables):
         """Manda la plantilla como el bot, sin pausar a Claudio. Devuelve whatsapp.message o lanza error."""
-        mobile = partner.mobile or partner.phone
+        # v1.7.0 — Se manda al celular normalizado (clave de 10 dígitos), no a lo que haya
+        # escrito en la ficha: "+54" suelto, "154846867" o "3587013668" fallaban (64 envíos
+        # perdidos al 16/11/2026) aunque el contacto tuviera un número válido.
+        key = partner.cristal_wa_key
+        mobile = ('+549' + key) if key else (partner.mobile or partner.phone)
         Composer = self.env['whatsapp.composer'].sudo().with_context(
             from_cristal_agent=True, active_model='res.partner', active_ids=[partner.id],
             default_res_model='res.partner', default_res_ids=str(partner.id))

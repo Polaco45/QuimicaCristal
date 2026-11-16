@@ -166,7 +166,24 @@ class ResPartner(models.Model):
         for partner in self:
             partner.cristal_mkt_allowed = bool(partner.cristal_wa_key and not partner.cristal_mkt_optout)
 
+    @staticmethod
+    def _cristal_clean_empty_phones(vals):
+        """v1.6.0 — La caja deja el prefijo "+54" como celular cuando no se carga número
+        (1.024 contactos al 16/11/2026): eso no es un teléfono y rompía los envíos."""
+        for field in ('mobile', 'phone'):
+            raw = vals.get(field)
+            if isinstance(raw, str) and re.sub(r'\D', '', raw) in ('', '54', '549', '5490'):
+                vals[field] = False
+        return vals
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        for vals in vals_list:
+            self._cristal_clean_empty_phones(vals)
+        return super().create(vals_list)
+
     def write(self, vals):
+        self._cristal_clean_empty_phones(vals)
         now = fields.Datetime.now()
         if vals.get('cristal_mkt_optin') and 'cristal_mkt_optin_date' not in vals:
             vals['cristal_mkt_optin_date'] = now
