@@ -519,6 +519,15 @@ def _owner_order_context(order):
         f"= {money(ln.price_subtotal)}"
         for ln in order.order_line.filtered(lambda l: not l.display_type))
     state = dict(order._fields['state'].selection).get(order.state, order.state)
+    if order.state not in ('draft', 'sent'):
+        # v1.72.5 — se confirmó (o canceló) mientras el mensaje de Joaco esperaba.
+        return (
+            f"PEDIDO DEL QUE HABLA JOACO: {order.name} (sale_order_id {order.id}), cliente "
+            f"{p.name} (partner_id {p.id}). OJO: este pedido YA NO es una cotización, está en "
+            f"estado «{state}». NO le mandes nada al cliente y NO toques el pedido. Solo "
+            f"avisale a Joaco en UNA línea que {order.name} ya está en «{state}» y que por eso "
+            f"no le mandaste la cotización al cliente.\n\n"
+        )
     return (
         f"PEDIDO DEL QUE HABLA JOACO: {order.name} (sale_order_id {order.id}), estado "
         f"{state}, cliente {p.name} (partner_id {p.id}).\n"
