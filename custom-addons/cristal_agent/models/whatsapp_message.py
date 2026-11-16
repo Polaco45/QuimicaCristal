@@ -61,7 +61,7 @@ class WhatsAppMessage(models.Model):
             self.env.cr.commit()
             text = _clean_html(msg.body or "")
             try:
-                order = pending_order_for_reply(self.env, text)
+                order = pending_order_for_reply(self.env, text, at=msg.create_date)
                 dispatch_agent_for_owner_whatsapp(self.env, msg, text, order=order)
                 self.env.cr.commit()
             except Exception as e:  # noqa: BLE001
@@ -130,8 +130,13 @@ class WhatsAppMessage(models.Model):
             # ("modifiqué la cotización, mandásela corregida"): Claudio la atiende como
             # orden del operador. Se encola: la llamada a Claude no corre en el webhook.
             try:
-                from ..services.owner_confirm import pending_order_for_reply
-                if plain_body and pending_order_for_reply(self.env, plain_body):
+                from ..services.owner_confirm import (
+                    pending_order_for_reply, ask_owner_which_order)
+                if plain_body and not pending_order_for_reply(self.env, plain_body):
+                    # Varios pedidos esperando y no nombró ninguno: se le pregunta cuál.
+                    if ask_owner_which_order(self.env):
+                        return
+                elif plain_body:
                     wa_message.sudo().write({'cristal_owner_pending': True})
                     cron = self.env.ref('cristal_agent.cron_owner_instructions',
                                         raise_if_not_found=False)
