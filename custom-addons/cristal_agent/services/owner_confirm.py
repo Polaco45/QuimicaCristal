@@ -83,12 +83,27 @@ def request_owner_confirmation(env, order, reason=''):
     return res
 
 
+def pending_order_for_reply(env, text):
+    """v1.72.3 — Pedido al que se refiere una respuesta LIBRE de Joaco (ni OK ni NO).
+    Joaco (16/11/2026) respondió con indicaciones ("modifiqué la cotización, mandásela
+    corregida") y nadie lo atendió. Es el pedido que nombra, o el único que se le pidió
+    confirmar en las últimas 48 h. Vacío si no se puede saber cuál es."""
+    SO = env['sale.order'].sudo()
+    m = _RE_ORDER.search(text or '')
+    if m:
+        return SO.search([('name', '=ilike', m.group(1))], limit=1)
+    orders = SO.search([('cristal_owner_confirm_at', '>=',
+                         fields.Datetime.now() - timedelta(hours=48))])
+    return orders if len(orders) == 1 else SO
+
+
 def handle_owner_reply(env, text):
     """Procesa la respuesta de Joaco. Devuelve True si era una respuesta de confirmación."""
     text = (text or '').strip()
     yes, no = _RE_YES.match(text), _RE_NO.match(text)
     m = _RE_ORDER.search(text)
-    if not (yes or no):
+    # v1.72.3 — un mensaje largo es una indicación, no un OK/NO (aunque empiece con "no, …").
+    if not (yes or no) or len(text.split()) > 6:
         return False
     config = env['cristal.agent.config'].sudo().get_active()
     SO = env['sale.order'].sudo()

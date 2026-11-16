@@ -45,6 +45,29 @@ def _get_local_number(phone):
 class WhatsAppMessage(models.Model):
     _inherit = 'whatsapp.message'
 
+    cristal_owner_pending = fields.Boolean(
+        "Indicación de Joaco pendiente", default=False, index=True, copy=False,
+        help="Respuesta libre de Joaco por WhatsApp sobre un pedido, esperando que Claudio "
+             "la atienda (cron).")
+
+    @api.model
+    def cron_owner_instructions(self):
+        """v1.72.3 — Atiende las indicaciones de Joaco por WhatsApp sobre pedidos que se le
+        pidió confirmar. Una por vez, desmarcando antes para no repetir si algo falla."""
+        from ..services.claude_client import dispatch_agent_for_owner_whatsapp
+        from ..services.owner_confirm import pending_order_for_reply
+        for msg in self.sudo().search([('cristal_owner_pending', '=', True)], order='id', limit=5):
+            msg.cristal_owner_pending = False
+            self.env.cr.commit()
+            text = _clean_html(msg.body or "")
+            try:
+                order = pending_order_for_reply(self.env, text)
+                dispatch_agent_for_owner_whatsapp(self.env, msg, text, order=order)
+                self.env.cr.commit()
+            except Exception as e:  # noqa: BLE001
+                self.env.cr.rollback()
+                _logger.exception("Indicación de Joaco (wa.msg %s) falló: %s", msg.id, e)
+
     @api.model_create_multi
     def create(self, vals_list):
         """
@@ -103,6 +126,21 @@ class WhatsAppMessage(models.Model):
                     return
             except Exception as e:  # noqa: BLE001
                 _logger.exception("Confirmación de Joaco por WhatsApp falló: %s", e)
+            # v1.72.3 — respuesta LIBRE sobre un pedido que se le pidió confirmar
+            # ("modifiqué la cotización, mandásela corregida"): Claudio la atiende como
+            # orden del operador. Se encola: la llamada a Claude no corre en el webhook.
+            try:
+                from ..services.owner_confirm import pending_order_for_reply
+                if plain_body and pending_order_for_reply(self.env, plain_body):
+                    wa_message.sudo().write({'cristal_owner_pending': True})
+                    cron = self.env.ref('cristal_agent.cron_owner_instructions',
+                                        raise_if_not_found=False)
+                    if cron:
+                        cron.sudo()._trigger()
+                    _logger.info("🧑‍💼 Indicación de Joaco por WhatsApp sobre un pedido: en cola.")
+                    return
+            except Exception as e:  # noqa: BLE001
+                _logger.exception("Indicación de Joaco por WhatsApp falló: %s", e)
             _logger.info("🧑‍💼 Mensaje de Joaco por WhatsApp IGNORADO (el chat con "
                          "Joaco es solo por el canal interno de Odoo).")
             return
