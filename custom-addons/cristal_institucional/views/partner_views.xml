@@ -1,0 +1,270 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- ============ Ficha de cuenta en el contacto ============ -->
+    <record id="view_partner_form_inst" model="ir.ui.view">
+        <field name="name">res.partner.form.cristal.institucional</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="base.view_partner_form"/>
+        <field name="priority">60</field>
+        <field name="arch" type="xml">
+            <xpath expr="//notebook" position="inside">
+                <page string="Institucional" name="cristal_inst_page"
+                      groups="sales_team.group_sale_salesman" invisible="parent_id">
+                    <group>
+                        <field name="inst_is"/>
+                    </group>
+                    <div invisible="not inst_is">
+                        <div class="d-flex flex-wrap gap-2 mb-3">
+                            <button name="action_inst_recompute" type="object" string="Recalcular" class="btn-secondary"/>
+                            <button name="action_inst_orders" type="object" string="Ver pedidos" class="btn-secondary"/>
+                            <button name="action_inst_discard" type="object" string="Descartar" class="btn-secondary"
+                                    invisible="inst_discarded"
+                                    confirm="¿Descartar esta empresa? Sale del tablero y no se le agenda ningún paso."/>
+                            <button name="action_inst_reactivate" type="object" string="Reactivar" class="btn-secondary"
+                                    invisible="not inst_discarded"/>
+                        </div>
+                        <group>
+                            <group string="Dónde está">
+                                <field name="inst_stage" widget="badge"
+                                       decoration-muted="inst_stage in ('prospecto', 'descartado')"
+                                       decoration-info="inst_stage == 'captacion'"
+                                       decoration-warning="inst_stage == 'primera_compra'"
+                                       decoration-primary="inst_stage == 'pedido_formal'"
+                                       decoration-success="inst_stage == 'recurrente'"/>
+                                <field name="inst_reason"/>
+                                <field name="inst_stage_date"/>
+                                <field name="inst_stage_days"/>
+                                <field name="inst_alert" widget="badge"
+                                       decoration-success="inst_alert == 'ok'"
+                                       decoration-warning="inst_alert in ('riesgo', 'vence')"
+                                       decoration-danger="inst_alert == 'dormido'"/>
+                                <field name="inst_discarded" invisible="1"/>
+                                <field name="inst_discard_reason" invisible="not inst_discarded"/>
+                            </group>
+                            <group string="Próximo paso">
+                                <field name="inst_next_step"/>
+                                <field name="inst_next_step_date"/>
+                                <field name="inst_deadline"/>
+                                <field name="inst_postponed_until"/>
+                            </group>
+                        </group>
+                        <group>
+                            <group string="Ficha de la cuenta">
+                                <field name="inst_ficha_pct" widget="progressbar"/>
+                                <field name="inst_ficha_falta" invisible="not inst_ficha_falta"/>
+                                <field name="inst_contactado"/>
+                                <field name="inst_decisor_id" context="{'default_parent_id': id, 'default_type': 'contact'}"/>
+                                <field name="inst_decisor_phone"/>
+                                <field name="inst_productos"/>
+                                <field name="inst_proveedor"/>
+                                <field name="inst_frecuencia"/>
+                                <field name="inst_entrega_horario"/>
+                            </group>
+                            <group string="Kit de prueba">
+                                <field name="inst_kit_order_id"/>
+                                <field name="inst_kit_date"/>
+                            </group>
+                        </group>
+                        <group string="Indicadores de la cuenta">
+                            <group>
+                                <field name="currency_id" invisible="1"/>
+                                <field name="inst_order_count"/>
+                                <field name="inst_first_order"/>
+                                <field name="inst_last_order"/>
+                                <field name="inst_cycle_days"/>
+                                <field name="inst_next_expected"/>
+                                <field name="inst_days_late"/>
+                            </group>
+                            <group>
+                                <field name="inst_margin_month"/>
+                                <field name="inst_margin_12m"/>
+                                <field name="inst_margin_pct"/>
+                                <field name="inst_amount_12m"/>
+                                <field name="inst_computed_at"/>
+                            </group>
+                        </group>
+                    </div>
+                </page>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- ============ Tablero por etapa ============ -->
+    <record id="view_partner_inst_kanban" model="ir.ui.view">
+        <field name="name">res.partner.kanban.cristal.institucional</field>
+        <field name="model">res.partner</field>
+        <field name="priority">99</field>
+        <field name="arch" type="xml">
+            <kanban default_group_by="inst_stage" records_draggable="0" groups_draggable="0"
+                    group_create="0" group_delete="0" group_edit="0" quick_create="0" create="0"
+                    default_order="inst_next_step_date, inst_margin_12m desc" class="o_kanban_small_column">
+                <field name="inst_alert"/>
+                <field name="inst_stage"/>
+                <field name="currency_id"/>
+                <templates>
+                    <t t-name="card">
+                        <field name="name" class="fw-bold fs-5"/>
+                        <field name="industry_id" class="text-muted"/>
+                        <div t-if="record.inst_next_step.raw_value" class="mt-1">
+                            <field name="inst_next_step"/>
+                        </div>
+                        <div class="d-flex flex-wrap gap-1 mt-1 align-items-center">
+                            <span t-if="record.inst_next_step_date.raw_value" class="badge text-bg-light">
+                                <field name="inst_next_step_date"/>
+                            </span>
+                            <span t-if="record.inst_alert.raw_value == 'riesgo'" class="badge text-bg-warning">En riesgo</span>
+                            <span t-if="record.inst_alert.raw_value == 'vence'" class="badge text-bg-warning">Fecha límite vencida</span>
+                            <span t-if="record.inst_alert.raw_value == 'dormido'" class="badge text-bg-danger">Dormido</span>
+                        </div>
+                        <footer class="pt-1">
+                            <div class="d-flex text-muted">
+                                <span t-if="record.inst_order_count.raw_value">
+                                    <field name="inst_order_count"/> compras · margen por mes <field name="inst_margin_month" widget="monetary"/>
+                                </span>
+                                <span t-else="">Ficha <field name="inst_ficha_pct"/> %</span>
+                            </div>
+                        </footer>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
+    <!-- ============ Lista ============ -->
+    <record id="view_partner_inst_list" model="ir.ui.view">
+        <field name="name">res.partner.list.cristal.institucional</field>
+        <field name="model">res.partner</field>
+        <field name="priority">99</field>
+        <field name="arch" type="xml">
+            <list create="0" default_order="inst_next_step_date, inst_margin_12m desc"
+                  decoration-danger="inst_alert == 'dormido'" decoration-warning="inst_alert in ('riesgo', 'vence')">
+                <field name="currency_id" column_invisible="1"/>
+                <field name="name" string="Empresa"/>
+                <field name="industry_id" string="Rubro" optional="show"/>
+                <field name="inst_stage" widget="badge"
+                       decoration-muted="inst_stage in ('prospecto', 'descartado')"
+                       decoration-info="inst_stage == 'captacion'"
+                       decoration-warning="inst_stage == 'primera_compra'"
+                       decoration-primary="inst_stage == 'pedido_formal'"
+                       decoration-success="inst_stage == 'recurrente'"/>
+                <field name="inst_alert" widget="badge" optional="show"
+                       decoration-success="inst_alert == 'ok'"
+                       decoration-warning="inst_alert in ('riesgo', 'vence')"
+                       decoration-danger="inst_alert == 'dormido'"/>
+                <field name="inst_next_step"/>
+                <field name="inst_next_step_date"/>
+                <field name="inst_deadline" optional="show"/>
+                <field name="inst_decisor_id" optional="show"/>
+                <field name="phone" optional="show"/>
+                <field name="inst_ficha_pct" string="Ficha %" optional="show"/>
+                <field name="inst_order_count" optional="show" sum="Compras"/>
+                <field name="inst_last_order" optional="show"/>
+                <field name="inst_cycle_days" optional="hide"/>
+                <field name="inst_days_late" optional="hide"/>
+                <field name="inst_margin_month" optional="show" sum="Margen por mes"/>
+                <field name="inst_margin_12m" optional="hide" sum="Margen 12 meses"/>
+                <field name="inst_margin_pct" optional="hide" avg="% de margen"/>
+                <field name="inst_amount_12m" optional="hide" sum="Venta 12 meses"/>
+                <field name="inst_stage_date" optional="hide"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- ============ Reportes ============ -->
+    <record id="view_partner_inst_pivot" model="ir.ui.view">
+        <field name="name">res.partner.pivot.cristal.institucional</field>
+        <field name="model">res.partner</field>
+        <field name="priority">99</field>
+        <field name="arch" type="xml">
+            <pivot string="Embudo institucional">
+                <field name="inst_stage" type="row"/>
+                <field name="inst_alert" type="col"/>
+                <field name="inst_margin_12m" type="measure"/>
+                <field name="inst_margin_month" type="measure"/>
+                <field name="inst_amount_12m" type="measure"/>
+            </pivot>
+        </field>
+    </record>
+
+    <record id="view_partner_inst_graph" model="ir.ui.view">
+        <field name="name">res.partner.graph.cristal.institucional</field>
+        <field name="model">res.partner</field>
+        <field name="priority">99</field>
+        <field name="arch" type="xml">
+            <graph string="Empresas por etapa" type="bar">
+                <field name="inst_stage"/>
+            </graph>
+        </field>
+    </record>
+
+    <!-- ============ Búsqueda ============ -->
+    <record id="view_partner_inst_search" model="ir.ui.view">
+        <field name="name">res.partner.search.cristal.institucional</field>
+        <field name="model">res.partner</field>
+        <field name="priority">99</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="name" string="Empresa"
+                       filter_domain="['|', '|', ('name', 'ilike', self), ('phone', 'ilike', self), ('vat', 'ilike', self)]"/>
+                <field name="industry_id" string="Rubro"/>
+                <field name="inst_decisor_id"/>
+                <filter name="inst_active" string="En el embudo" domain="[('inst_stage', '!=', 'descartado')]"/>
+                <filter name="inst_today" string="Para hoy"
+                        domain="[('inst_next_step_date', '&lt;=', context_today().strftime('%Y-%m-%d'))]"/>
+                <separator/>
+                <filter name="st_prospecto" string="Prospecto" domain="[('inst_stage', '=', 'prospecto')]"/>
+                <filter name="st_captacion" string="1 · Captación" domain="[('inst_stage', '=', 'captacion')]"/>
+                <filter name="st_primera" string="2 · Primera compra" domain="[('inst_stage', '=', 'primera_compra')]"/>
+                <filter name="st_formal" string="3 · Pedido formal" domain="[('inst_stage', '=', 'pedido_formal')]"/>
+                <filter name="st_recurrente" string="4 · Recurrente" domain="[('inst_stage', '=', 'recurrente')]"/>
+                <filter name="st_descartado" string="Descartado" domain="[('inst_stage', '=', 'descartado')]"/>
+                <separator/>
+                <filter name="al_riesgo" string="En riesgo" domain="[('inst_alert', '=', 'riesgo')]"/>
+                <filter name="al_dormido" string="Dormido" domain="[('inst_alert', '=', 'dormido')]"/>
+                <filter name="al_vence" string="Fecha límite vencida" domain="[('inst_alert', '=', 'vence')]"/>
+                <group expand="0" string="Agrupar por">
+                    <filter name="g_stage" string="Etapa" context="{'group_by': 'inst_stage'}"/>
+                    <filter name="g_alert" string="Alerta" context="{'group_by': 'inst_alert'}"/>
+                    <filter name="g_rubro" string="Rubro" context="{'group_by': 'industry_id'}"/>
+                    <filter name="g_step" string="Semana del próximo paso" context="{'group_by': 'inst_next_step_date:week'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- ============ Acciones ============ -->
+    <record id="action_inst_board" model="ir.actions.act_window">
+        <field name="name">Tablero institucional</field>
+        <field name="res_model">res.partner</field>
+        <field name="view_mode">kanban,list,form</field>
+        <field name="domain">[('inst_is', '=', True)]</field>
+        <field name="context">{'search_default_inst_active': 1}</field>
+        <field name="search_view_id" ref="view_partner_inst_search"/>
+        <field name="view_ids" eval="[(5, 0, 0),
+            (0, 0, {'view_mode': 'kanban', 'view_id': ref('view_partner_inst_kanban'), 'sequence': 1}),
+            (0, 0, {'view_mode': 'list', 'view_id': ref('view_partner_inst_list'), 'sequence': 2})]"/>
+    </record>
+
+    <record id="action_inst_today" model="ir.actions.act_window">
+        <field name="name">Mi día</field>
+        <field name="res_model">res.partner</field>
+        <field name="view_mode">list,form</field>
+        <field name="domain">[('inst_is', '=', True)]</field>
+        <field name="context">{'search_default_inst_active': 1, 'search_default_inst_today': 1}</field>
+        <field name="search_view_id" ref="view_partner_inst_search"/>
+        <field name="view_ids" eval="[(5, 0, 0),
+            (0, 0, {'view_mode': 'list', 'view_id': ref('view_partner_inst_list'), 'sequence': 1})]"/>
+    </record>
+
+    <record id="action_inst_report" model="ir.actions.act_window">
+        <field name="name">Embudo institucional</field>
+        <field name="res_model">res.partner</field>
+        <field name="view_mode">pivot,graph,list</field>
+        <field name="domain">[('inst_is', '=', True)]</field>
+        <field name="search_view_id" ref="view_partner_inst_search"/>
+        <field name="view_ids" eval="[(5, 0, 0),
+            (0, 0, {'view_mode': 'pivot', 'view_id': ref('view_partner_inst_pivot'), 'sequence': 1}),
+            (0, 0, {'view_mode': 'graph', 'view_id': ref('view_partner_inst_graph'), 'sequence': 2}),
+            (0, 0, {'view_mode': 'list', 'view_id': ref('view_partner_inst_list'), 'sequence': 3})]"/>
+    </record>
+</odoo>

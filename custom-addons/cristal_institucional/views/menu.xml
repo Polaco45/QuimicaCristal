@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <menuitem id="menu_inst_root" name="Institucional" sequence="26"
+              groups="sales_team.group_sale_salesman"
+              web_icon="cristal_institucional,static/description/icon.png"/>
+    <menuitem id="menu_inst_board" name="Tablero" parent="menu_inst_root" sequence="10"
+              action="action_inst_board"/>
+    <menuitem id="menu_inst_today" name="Mi día" parent="menu_inst_root" sequence="20"
+              action="action_inst_today"/>
+    <menuitem id="menu_inst_report" name="Reportes" parent="menu_inst_root" sequence="30"
+              action="action_inst_report"/>
+</odoo>
