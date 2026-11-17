@@ -25,6 +25,17 @@ INST_FRECUENCIAS = [
 ]
 
 
+CALL_RESULTS = [
+    ('no_atendio', 'No atendió'),
+    ('contacto', 'Atendió otra persona: conseguí el contacto de quien decide'),
+    ('decisor', 'Hablé con quien decide'),
+    ('kit', 'Hablé con quien decide y acepta el kit'),
+    ('posponer', 'Me pidió que lo llame más adelante'),
+    ('pedido', 'Hizo un pedido'),
+    ('no_califica', 'No califica o no le interesa'),
+]
+
+
 class ResPartner(models.Model):
     _inherit = 'res.partner'
 
@@ -48,6 +59,16 @@ class ResPartner(models.Model):
         'Pospuesto hasta', copy=False,
         help='Si el cliente pide que lo llamemos más adelante, poné acá la nueva fecha. '
              'El próximo paso y la fecha límite se corren hasta ese día.')
+
+    inst_priority = fields.Float(
+        'Prioridad', index=True, copy=False, readonly=True,
+        help='Ordena "Mi día": primero lo que más vale y lo que está por perderse.')
+
+    # --- Llamadas ------------------------------------------------------------
+    inst_call_ids = fields.One2many('cristal.inst.call', 'partner_id', 'Contactos registrados')
+    inst_attempts = fields.Integer('Intentos sin respuesta', copy=False, readonly=True)
+    inst_last_call = fields.Date('Último contacto', copy=False, readonly=True)
+    inst_last_result = fields.Selection(CALL_RESULTS, 'Resultado del último contacto', copy=False, readonly=True)
 
     # --- Ficha de cuenta -----------------------------------------------------
     inst_contactado = fields.Date(
@@ -134,6 +155,17 @@ class ResPartner(models.Model):
     def action_inst_recompute(self):
         self.env['cristal.inst.engine'].recompute(self)
         return True
+
+    def action_inst_call(self):
+        self.ensure_one()
+        return {
+            'type': 'ir.actions.act_window',
+            'name': 'Registrar llamada',
+            'res_model': 'cristal.inst.call.wizard',
+            'view_mode': 'form',
+            'target': 'new',
+            'context': {'default_partner_id': self.commercial_partner_id.id},
+        }
 
     def action_inst_discard(self):
         self.write({'inst_discarded': True})

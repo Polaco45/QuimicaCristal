@@ -15,6 +15,7 @@
                     </group>
                     <div invisible="not inst_is">
                         <div class="d-flex flex-wrap gap-2 mb-3">
+                            <button name="action_inst_call" type="object" string="Registrar llamada" class="btn-primary" icon="fa-phone"/>
                             <button name="action_inst_recompute" type="object" string="Recalcular" class="btn-secondary"/>
                             <button name="action_inst_orders" type="object" string="Ver pedidos" class="btn-secondary"/>
                             <button name="action_inst_discard" type="object" string="Descartar" class="btn-secondary"
@@ -46,6 +47,9 @@
                                 <field name="inst_next_step_date"/>
                                 <field name="inst_deadline"/>
                                 <field name="inst_postponed_until"/>
+                                <field name="inst_attempts" invisible="not inst_attempts"/>
+                                <field name="inst_last_call"/>
+                                <field name="inst_last_result" invisible="not inst_last_result"/>
                             </group>
                         </group>
                         <group>
@@ -83,6 +87,15 @@
                                 <field name="inst_computed_at"/>
                             </group>
                         </group>
+                        <separator string="Contactos registrados"/>
+                        <field name="inst_call_ids" readonly="1" nolabel="1">
+                            <list>
+                                <field name="date"/>
+                                <field name="result"/>
+                                <field name="notes"/>
+                                <field name="user_id" optional="show"/>
+                            </list>
+                        </field>
                     </div>
                 </page>
             </xpath>
@@ -97,7 +110,7 @@
         <field name="arch" type="xml">
             <kanban default_group_by="inst_stage" records_draggable="0" groups_draggable="0"
                     group_create="0" group_delete="0" group_edit="0" quick_create="0" create="0"
-                    default_order="inst_next_step_date, inst_margin_12m desc" class="o_kanban_small_column">
+                    default_order="inst_priority desc, inst_next_step_date" class="o_kanban_small_column">
                 <field name="inst_alert"/>
                 <field name="inst_stage"/>
                 <field name="currency_id"/>
@@ -136,10 +149,11 @@
         <field name="model">res.partner</field>
         <field name="priority">99</field>
         <field name="arch" type="xml">
-            <list create="0" default_order="inst_next_step_date, inst_margin_12m desc"
+            <list create="0" default_order="inst_priority desc, inst_next_step_date"
                   decoration-danger="inst_alert == 'dormido'" decoration-warning="inst_alert in ('riesgo', 'vence')">
                 <field name="currency_id" column_invisible="1"/>
                 <field name="name" string="Empresa"/>
+                <button name="action_inst_call" type="object" string="Llamada" icon="fa-phone"/>
                 <field name="industry_id" string="Rubro" optional="show"/>
                 <field name="inst_stage" widget="badge"
                        decoration-muted="inst_stage in ('prospecto', 'descartado')"

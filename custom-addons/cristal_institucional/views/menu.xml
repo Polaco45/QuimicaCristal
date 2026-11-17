@@ -7,6 +7,9 @@
               action="action_inst_board"/>
     <menuitem id="menu_inst_today" name="Mi día" parent="menu_inst_root" sequence="20"
               action="action_inst_today"/>
-    <menuitem id="menu_inst_report" name="Reportes" parent="menu_inst_root" sequence="30"
+    <menuitem id="menu_inst_report" name="Reportes" parent="menu_inst_root" sequence="30"/>
+    <menuitem id="menu_inst_report_funnel" name="Embudo y margen" parent="menu_inst_report" sequence="10"
               action="action_inst_report"/>
+    <menuitem id="menu_inst_report_calls" name="Contactos por día" parent="menu_inst_report" sequence="20"
+              action="action_inst_calls"/>
 </odoo>
