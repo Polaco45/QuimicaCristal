@@ -2018,7 +2018,18 @@ class CristalAgentRouteSelftest(models.TransientModel):
             if dep:
                 o2.route_departure_id = dep.id
                 txt = o2._cristal_confirm_notice_text()
-                assert 'Va en el camión del' in txt and o2.name in txt and 'Total: $' in txt, txt
+                assert 'Va en el camión del' in txt and o2.name in txt and 'TOTAL A PAGAR: $' in txt, txt
+            # v1.73 — detalle de pago: renglones del pedido real, total y nota de la cotización
+            det = o2._cristal_payment_detail()
+            money = '${:,.0f}'.format(o2.amount_total).replace(',', '.')
+            assert det and any(x.startswith('• ') for x in det), det
+            assert f"TOTAL A PAGAR: {money}" in det, (det, money)
+            assert 'Detalle de pago' in str(o2.note or '') and money in str(o2.note), o2.note
+            o2.write({'cristal_payment': 'efectivo'})
+            assert any('Forma de pago: Efectivo' in x for x in o2._cristal_payment_detail())
+            assert str(o2.note).count('Detalle de pago') == 1 and 'Efectivo' in str(o2.note), o2.note
+            assert 'Detalle de pago' not in str(o2._prepare_invoice().get('narration') or '')
+            assert o1.cristal_notice_total == o1.amount_total, o1.cristal_notice_total
             state, note = o2._cristal_send_confirm_notice()
             assert state == 'skipped' and 'chat' in note, (state, note)
             o3 = SaleOrder.browse(quote(mk_partner('Aviso CF', 'Rio Cuarto'), 60000)['order_id'])

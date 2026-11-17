@@ -131,8 +131,11 @@ class ConfirmOrder(AgentTool):
         pickup = order.cristal_delivery_mode == 'retiro'
         order.with_context(from_cristal_agent=True).message_post(
             body=f"Confirmado por Claudio (mayorista, lista de control OK). Pago: {PAYMENTS[payment]}.")
+        # v1.73 — la forma de pago queda en el pedido (sale en el detalle de pago).
+        order.with_context(from_cristal_agent=True).write({'cristal_payment': payment})
         order.with_context(from_cristal_agent=True).action_confirm()
         _logger.info("✅ Claudio confirmó %s (%s, %s)", order.name, partner.name, payment)
+        payment_detail = "\n".join(order._cristal_payment_detail())
         try:
             if config.internal_channel_id:
                 config.internal_channel_id.sudo().with_context(from_cristal_agent=True).message_post(
@@ -147,12 +150,14 @@ class ConfirmOrder(AgentTool):
         return {
             "ok": True, "confirmed": True, "order_name": order.name,
             "total": order.amount_total, "subtotal_sin_iva": order.amount_untaxed,
+            "payment_detail": payment_detail,
             "message_for_bot": (
-                f"Pedido {order.name} CONFIRMADO. Decile al cliente que quedó confirmado, con el "
-                f"resumen en el orden de la regla de oro 9 (productos, bidones, total, pago "
-                f"{PAYMENTS[payment].lower()}"
-                + ("; pasale los datos para transferir TEXTUALES de la KB" if payment == 'transferencia' else '')
-                + "). " + ("Retira en San Martín 2350 en el horario oficial (día + fecha) con sus "
+                f"Pedido {order.name} CONFIRMADO. Decile al cliente que quedó confirmado y, EN EL "
+                f"MISMO MENSAJE, copiá TEXTUAL `payment_detail` (renglón por renglón, con el "
+                f"TOTAL A PAGAR y la forma de pago): es lo que se le va a cobrar al entregar. "
+                f"PROHIBIDO resumirlo, redondear, cambiar un monto o dar otro total"
+                + ("; pasale además los datos para transferir TEXTUALES de la KB" if payment == 'transferencia' else '')
+                + ". " + ("Retira en San Martín 2350 en el horario oficial (día + fecha) con sus "
                            "bidones vacíos con tapa." if pickup else
                            "Envío: el reparto en Río Cuarto es por la mañana y nunca los miércoles; "
                            "decile que le avisamos el día de entrega (no prometas día ni hora).")
