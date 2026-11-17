@@ -48,6 +48,8 @@
                                 <field name="inst_next_step"/>
                                 <field name="inst_next_step_date"/>
                                 <field name="inst_deadline"/>
+                                <field name="inst_chain" invisible="not inst_chain"/>
+                                <field name="inst_chain_message" invisible="not inst_chain_message" widget="CopyClipboardText"/>
                                 <field name="inst_postponed_until"/>
                                 <field name="inst_attempts" invisible="not inst_attempts"/>
                                 <field name="inst_last_call"/>
@@ -173,6 +175,7 @@
                        decoration-danger="inst_alert == 'dormido'"/>
                 <field name="inst_next_step"/>
                 <field name="inst_next_step_date"/>
+                <field name="inst_chain_channel" optional="show"/>
                 <field name="inst_deadline" optional="show"/>
                 <field name="inst_decisor_id" optional="show"/>
                 <field name="phone" optional="show"/>
@@ -239,6 +242,9 @@
                 <filter name="st_formal" string="3 · Pedido formal" domain="[('inst_stage', '=', 'pedido_formal')]"/>
                 <filter name="st_recurrente" string="4 · Recurrente" domain="[('inst_stage', '=', 'recurrente')]"/>
                 <filter name="st_descartado" string="Descartado" domain="[('inst_stage', '=', 'descartado')]"/>
+                <separator/>
+                <filter name="ch_whatsapp" string="Toca WhatsApp" domain="[('inst_chain_channel', '=', 'whatsapp')]"/>
+                <filter name="ch_llamada" string="Toca llamada" domain="[('inst_chain_channel', 'in', ['llamada', False])]"/>
                 <separator/>
                 <filter name="al_riesgo" string="En riesgo" domain="[('inst_alert', '=', 'riesgo')]"/>
                 <filter name="al_dormido" string="Dormido" domain="[('inst_alert', '=', 'dormido')]"/>

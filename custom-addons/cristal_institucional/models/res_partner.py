@@ -1,6 +1,8 @@
 from odoo import api, fields, models
 from odoo.exceptions import UserError
 
+from .inst_chain import INST_CHAINS
+
 INST_STAGES = [
     ('prospecto', 'Prospecto'),
     ('captacion', '1 · Captación'),
@@ -28,6 +30,7 @@ INST_FRECUENCIAS = [
 
 CALL_RESULTS = [
     ('no_atendio', 'No atendió'),
+    ('whatsapp', 'Le mandé el WhatsApp'),
     ('contacto', 'Atendió otra persona: conseguí el contacto de quien decide'),
     ('decisor', 'Hablé con quien decide'),
     ('kit', 'Hablé con quien decide y acepta el kit'),
@@ -64,6 +67,16 @@ class ResPartner(models.Model):
     inst_priority = fields.Float(
         'Prioridad', index=True, copy=False, readonly=True,
         help='Ordena "Mi día": primero lo que más vale y lo que está por perderse.')
+
+    # --- Cadena de avisos ----------------------------------------------------
+    inst_chain = fields.Selection(INST_CHAINS, 'Cadena de avisos', copy=False, readonly=True)
+    inst_chain_anchor = fields.Date('La cadena cuenta desde', copy=False, readonly=True)
+    inst_chain_done = fields.Integer('Último paso hecho de la cadena', copy=False, readonly=True)
+    inst_chain_step_id = fields.Many2one(
+        'cristal.inst.chain.step', 'Paso de la cadena', copy=False, readonly=True, ondelete='set null')
+    inst_chain_channel = fields.Selection(
+        related='inst_chain_step_id.channel', string='Canal del próximo paso', store=True)
+    inst_chain_message = fields.Text('Mensaje para mandar', compute='_compute_inst_chain_message')
 
     # --- Llamadas ------------------------------------------------------------
     inst_call_ids = fields.One2many('cristal.inst.call', 'partner_id', 'Contactos registrados')
@@ -171,6 +184,12 @@ class ResPartner(models.Model):
             else:
                 html = False
             partner.inst_script = html
+
+    @api.depends('inst_chain_step_id', 'inst_decisor_id', 'name')
+    def _compute_inst_chain_message(self):
+        for partner in self:
+            step = partner.inst_chain_step_id
+            partner.inst_chain_message = step.render_message(partner) if step and step.message else False
 
     @api.model
     def _group_expand_inst_stage(self, values, domain):

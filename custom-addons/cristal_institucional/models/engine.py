@@ -229,6 +229,34 @@ class CristalInstEngine(models.AbstractModel):
             step = 'Llamar: conseguir a quien decide las compras'
             step_date = today
 
+        # Cadena de avisos: después del kit, después de la primera compra, o recurrente atrasado
+        chain, anchor = False, False
+        if stage == 'primera_compra' and kit_date:
+            chain, anchor = 'kit', kit_date
+        elif stage == 'pedido_formal' and dates:
+            chain, anchor = 'reposicion', dates[-1]
+        elif stage == 'recurrente' and expected and late > 0:
+            chain, anchor = 'atraso', expected
+        same = chain and partner.inst_chain == chain and partner.inst_chain_anchor == anchor
+        done = partner.inst_chain_done if same else 0
+        chain_step = False
+        if chain:
+            steps = params.get('chains', {}).get(chain, [])
+            nxt = next((s for s in steps if s['sequence'] > done), None)
+            if nxt:
+                chain_step = nxt['id']
+                step = '%s: %s' % (nxt['channel_label'], nxt['name'])
+                step_date = anchor + timedelta(days=nxt['day'])
+            elif steps:
+                step = 'Se terminó la cadena de avisos sin respuesta: llamar, posponer o descartar'
+                step_date = today
+        vals.update({
+            'inst_chain': chain,
+            'inst_chain_anchor': anchor,
+            'inst_chain_done': done,
+            'inst_chain_step_id': chain_step,
+        })
+
         # Posponer: corre el paso y la fecha límite
         postponed = partner.inst_postponed_until
         if postponed and stage != 'descartado':
@@ -294,6 +322,14 @@ class CristalInstEngine(models.AbstractModel):
             return 0
         params = self._params()
         params['ref_fams'] = self._reference_families()
+        Step = self.env['cristal.inst.chain.step'].sudo()
+        channel_labels = dict(Step._fields['channel'].selection)
+        params['chains'] = {}
+        for chain_step in Step.search([('active', '=', True)], order='chain, sequence, id'):
+            params['chains'].setdefault(chain_step.chain, []).append({
+                'id': chain_step.id, 'sequence': chain_step.sequence, 'day': chain_step.day,
+                'name': chain_step.name, 'channel_label': channel_labels.get(chain_step.channel, ''),
+            })
         StageLog = self.env['cristal.inst.stage.log'].sudo()
         today = fields.Date.context_today(self)
         now = fields.Datetime.now()

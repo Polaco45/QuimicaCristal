@@ -17,4 +17,9 @@
               action="action_inst_stage_log"/>
     <menuitem id="menu_inst_report_evolution" name="Evolución semanal" parent="menu_inst_report" sequence="40"
               action="action_inst_snapshot"/>
+
+    <menuitem id="menu_inst_config" name="Configuración" parent="menu_inst_root" sequence="90"
+              groups="sales_team.group_sale_manager"/>
+    <menuitem id="menu_inst_config_chain" name="Cadena de avisos" parent="menu_inst_config" sequence="10"
+              action="action_inst_chain_step"/>
 </odoo>

@@ -6,3 +6,5 @@ access_cristal_inst_stage_log_user,cristal.inst.stage.log user,model_cristal_ins
 access_cristal_inst_stage_log_manager,cristal.inst.stage.log manager,model_cristal_inst_stage_log,sales_team.group_sale_manager,1,1,1,1
 access_cristal_inst_snapshot_user,cristal.inst.snapshot user,model_cristal_inst_snapshot,sales_team.group_sale_salesman,1,0,0,0
 access_cristal_inst_snapshot_manager,cristal.inst.snapshot manager,model_cristal_inst_snapshot,sales_team.group_sale_manager,1,1,1,1
+access_cristal_inst_chain_step_user,cristal.inst.chain.step user,model_cristal_inst_chain_step,sales_team.group_sale_salesman,1,0,0,0
+access_cristal_inst_chain_step_manager,cristal.inst.chain.step manager,model_cristal_inst_chain_step,sales_team.group_sale_manager,1,1,1,1
