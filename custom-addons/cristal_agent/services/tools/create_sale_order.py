@@ -677,6 +677,21 @@ class CreateSaleOrder(AgentTool):
                         f"y volvé a cotizar. NO lo trates como fuera de zona."),
                 }
 
+        # v1.74 — circuito pausado (Este y Sur-Este): no hay camión, solo retiro.
+        if not is_pickup and route_ctx and route_ctx['kind'] == 'circuit' \
+                and route_ctx['circuit'].paused:
+            return {
+                "ok": False,
+                "blocked_paused_route": True,
+                "message_for_bot": (
+                    f"NO cotizo con envío: el camión a {route_ctx.get('canonical') or partner.city} "
+                    f"(circuito {route_ctx['circuit'].name}) está PAUSADO hasta nuevo aviso. "
+                    f"Ofrecele retirar en el local (San Martín 2350, Río Cuarto) con "
+                    f"comisionista o transporte propio, a los mismos precios mayoristas, sin "
+                    f"mínimo ni flete. Si acepta, volvé a llamar create_sale_order con "
+                    f"delivery_mode='retiro'. No des fecha de paso ni escales a Joaco."),
+            }
+
         if is_cf and not is_pickup and route_ctx and route_ctx['kind'] in ('circuit', 'fuera_zona'):
             return {
                 "ok": False,

@@ -37,7 +37,7 @@ def _owner_channel(env, config):
     return ch or Channel.search(domain, order='write_date desc', limit=1)
 
 
-def _send_to_owner(env, config, text):
+def _send_to_owner(env, config, text, attachment_ids=None):
     channel = _owner_channel(env, config)
     if not channel or not channel.wa_account_id or not channel.whatsapp_number:
         return {"error": "Joaco no tiene chat de WhatsApp en la cuenta"}
@@ -45,14 +45,69 @@ def _send_to_owner(env, config, text):
     tool = ToolRegistry.get('send_whatsapp')
     if not tool:
         return {"error": "send_whatsapp no disponible"}
-    env2 = env(context=dict(env.context, from_cristal_agent=True, wa_transactional=True))
+    env2 = env(context=dict(env.context, from_cristal_agent=True, wa_transactional=True,
+                            cristal_system_attachments=True))
     return tool.execute(env=env2, run=None, channel_id=channel.id, body=text,
                         wa_account_id=channel.wa_account_id.id,
-                        mobile_number=channel.whatsapp_number) or {}
+                        mobile_number=channel.whatsapp_number,
+                        attachment_ids=attachment_ids or None) or {}
 
 
-def request_owner_confirmation(env, order, reason=''):
-    """Le pide a Joaco por WhatsApp que confirme `order`. Una vez cada 24 h por pedido."""
+# v1.74 — Joaco (17/11/2026): "¿en base a qué criterio me sigue mandando pedidos para
+# confirmar, si era autónomo?". De 7 pedidos pedidos en dos días, 3 llegaron sin motivo.
+# Ahora el motivo lo calcula el sistema (la misma lista de control de confirm_order), el
+# pedido viaja con la orden en PDF, y lo que pasa los controles o solo necesita un dato
+# del cliente no se le pide a Joaco.
+_CLIENT_FIXABLE = ('falta la dirección de entrega', 'falta confirmar los bidones')
+
+
+def confirm_blockers(env, order):
+    """Motivos EXACTOS por los que `order` no se confirma solo (lista de control de
+    confirm_order). Lista vacía = pasa todos los controles."""
+    from .tool_registry import ToolRegistry
+    tool = ToolRegistry.get('confirm_order')
+    config = env['cristal.agent.config'].sudo().get_active()
+    if not tool or not config:
+        return ["no se pudo revisar la lista de control"]
+    try:
+        return list(tool._problems(env, config, order.partner_id, order))
+    except Exception as e:  # noqa: BLE001 — sin lista de control decide Joaco
+        _logger.exception("No pude revisar la lista de control de %s", order.name)
+        return [f"no se pudo revisar la lista de control ({str(e)[:80]})"]
+
+
+def only_client_fixable(problems):
+    """True si lo único que falta lo resuelve el cliente (dirección, bidones)."""
+    return bool(problems) and all(
+        any(p.startswith(k) for k in _CLIENT_FIXABLE) for p in problems)
+
+
+def _order_pdf(env, order):
+    """ID del PDF de la orden (ir.attachment) o False si no se pudo generar."""
+    from .tool_registry import ToolRegistry
+    tool = ToolRegistry.get('generate_quote_pdf')
+    try:
+        res = tool.execute(env=env, run=None, sale_order_id=order.id) if tool else {}
+        return (res or {}).get('attachment_id') or False
+    except Exception:  # noqa: BLE001 — el pedido se manda igual, con el link
+        _logger.exception("No pude generar el PDF de %s para Joaco", order.name)
+        return False
+
+
+def _order_pdf_link(order):
+    """Link al PDF de la orden (sirve aunque el mensaje salga por plantilla, que no
+    lleva adjuntos)."""
+    try:
+        order._portal_ensure_token()
+        return order.get_base_url() + order.get_portal_url(report_type='pdf')
+    except Exception:  # noqa: BLE001
+        return ''
+
+
+def request_owner_confirmation(env, order, reason='', force=False):
+    """Le pide a Joaco por WhatsApp que confirme `order`. Una vez cada 24 h por pedido.
+    Si el pedido pasa todos los controles, o solo le falta un dato del cliente, NO se le
+    pide (salvo `force`, que usa la alarma de 24 h)."""
     order = order.sudo()
     if order.state not in ('draft', 'sent'):
         return {"error": f"{order.name} ya no está para confirmar ({order.state})"}
@@ -62,6 +117,12 @@ def request_owner_confirmation(env, order, reason=''):
     last = order.cristal_owner_confirm_at
     if last and last > fields.Datetime.now() - timedelta(hours=24):
         return {"ok": True, "already_requested": True}
+    problems = confirm_blockers(env, order)
+    if not force:
+        if not problems:
+            return {"ok": False, "passes_checklist": True}
+        if only_client_fixable(problems):
+            return {"ok": False, "client_fixable": True, "problems": problems}
     partner = order.partner_id
     total = f"${order.amount_untaxed:,.0f}".replace(',', '.')
     if order.route_departure_id and order.route_departure_id.date:
@@ -71,15 +132,27 @@ def request_owner_confirmation(env, order, reason=''):
         entrega = "retira en la planta"
     else:
         entrega = f"envío a {partner.city or 'sin localidad'}"
-    reason = re.sub(r'\s+', ' ', re.sub(r'<[^>]+>', ' ', reason or '')).strip()[:160]
+    reason = re.sub(r'\s+', ' ', re.sub(r'<[^>]+>', ' ', reason or '')).strip().rstrip('.')[:120]
+    # El mensaje puede salir por plantilla (tope de 900 caracteres con el link incluido).
+    why = '; '.join(problems)
+    if len(why) > 300:
+        why = why[:297].rsplit(' ', 1)[0] + '…'
+    link = _order_pdf_link(order)
     text = (f"Pedido para confirmar {order.name} de {partner.name}: {total} sin IVA, "
-            f"{entrega}." + (f" Motivo: {reason}." if reason else "") +
-            f" Respondé OK {order.name} para confirmarlo o NO {order.name} si no.")
-    res = _send_to_owner(env, config, text)
+            f"{entrega}. "
+            + (f"No lo confirmé solo porque: {why}. " if why else
+               "Pasa todos los controles, pero nadie lo confirmó. ")
+            + (f"Nota: {reason}. " if reason else "")
+            + (f"Orden: {link} " if link else "")
+            + f"Respondé OK {order.name} para confirmarlo o NO {order.name} si no.")
+    pdf = _order_pdf(env, order)
+    res = _send_to_owner(env, config, text, attachment_ids=[pdf] if pdf else None)
     if res.get('ok'):
         order.cristal_owner_confirm_at = fields.Datetime.now()
-        order.message_post(body=f"📲 Se le pidió a Joaco por WhatsApp que confirme el pedido.",
-                           subtype_xmlid='mail.mt_note')
+        order.message_post(
+            body=("📲 Se le pidió a Joaco por WhatsApp que confirme el pedido. Motivo: "
+                  + (why or 'pasa los controles y seguía sin confirmar') + "."),
+            subtype_xmlid='mail.mt_note')
     return res
 
 

@@ -223,7 +223,10 @@ class CristalAgentRouteDeparture(models.Model):
         cutoff_weekday = int(config.route_preventa_cutoff_weekday) % 7 if config else 0
         cutoff_hour = float(config.route_preventa_cutoff_hour) if config else 18.0
         day = self.date - timedelta(days=1)
-        while day.weekday() != cutoff_weekday:
+        # v1.74: una salida corrida de su día habitual (Norte del miércoles 23/12, que se
+        # adelanta por Nochebuena) cierra el día anterior, no el miércoles de la otra semana.
+        regular = self.date.weekday() == int(self.circuit_id.weekday or 3)
+        while regular and day.weekday() != cutoff_weekday:
             day -= timedelta(days=1)
         return self._local_to_utc(day, cutoff_hour)
 
@@ -241,24 +244,36 @@ class CristalAgentRouteDeparture(models.Model):
     # ───────────────────────── Generación ─────────────────────────
     @api.model
     def generate_upcoming(self, weeks=12):
-        """Genera las salidas de las próximas `weeks` semanas por rotación de 28
-        días desde first_departure_date de cada circuito. Idempotente: no duplica
-        (circuit_id, date). Devuelve la cantidad creada."""
+        """Genera las salidas de las próximas `weeks` semanas desde first_departure_date
+        de cada circuito. El camión sale una vez por semana y rota entre los circuitos que
+        NO están pausados: con 4 circuitos cada uno recibe cada 28 días; con 2 (v1.74,
+        Norte y Sur-Oeste), cada 14. Idempotente: no duplica (circuit_id, date). No genera
+        nada después de `cristal_agent.route_no_departures_after` (fecha tope mientras el
+        calendario siguiente no está definido). Devuelve la cantidad creada."""
         Circuit = self.env['cristal.agent.circuit'].sudo()
         today = self._local_today()
         horizon = today + timedelta(weeks=weeks)
+        raw = (self.env['ir.config_parameter'].sudo().get_param(
+            'cristal_agent.route_no_departures_after') or '').strip()
+        if raw:
+            try:
+                horizon = min(horizon, fields.Date.to_date(raw))
+            except Exception:  # noqa: BLE001 — parámetro mal cargado: se ignora
+                _logger.warning("route_no_departures_after inválido: %s", raw)
+        circuits = Circuit.search([('active', '=', True), ('paused', '=', False)])
+        period = 7 * max(len(circuits), 1)
         created = 0
-        for circuit in Circuit.search([('active', '=', True)]):
+        for circuit in circuits:
             if not circuit.first_departure_date:
                 continue
             d = circuit.first_departure_date
             while d < today:
-                d += timedelta(days=28)
+                d += timedelta(days=period)
             while d <= horizon:
                 if not self.search_count([('circuit_id', '=', circuit.id), ('date', '=', d)]):
                     self.create({'circuit_id': circuit.id, 'date': d, 'state': 'preventa'})
                     created += 1
-                d += timedelta(days=28)
+                d += timedelta(days=period)
         _logger.info("generate_upcoming: %s salidas creadas (horizonte %s semanas).",
                      created, weeks)
         return created

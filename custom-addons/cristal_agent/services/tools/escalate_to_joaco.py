@@ -75,6 +75,22 @@ class EscalateToJoaco(AgentTool):
                             "summary": (f"Le pedí a Joaco por WhatsApp que confirme {order.name}. "
                                         f"Al cliente: queda pendiente de confirmación de Joaquín "
                                         f"y le avisás apenas se confirme.")}
+                # v1.74 — lo que pasa los controles o solo necesita un dato del cliente
+                # no se le pide a Joaco.
+                if res.get('passes_checklist'):
+                    return {"ok": False, "not_escalated": True, "message_for_bot": (
+                        f"NO se lo pedí a Joaco: {order.name} pasa TODOS los controles. "
+                        f"Confirmalo vos con confirm_order (si no sabés la forma de pago, "
+                        f"preguntale al cliente: efectivo o transferencia). Si necesitás a "
+                        f"Joaco por otra cosa (el cliente pide algo fuera de lo normal), "
+                        f"escalá explicando qué, SIN el título 'PEDIDO PARA CONFIRMAR'.")}
+                if res.get('client_fixable'):
+                    return {"ok": False, "not_escalated": True, "message_for_bot": (
+                        f"NO se lo pedí a Joaco: a {order.name} solo le falta "
+                        + "; ".join(res.get('problems') or []) + ". Eso lo resuelve el "
+                        "cliente: preguntáselo ahora (dirección exacta o si retira en "
+                        "planta; bidones propios o nuevos), cargalo y llamá a "
+                        "confirm_order.")}
 
         config = env['cristal.agent.config'].sudo().get_active()
         bot_partner = config.bot_partner_id

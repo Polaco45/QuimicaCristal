@@ -100,7 +100,9 @@ class ConfirmOrder(AgentTool):
             p = line.product_id
             if p.is_storable and p.type != 'service' and not is_made_to_order(p):
                 if p.free_qty < line.product_uom_qty:
-                    problems.append(f"no hay stock suficiente de {p.display_name}")
+                    problems.append(
+                        f"no hay stock suficiente de {p.display_name} (pide "
+                        f"{line.product_uom_qty:g}, hay {max(p.free_qty, 0):g})")
             if (line.discount or 0.0) > MAX_DISCOUNT:
                 problems.append(f"descuento mayor al 20% en {p.display_name}")
         overdue = self._overdue_invoices(env, partner)

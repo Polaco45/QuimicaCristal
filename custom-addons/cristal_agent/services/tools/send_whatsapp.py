@@ -188,7 +188,10 @@ class SendWhatsApp(AgentTool):
 
             # v1.36: adjuntos válidos, sin duplicados y controles de promesas/20%.
             from ..send_guards import apply_send_guards, check_attachments, duplicate_recent
-            att_error = check_attachments(env, run, attachment_ids)
+            # v1.74: los adjuntos que arma el propio sistema (orden para Joaco) no
+            # vienen de una corrida de Claudio y no necesitan ese control.
+            att_error = None if env.context.get('cristal_system_attachments') \
+                else check_attachments(env, run, attachment_ids)
             if att_error:
                 return att_error
             bot_pid = config.bot_partner_id.id if config.bot_partner_id else 2

@@ -28,6 +28,7 @@
                         <group>
                             <field name="partner_category_id"/>
                             <field name="active"/>
+                            <field name="paused"/>
                         </group>
                     </group>
                     <notebook>
@@ -64,6 +65,7 @@
                 <field name="name"/>
                 <field name="first_departure_date"/>
                 <field name="partner_category_id"/>
+                <field name="paused" widget="boolean_toggle"/>
                 <field name="active" widget="boolean_toggle"/>
             </list>
         </field>

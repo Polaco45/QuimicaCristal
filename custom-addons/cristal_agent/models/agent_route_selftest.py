@@ -100,6 +100,12 @@ class CristalAgentRouteSelftest(models.TransientModel):
                             "Faltan los circuitos Sur-Oeste/Este o el producto de flete."))
             return
 
+        # v1.74 — el autotest prueba la lógica general de la ruta: dentro de la transacción
+        # (se revierte al final) corre sin circuitos pausados ni fecha tope de salidas.
+        Circuit.search([('paused', '=', True)]).write({'paused': False})
+        env['ir.config_parameter'].sudo().set_param(
+            'cristal_agent.route_no_departures_after', '')
+
         # Salidas fijas para el caso del 29/09/2026 (idempotente).
         for circ, d in ((so, date(2026, 10, 15)), (este, date(2026, 10, 29))):
             dep = Dep.search([('circuit_id', '=', circ.id), ('date', '=', d)], limit=1)
@@ -2132,7 +2138,7 @@ class CristalAgentRouteSelftest(models.TransientModel):
             from ..services import owner_confirm as oc
             sent = []
             orig = oc._send_to_owner
-            oc._send_to_owner = lambda env_, cfg_, text: sent.append(text) or {'ok': True}
+            oc._send_to_owner = lambda env_, cfg_, text, **kw: sent.append(text) or {'ok': True}
             try:
                 p = mk_lc('Conv Joaco OK', 'Rio Cuarto', mobile='+5493589990065')
                 o = SaleOrder.browse(quote(p, 250000)['order_id'])
@@ -2155,6 +2161,51 @@ class CristalAgentRouteSelftest(models.TransientModel):
                 oc._send_to_owner = orig
             return 'pedido grande → pedido a Joaco por WhatsApp (una vez) · NO deja igual · OK confirma'
         self._case(results, "70. Joaco confirma pedidos por WhatsApp", c_owner_confirm)
+
+        # 75) v1.74: motivo exacto al pedirle un pedido a Joaco + circuitos pausados
+        def c_v174():
+            from ..services import owner_confirm as oc
+            sent = []
+            orig = oc._send_to_owner
+            oc._send_to_owner = lambda env_, cfg_, text, **kw: sent.append(text) or {'ok': True}
+            try:
+                p = mk_lc('Motivo Joaco', 'Rio Cuarto', mobile='+5493589990075')
+                p.street = 'Calle Falsa 2'
+                o = SaleOrder.browse(quote(p, 250000)['order_id'])
+                probs = oc.confirm_blockers(env, o)
+                assert any('supera el monto' in x for x in probs), probs
+                if cfg.owner_whatsapp_partner_id:
+                    r = oc.request_owner_confirmation(env, o)
+                    assert r.get('ok') and 'supera el monto' in sent[-1], (r, sent)
+                    assert 'report_type=pdf' in sent[-1], sent[-1]
+                    assert len(sent[-1]) < 800, len(sent[-1])
+            finally:
+                oc._send_to_owner = orig
+            assert oc.only_client_fixable(['falta la dirección de entrega'])
+            assert not oc.only_client_fixable(['falta la dirección de entrega', 'otra cosa'])
+            assert not oc.only_client_fixable([])
+            # Circuito pausado: se reconoce la localidad, no hay fecha y se ofrece retiro.
+            este.paused = True
+            assert not este.get_next_departure(), 'un circuito pausado no tiene próxima salida'
+            gi = gri.execute(env=env, run=None, city='La Carlota')
+            assert gi.get('zone') == 'ruta_pausada' and not gi.get('departure_date'), gi
+            assert 'comisionista' in gi['suggested_phrase'], gi
+            pc = mk_lc('Pausado Carlota', 'La Carlota', mobile='+5493589990076')
+            pc.truck_circuit_id = este.id
+            blocked = quote(pc, 90000)
+            assert blocked.get('blocked_paused_route'), blocked
+            # Con dos circuitos activos la rotación es cada 14 días.
+            Circuit.search([('id', 'not in', (so.id, este.id))]).write({'paused': True})
+            este.paused = False
+            Dep.search([('date', '>', date.today())]).filtered(
+                lambda d: not d.order_ids).unlink()
+            Dep.generate_upcoming(weeks=8)
+            fut = Dep.search([('circuit_id', '=', so.id), ('date', '>', date.today())],
+                             order='date')
+            gaps = {(b.date - a.date).days for a, b in zip(fut, fut[1:])}
+            assert len(fut) >= 2 and gaps == {14}, (fut.mapped('date'), gaps)
+            return 'motivo calculado + link al PDF · pausado → retiro, sin fecha · 2 circuitos → cada 14 días'
+        self._case(results, "75. Motivo de confirmación y circuitos pausados", c_v174)
 
         # 71) v1.68: combos de entrada (precio de combo repartido y 20 % de primera compra)
         def c_entry_combos():
@@ -2257,7 +2308,8 @@ class CristalAgentRouteSelftest(models.TransientModel):
             from .agent_lifecycle import ACTION_VARIANTS, ACTIONS as _A
             assert set(ACTION_VARIANTS) <= set(_A), 'variante de una acción que no existe'
             assert _A['d_visita'][0] == 'Dormido · llamada'
-            assert SaleOrder.cron_requested_unconfirmed() >= 0
+            # limit=0: no toca pedidos reales (desde v1.74 puede confirmarlos solo).
+            assert SaleOrder.cron_requested_unconfirmed(limit=0) == 0
             return 'limpia solo las de mayoristas · variantes A/B definidas · cliente dormido → llamada'
         self._case(results, "74. Limpieza de actividades y pruebas A/B", c_limpieza_171)
 
