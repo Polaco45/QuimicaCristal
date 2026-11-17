@@ -247,6 +247,12 @@ class CristalInstEngine(models.AbstractModel):
                 chain_step = nxt['id']
                 step = '%s: %s' % (nxt['channel_label'], nxt['name'])
                 step_date = anchor + timedelta(days=nxt['day'])
+                # Entre un aviso y el siguiente se respeta la espera de la cadena,
+                # aunque el cliente venga muy atrasado.
+                if done and partner.inst_last_call:
+                    prev = next((s for s in steps if s['sequence'] == done), None)
+                    gap = max(1, nxt['day'] - (prev['day'] if prev else 0))
+                    step_date = max(step_date, partner.inst_last_call + timedelta(days=gap))
             elif steps:
                 step = 'Se terminó la cadena de avisos sin respuesta: llamar, posponer o descartar'
                 step_date = today
