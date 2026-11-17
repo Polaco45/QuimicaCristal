@@ -174,6 +174,9 @@ class CristalInstEngine(models.AbstractModel):
             if info['kit_order']:
                 reason = 'Kit cargado, falta entregarlo'
                 step = 'Entregar el kit de prueba'
+            elif partner.inst_last_result == 'kit':
+                reason = 'Aceptó el kit, falta cargarlo'
+                step = 'Cargar el kit de prueba y entregarlo'
             elif partner.inst_ficha_falta:
                 reason = 'Falta en la ficha: %s' % partner.inst_ficha_falta
                 step = 'Completar la ficha y ofrecer el kit de prueba'
