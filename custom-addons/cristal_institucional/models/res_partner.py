@@ -1,4 +1,5 @@
 from odoo import api, fields, models
+from odoo.exceptions import UserError
 
 INST_STAGES = [
     ('prospecto', 'Prospecto'),
@@ -108,6 +109,68 @@ class ResPartner(models.Model):
     inst_next_expected = fields.Date('Próxima compra esperada', copy=False, readonly=True)
     inst_days_late = fields.Integer('Días de atraso', copy=False, readonly=True)
     inst_computed_at = fields.Datetime('Calculado el', copy=False, readonly=True)
+    inst_buys = fields.Char('Qué nos compra', copy=False, readonly=True)
+    inst_gaps = fields.Char(
+        'Qué le falta sumar', copy=False, readonly=True,
+        help='Familias de fabricación propia que todavía no nos compra. Son las que más margen dejan.')
+    inst_script = fields.Html('Guion para la llamada', compute='_compute_inst_script', sanitize=False)
+
+    @api.depends('inst_stage', 'inst_alert', 'inst_decisor_id', 'inst_ficha_falta', 'inst_gaps',
+                 'inst_last_order', 'inst_kit_date', 'name')
+    def _compute_inst_script(self):
+        from markupsafe import Markup
+        intro = 'Soy Joaquín, de Cristal Limpieza Profesional, somos fábrica acá en Río Cuarto.'
+        for partner in self:
+            name = partner.name or ''
+            who = partner.inst_decisor_id.name or ''
+            hello = ('Hola %s, ¿cómo estás?' % who) if who else 'Hola, buen día.'
+            lines = []
+            stage = partner.inst_stage
+            if stage == 'prospecto' or (stage == 'captacion' and not who):
+                lines = [
+                    '%s %s Seleccionamos a %s entre algunos locales para mandarles sin cargo un kit de productos '
+                    'y que prueben la nueva formulación de nuestro desengrasante.' % (hello, intro, name),
+                    '¿Quién se encarga de los pedidos de limpieza? ¿Me pasás su nombre y su WhatsApp?',
+                ]
+            elif stage == 'captacion':
+                lines = [
+                    '%s %s Les queremos mandar sin cargo un kit con el desengrasante de formulación nueva '
+                    'para que lo prueben.' % (hello, intro),
+                    '¿Qué detergente y qué lavandina están usando hoy, y cuánto llevan cada vez?',
+                    'En papel, ¿usan bobina, toallas o servilletas? ¿Cuánto por semana?',
+                    '¿Cada cuánto reponen? ¿A qué dirección y en qué horario les llevo el kit?',
+                ]
+                if partner.inst_ficha_falta:
+                    lines.append('Falta completar: %s.' % partner.inst_ficha_falta)
+            elif stage == 'primera_compra':
+                lines = [
+                    '%s Soy Joaquín, de Cristal. ¿Cómo les fue con el kit, pudieron probar el desengrasante?' % hello,
+                    'Les armé una propuesta especial de primera compra con lo que usan todas las semanas.',
+                    '¿Te la mando ahora por WhatsApp y lo entregamos esta semana?',
+                ]
+            elif stage == 'pedido_formal':
+                lines = [
+                    '%s Soy Joaquín, de Cristal. ¿Cómo les fue con lo que llevaron?' % hello,
+                    '¿Ya les toca reponer? Les armo el mismo pedido y lo entregamos.',
+                    '¿Cada cuánto les conviene que les avise para reponer?',
+                ]
+            elif stage == 'recurrente':
+                if partner.inst_alert in ('riesgo', 'dormido'):
+                    lines = [
+                        '%s Soy Joaquín, de Cristal. Hace un tiempo que no nos piden y quería saber cómo están.' % hello,
+                        '¿Les quedó stock o hubo algo que no les cerró?',
+                        '¿Les armo el pedido de siempre?',
+                    ]
+                else:
+                    lines = ['%s Soy Joaquín, de Cristal. ¿Les armo la reposición de siempre?' % hello]
+                    if partner.inst_gaps:
+                        lines.append('Todavía no nos llevan: %s. Ofrecer uno para probar en este pedido.'
+                                     % partner.inst_gaps)
+            if lines:
+                html = Markup('<ol>%s</ol>') % Markup('').join(Markup('<li>%s</li>') % line for line in lines)
+            else:
+                html = False
+            partner.inst_script = html
 
     @api.model
     def _group_expand_inst_stage(self, values, domain):
@@ -166,6 +229,65 @@ class ResPartner(models.Model):
             'target': 'new',
             'context': {'default_partner_id': self.commercial_partner_id.id},
         }
+
+    def _inst_order_vals(self):
+        partner = self.commercial_partner_id
+        vals = {'partner_id': partner.id, 'user_id': self.env.uid}
+        team = self.env['crm.team'].sudo().search([('name', '=', 'Institucional')], limit=1)
+        if team:
+            vals['team_id'] = team.id
+        lead = self.env['crm.lead'].sudo().search(
+            [('partner_id', 'child_of', partner.id), ('type', '=', 'opportunity')], order='id desc', limit=1)
+        if lead:
+            vals['opportunity_id'] = lead.id
+        return vals
+
+    def _inst_open_order(self, order):
+        return {
+            'type': 'ir.actions.act_window',
+            'res_model': 'sale.order',
+            'res_id': order.id,
+            'view_mode': 'form',
+        }
+
+    def action_inst_send_kit(self):
+        """Arma el pedido del kit de prueba sin cargo. Queda como cotización para revisarlo y confirmarlo."""
+        self.ensure_one()
+        partner = self.commercial_partner_id
+        if partner.inst_kit_order_id:
+            return self._inst_open_order(partner.inst_kit_order_id)
+        icp = self.env['ir.config_parameter'].sudo()
+        raw = icp.get_param('cristal_institucional.kit_product_ids', '5315,6334,11763')
+        ids = [int(x) for x in raw.replace(' ', '').split(',') if x.isdigit()]
+        products = self.env['product.product'].browse(ids).exists()
+        if not products:
+            raise UserError('No están configurados los productos del kit (parámetro cristal_institucional.kit_product_ids).')
+        tag_name = icp.get_param('cristal_institucional.kit_tag', 'Regalo captación')
+        Tag = self.env['crm.tag'].sudo()
+        tag = Tag.search([('name', '=', tag_name)], limit=1) or Tag.create({'name': tag_name})
+        vals = partner._inst_order_vals()
+        vals.update({
+            'client_order_ref': 'Kit de prueba - captación institucional',
+            'tag_ids': [(6, 0, tag.ids)],
+            'order_line': [(0, 0, {'product_id': p.id, 'product_uom_qty': 1.0, 'price_unit': 0.0})
+                           for p in products],
+        })
+        order = self.env['sale.order'].create(vals)
+        order.order_line.write({'price_unit': 0.0})
+        self.env['cristal.inst.engine'].recompute(partner)
+        return self._inst_open_order(order)
+
+    def action_inst_first_offer(self):
+        """Abre una cotización marcada como propuesta de primera compra (con piso de margen)."""
+        self.ensure_one()
+        partner = self.commercial_partner_id
+        vals = partner._inst_order_vals()
+        vals.update({
+            'client_order_ref': 'Propuesta de primera compra',
+            'inst_first_offer': True,
+        })
+        order = self.env['sale.order'].create(vals)
+        return self._inst_open_order(order)
 
     def action_inst_discard(self):
         self.write({'inst_discarded': True})

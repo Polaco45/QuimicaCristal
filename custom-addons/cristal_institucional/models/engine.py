@@ -43,9 +43,11 @@ class CristalInstEngine(models.AbstractModel):
     @api.model
     def _gather(self, partners, params):
         """Devuelve por empresa: compras reales (fecha, monto, margen) y el kit."""
-        data = {p.id: {'orders': [], 'kit_order': False, 'kit_date': False} for p in partners}
+        data = {p.id: {'orders': [], 'kit_order': False, 'kit_date': False, 'fams': set()} for p in partners}
         if not partners:
             return data
+        since = fields.Date.context_today(self) - timedelta(days=365)
+        recent = {}
         SaleOrder = self.env['sale.order'].sudo()
         orders = SaleOrder.search([
             ('partner_id', 'child_of', partners.ids),
@@ -73,6 +75,18 @@ class CristalInstEngine(models.AbstractModel):
             if order.state in ('sale', 'done') and order.amount_untaxed > 0:
                 data[pid]['orders'].append(
                     (order.date_order.date(), order.amount_untaxed, order.margin or 0.0))
+                if order.date_order.date() >= since:
+                    recent[order.id] = pid
+        # Qué familias de productos compró cada empresa en los últimos 12 meses
+        if recent:
+            lines = self.env['sale.order.line'].sudo().search([
+                ('order_id', 'in', list(recent)),
+                ('display_type', '=', False),
+                ('price_subtotal', '>', 0),
+                ('product_id', '!=', False),
+            ])
+            for line in lines:
+                data[recent[line.order_id.id]]['fams'].add(self._family(line.product_id.categ_id))
         if 'pos.order' in self.env:
             PosOrder = self.env['pos.order'].sudo()
             pos_orders = PosOrder.search([
@@ -87,6 +101,22 @@ class CristalInstEngine(models.AbstractModel):
                     margin = order.margin if 'margin' in PosOrder._fields else 0.0
                     data[pid]['orders'].append((order.date_order.date(), untaxed, margin or 0.0))
         return data
+
+    @api.model
+    def _family(self, categ):
+        """Familia = los dos primeros niveles de la categoría (ej. 'Fabricación / Detergente')."""
+        parts = [p.strip() for p in (categ.complete_name or '').split('/') if p.strip()]
+        return ' / '.join(parts[:2]) if parts else ''
+
+    @api.model
+    def _reference_families(self):
+        """Familias de fabricación propia: son las que más margen dejan y las que conviene sumar."""
+        Categ = self.env['product.category'].sudo()
+        roots = Categ.search([('parent_id', '=', False), ('name', '=ilike', 'Fabricaci%')])
+        if not roots:
+            roots = Categ.search([('name', '=ilike', 'Fabricaci%')], limit=1)
+        children = Categ.search([('parent_id', 'in', roots.ids)]) if roots else Categ
+        return sorted({self._family(c) for c in children if self._family(c)})
 
     # ------------------------------------------------------------ clasificación
     @api.model
@@ -128,6 +158,13 @@ class CristalInstEngine(models.AbstractModel):
         days_since = (today - dates[-1]).days if dates else 0
         vals['inst_cycle_days'] = cycle if dates else 0
 
+        # Qué compra y qué le falta sumar (fabricación propia)
+        fams = info.get('fams') or set()
+        short = lambda fam: fam.split(' / ')[-1]
+        gaps = [short(f) for f in params.get('ref_fams', []) if f not in fams] if count else []
+        vals['inst_buys'] = ', '.join(sorted(short(f) for f in fams))[:250] or False
+        vals['inst_gaps'] = ', '.join(gaps)[:250] or False
+
         alert = 'ok'
         step, step_date, deadline, expected, late = False, False, False, False, 0
 
@@ -150,6 +187,8 @@ class CristalInstEngine(models.AbstractModel):
                 step_date = today
             else:
                 step = 'Reposición esperada: confirmar el pedido'
+                if gaps:
+                    step += ' y ofrecerle %s' % ' o '.join(gaps[:2]).lower()
                 step_date = expected
         elif count == 1:
             stage = 'pedido_formal'
@@ -254,6 +293,8 @@ class CristalInstEngine(models.AbstractModel):
         if not partners:
             return 0
         params = self._params()
+        params['ref_fams'] = self._reference_families()
+        StageLog = self.env['cristal.inst.stage.log'].sudo()
         today = fields.Date.context_today(self)
         now = fields.Datetime.now()
         data = self._gather(partners, params)
@@ -270,6 +311,15 @@ class CristalInstEngine(models.AbstractModel):
             if diff:
                 changed += 1
                 diff['inst_computed_at'] = now
+                if 'inst_stage' in diff:
+                    previous_date = partner.inst_stage_date
+                    StageLog.create({
+                        'partner_id': partner.id,
+                        'date': today,
+                        'stage_from': partner.inst_stage or False,
+                        'stage_to': diff['inst_stage'],
+                        'days_in_previous': (today - previous_date).days if previous_date else 0,
+                    })
                 partner.write(diff)
         _logger.info('Institucional: %s empresas evaluadas, %s con cambios', len(partners), changed)
         return changed
@@ -277,3 +327,97 @@ class CristalInstEngine(models.AbstractModel):
     @api.model
     def _cron_refresh(self):
         self.recompute()
+
+    # ---------------------------------------------------------- informe semanal
+    @api.model
+    def _weekly_data(self):
+        Partner = self.env['res.partner'].sudo()
+        today = fields.Date.context_today(self)
+        week_ago = today - timedelta(days=7)
+        partners = Partner.search([('inst_is', '=', True)])
+        labels = dict(Partner._fields['inst_stage'].selection)
+        rows = []
+        for key, label in Partner._fields['inst_stage'].selection:
+            group = partners.filtered(lambda p, k=key: p.inst_stage == k)
+            rows.append({
+                'key': key, 'label': label, 'count': len(group),
+                'at_risk': len(group.filtered(lambda p: p.inst_alert == 'riesgo')),
+                'dormant': len(group.filtered(lambda p: p.inst_alert == 'dormido')),
+                'overdue': len(group.filtered(lambda p: p.inst_alert == 'vence')),
+                'margin_month': sum(group.mapped('inst_margin_month')),
+            })
+        logs = self.env['cristal.inst.stage.log'].sudo().search([
+            ('date', '>', week_ago), ('stage_from', '!=', False)])
+        moves = {}
+        for log in logs:
+            pair = '%s → %s' % (labels.get(log.stage_from, '?'), labels.get(log.stage_to, '?'))
+            moves[pair] = moves.get(pair, 0) + 1
+        calls = self.env['cristal.inst.call'].sudo().search([('date', '>', fields.Datetime.now() - timedelta(days=7))])
+        top = Partner.search(
+            [('inst_is', '=', True), ('inst_stage', '!=', 'descartado'), ('inst_next_step', '!=', False)],
+            order='inst_priority desc', limit=8)
+        return {
+            'today': today, 'rows': rows, 'moves': moves,
+            'calls': len(calls), 'talks': len(calls.filtered('is_contact')),
+            'kits': len(partners.filtered(lambda p: p.inst_kit_date and p.inst_kit_date > week_ago)),
+            'first_orders': len(partners.filtered(lambda p: p.inst_first_order and p.inst_first_order > week_ago)),
+            'top': top,
+        }
+
+    @api.model
+    def _weekly_html(self, data):
+        from markupsafe import Markup, escape
+        money = lambda v: '$ {:,.0f}'.format(v or 0).replace(',', '.')
+        html = Markup('<p><strong>Institucional: resumen de la semana</strong></p>')
+        html += Markup('<p>Llamadas registradas: %s (%s con conversación). Kits entregados: %s. '
+                       'Primeras compras: %s.</p>') % (data['calls'], data['talks'], data['kits'], data['first_orders'])
+        html += Markup('<p><strong>Embudo hoy</strong></p><ul>')
+        for row in data['rows']:
+            extra = []
+            if row['at_risk']:
+                extra.append('%s en riesgo' % row['at_risk'])
+            if row['dormant']:
+                extra.append('%s dormidas' % row['dormant'])
+            if row['overdue']:
+                extra.append('%s con fecha límite vencida' % row['overdue'])
+            if row['margin_month']:
+                extra.append('margen por mes %s' % money(row['margin_month']))
+            html += Markup('<li>%s: %s%s</li>') % (
+                row['label'], row['count'], (' (%s)' % ', '.join(extra)) if extra else '')
+        html += Markup('</ul>')
+        if data['moves']:
+            html += Markup('<p><strong>Cambios de etapa en la semana</strong></p><ul>')
+            for pair, qty in sorted(data['moves'].items(), key=lambda kv: -kv[1]):
+                html += Markup('<li>%s: %s</li>') % (pair, qty)
+            html += Markup('</ul>')
+        else:
+            html += Markup('<p>Ninguna empresa cambió de etapa esta semana.</p>')
+        if data['top']:
+            html += Markup('<p><strong>Lo más importante para esta semana</strong></p><ol>')
+            for partner in data['top']:
+                html += Markup('<li>%s: %s</li>') % (escape(partner.name), escape(partner.inst_next_step))
+            html += Markup('</ol>')
+        return html
+
+    @api.model
+    def _cron_weekly_report(self):
+        self.recompute()
+        data = self._weekly_data()
+        Snapshot = self.env['cristal.inst.snapshot'].sudo()
+        Snapshot.search([('date', '=', data['today'])]).unlink()
+        Snapshot.create([{
+            'date': data['today'], 'stage': row['key'], 'count': row['count'],
+            'at_risk': row['at_risk'], 'dormant': row['dormant'], 'overdue': row['overdue'],
+            'margin_month': row['margin_month'],
+        } for row in data['rows']])
+        icp = self.env['ir.config_parameter'].sudo()
+        raw = icp.get_param('cristal_institucional.report_user_ids', '18')
+        user_ids = [int(x) for x in raw.replace(' ', '').split(',') if x.isdigit()]
+        users = self.env['res.users'].sudo().browse(user_ids).exists()
+        if users:
+            self.env['mail.thread'].sudo().message_notify(
+                partner_ids=users.mapped('partner_id').ids,
+                subject='Institucional: resumen de la semana',
+                body=self._weekly_html(data),
+            )
+        return True

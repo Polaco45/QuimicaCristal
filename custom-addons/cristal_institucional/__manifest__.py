@@ -1,6 +1,6 @@
 {
     'name': 'Cristal Institucional',
-    'version': '18.0.1.1.0',
+    'version': '18.0.1.2.0',
     'summary': 'Máquina de venta institucional: etapa de cada empresa calculada por hechos, '
                'próximo paso, ficha de cuenta e indicadores por cliente.',
     'author': 'Química Cristal',
@@ -11,6 +11,7 @@
         'security/ir.model.access.csv',
         'data/cron.xml',
         'views/call_views.xml',
+        'views/history_views.xml',
         'views/partner_views.xml',
         'views/menu.xml',
     ],

@@ -40,6 +40,7 @@ class CristalInstCallWizard(models.TransientModel):
     _description = 'Institucional: registrar llamada'
 
     partner_id = fields.Many2one('res.partner', 'Empresa', required=True)
+    script = fields.Html('Guion', related='partner_id.inst_script', sanitize=False)
     result = fields.Selection(CALL_RESULTS, 'Resultado', required=True, default='no_atendio')
     notes = fields.Text('Qué pasó')
     next_date = fields.Date(
