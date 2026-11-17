@@ -465,7 +465,9 @@ class CristalAgentRouteSelftest(models.TransientModel):
                                ('state', 'in', ('preventa', 'rescate'))])
             # Una salida que el equipo movió a mano (ej. Sur-Oeste al viernes 23/10)
             # es válida: solo se exige jueves a las que generó el sistema.
-            moved = deps.filtered(lambda d: d.date.weekday() != 3 and d.write_uid.id != 1)
+            # v1.74: también las adelantadas por un feriado (Norte del mié 23/12): original_date.
+            moved = deps.filtered(lambda d: d.date.weekday() != 3
+                                  and (d.write_uid.id != 1 or d.original_date))
             bad = deps.filtered(lambda d: d.date.weekday() != 3) - moved
             assert deps and not bad, f"salidas que no caen jueves: {bad.mapped('name')}"
             assert rc_no_delivery_day(env) == 'jueves', rc_no_delivery_day(env)
@@ -1855,6 +1857,7 @@ class CristalAgentRouteSelftest(models.TransientModel):
             assert spec_angle == 'FABRICA', "PRODUCTO sin oferta debería caer en FABRICA"
             offer = env['cristal.agent.offer'].sudo().create({
                 'name': 'ZZ Combo Test', 'offer_type': 'bundle',
+                'valid_until': today_ar + timedelta(days=30),
                 'description': 'Combo test: 1 caja de jabón + 1 caja de cloro. Precio: lista del día '
                                '(Claudio lo cotiza con create_sale_order).'})
             _a, _s, body = Pauta.organic_spec('PRODUCTO', {'mes': 'X', 'mes_min': 'x', 'clientes': 0,
