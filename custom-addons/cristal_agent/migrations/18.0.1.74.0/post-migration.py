@@ -13,7 +13,7 @@ Los pedidos de las zonas pausadas ya los canceló y avisó otro chat el 17/11 (S
 S07155, S07061, S07128, S07083). Acá solo se ordenan circuitos y salidas.
 """
 import logging
-from datetime import date
+from datetime import date, timedelta
 
 from odoo import api, SUPERUSER_ID
 
@@ -72,12 +72,17 @@ def migrate(cr, version):
         for d in dates:
             if d < today:
                 continue
+            # Día habitual de esa semana (jueves). Si la salida va otro día (Norte del mié
+            # 23/12), queda anotada como adelantada: original_date = el jueves.
+            regular = d + timedelta(days=int(circuit.weekday or 3) - d.weekday())
             dep = Dep.search([('circuit_id', '=', circuit.id), ('date', '=', d)], limit=1)
             if not dep:
                 dep = Dep.create({'circuit_id': circuit.id, 'date': d, 'state': 'preventa'})
                 created.append(dep.name)
             elif dep.state == 'postergada':
                 dep.state = 'preventa'
+            if regular != d and not dep.original_date:
+                dep.with_context(no_reschedule_notice=True).write({'original_date': regular})
 
     _logger.info("✅ MIGRATION 1.74.0: pausados %s · salidas creadas %s · borradas %s · "
                  "con pedidos (postergadas) %s", PAUSED, created, removed, held)
