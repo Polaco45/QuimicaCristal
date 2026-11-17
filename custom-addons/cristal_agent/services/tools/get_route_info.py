@@ -107,18 +107,21 @@ class GetRouteInfo(AgentTool):
         if not circuit:
             return {
                 "ok": True, "zone": "fuera_zona", "city": info.get('canonical') or city_text,
-                "escalate": True,
+                "escalate": False,
                 "suggested_phrase": (
-                    "A su localidad no llega nuestro reparto. Puede retirar el pedido en "
-                    "nuestra planta (San Martín 2350, Río Cuarto) o enviarlo con el "
-                    "transporte que usted elija, a su cargo."),
+                    "A su localidad no llega nuestro reparto, pero le vendemos igual a "
+                    "precio mayorista: puede retirar el pedido en nuestro local (San Martín "
+                    "2350, Río Cuarto) o mandarlo a buscar con un comisionista o transporte "
+                    "de su confianza, a su cargo."),
                 "message_for_bot": (
-                    f"{info.get('canonical') or city_text} está FUERA de los 4 circuitos de "
-                    f"la ruta. NO ofrezcas condiciones de envío (ni mínimo de ruta, ni "
-                    f"flete, ni fecha) y NUNCA digas que Joaquín le coordina el envío. "
-                    f"Ofrecé las dos opciones de `suggested_phrase` (retiro en planta o "
-                    f"transporte a cargo del cliente). Pasale la lista, tratalo de USTED y "
-                    f"escalá a Joaco UNA vez con escalate_to_joaco."),
+                    f"{info.get('canonical') or city_text} está FUERA de nuestras rutas. "
+                    f"Atendelo IGUAL que a cualquier mayorista (lista, precios, combos, "
+                    f"cotización): lo único que cambia es la entrega. NO ofrezcas condiciones "
+                    f"de envío (ni mínimo de ruta, ni flete, ni fecha) y NUNCA digas que "
+                    f"Joaquín le coordina el envío. Ofrecé las opciones de `suggested_phrase` "
+                    f"(retiro en el local o comisionista / transporte a su cargo) y cotizá con "
+                    f"delivery_mode='retiro'. Tratalo de USTED. NO escales a Joaco por ser de "
+                    f"fuera de zona."),
             }
 
         # ── v1.74: circuito PAUSADO (Este y Sur-Este desde el 17/11/2026) ──

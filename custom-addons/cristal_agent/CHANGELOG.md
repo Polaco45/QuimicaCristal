@@ -7,6 +7,15 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.75.0] — 2026-11-17
+
+### Changed — Consumidor final con atención simple y mayoristas de fuera de ruta sin escalar
+Joaco (17/11): "si son para la casa que los derive a la web o que los atienda simple; si son
+mayoristas a todos los atiende igual, solo que a los que nuestras rutas no cubren les ofrece retiro
+con comisionista o que vengan a nuestro local". Prompt (sección 4b y entregas), `get_route_info`
+(fuera de zona ya no pide escalar) y `create_sale_order` (fuera de zona con envío → recotizar con
+retiro, sin aviso a Joaco).
+
 ## [18.0.1.74.1] — 2026-11-17
 
 ### Changed — Ruta: una salida cada dos semanas
