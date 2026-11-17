@@ -281,6 +281,8 @@ class SaleOrder(models.Model):
             products += amount(l)
             gross += l.price_unit * l.product_uom_qty
             name = (l.product_id.display_name or l.name or '').split('\n')[0]
+            if name.startswith('[') and '] ' in name:      # sin el código interno [PQ0114]
+                name = name.split('] ', 1)[1]
             out.append(f"• {l.product_uom_qty:g} {name} — {money(amount(l))}")
         if has_shipping:
             out.append(f"• Envío — {money(shipping) if shipping else 'sin cargo'}")
