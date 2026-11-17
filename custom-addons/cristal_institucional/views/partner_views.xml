@@ -9,7 +9,7 @@
         <field name="arch" type="xml">
             <xpath expr="//notebook" position="inside">
                 <page string="Institucional" name="cristal_inst_page"
-                      groups="sales_team.group_sale_salesman" invisible="parent_id">
+                      groups="sales_team.group_sale_salesman" invisible="parent_id and not is_company">
                     <group>
                         <field name="inst_is"/>
                     </group>
@@ -119,7 +119,7 @@
                         <footer class="pt-1">
                             <div class="d-flex text-muted">
                                 <span t-if="record.inst_order_count.raw_value">
-                                    <field name="inst_order_count"/> compras · margen por mes <field name="inst_margin_month" widget="monetary"/>
+                                    Compras: <field name="inst_order_count"/> · margen por mes <field name="inst_margin_month" widget="monetary"/>
                                 </span>
                                 <span t-else="">Ficha <field name="inst_ficha_pct"/> %</span>
                             </div>

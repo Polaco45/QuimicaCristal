@@ -161,6 +161,8 @@ class CristalInstEngine(models.AbstractModel):
             if days_since > params['dormant_min_days']:
                 alert = 'dormido'
                 step = 'Llamar: compró una vez hace %s días y no volvió. Saber por qué' % days_since
+                step_date = today
+                deadline = False
         elif kit_date:
             stage = 'primera_compra'
             reason = 'Kit entregado el %s, todavía no compró' % kit_date.strftime('%d/%m/%Y')
