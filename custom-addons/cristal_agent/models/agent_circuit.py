@@ -142,6 +142,14 @@ class CristalAgentCircuit(models.Model):
 
     name = fields.Char(required=True)
     active = fields.Boolean(default=True)
+    # v1.74 — Joaco (17/11/2026): quedan solo Norte y Sur-Oeste; Este y Sur-Este se pausan
+    # hasta nuevo aviso. Pausado NO es archivado: las localidades se siguen reconociendo
+    # (no son "fuera de zona"), pero no hay camión: retiro en el local con comisionista.
+    paused = fields.Boolean(
+        string="Pausado (sin camión)", default=False,
+        help="El camión no pasa por este circuito hasta nuevo aviso. No se generan salidas "
+             "y a sus clientes se les ofrece retirar en el local con comisionista o "
+             "transporte propio, a precio mayorista, sin mínimo ni flete.")
     sequence = fields.Integer(
         string="Orden de rotación", default=10,
         help="Orden en que rota el camión entre circuitos.")
@@ -234,6 +242,8 @@ class CristalAgentCircuit(models.Model):
         reference_dt: datetime naive UTC (default: ahora). Si no hay ninguna,
         devuelve un recordset vacío (el bot NO inventa fecha: escala)."""
         self.ensure_one()
+        if self.paused:
+            return self.env['cristal.agent.route.departure']
         now = reference_dt or fields.Datetime.now()
         deps = self.departure_ids.filtered(
             lambda d: d.state in self.OPEN_STATES).sorted('date')

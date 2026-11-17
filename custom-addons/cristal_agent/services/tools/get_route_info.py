@@ -121,6 +121,28 @@ class GetRouteInfo(AgentTool):
                     f"escalá a Joaco UNA vez con escalate_to_joaco."),
             }
 
+        # ── v1.74: circuito PAUSADO (Este y Sur-Este desde el 17/11/2026) ──
+        if circuit.paused:
+            town_p = info.get('canonical') if info.get('kind') == 'circuit' \
+                else (city_text or circuit.name)
+            return {
+                "ok": True, "zone": "ruta_pausada", "circuit": circuit.name, "city": town_p,
+                "departure": None, "paused": True,
+                "suggested_phrase": (
+                    f"Por ahora el camión no está pasando por {town_p}. Puede retirar su "
+                    f"pedido en nuestro local (San Martín 2350, Río Cuarto) con comisionista "
+                    f"o transporte propio, a los mismos precios mayoristas, sin compra "
+                    f"mínima ni flete."),
+                "message_for_bot": (
+                    f"El camión a {town_p} (circuito {circuit.name}) está PAUSADO hasta "
+                    f"nuevo aviso. NUNCA des una fecha de paso, ni mínimo de ruta, ni flete, "
+                    f"ni digas cuándo vuelve. Ofrecé lo de `suggested_phrase`: retiro en el "
+                    f"local con comisionista o transporte propio, mismos precios de Lista "
+                    f"Mayorista, sin mínimo. Si acepta, cotizá con create_sale_order y "
+                    f"delivery_mode='retiro'. NO es fuera de zona y NO escales a Joaco por "
+                    f"esto."),
+            }
+
         # ── Es de un circuito: próxima salida real (registro en preventa) ──
         departure = circuit.get_next_departure()
         if not config:

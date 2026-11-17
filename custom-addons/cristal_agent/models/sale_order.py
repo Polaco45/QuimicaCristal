@@ -495,6 +495,11 @@ class SaleOrder(models.Model):
         intent = re.compile(
             r'\b(quiero el pedido|lo quiero|confirm[oa]\b|confirmame|dale|mandame(lo)?|'
             r'hacelo|hac[eé] el pedido|s[ií],? (lo )?(quiero|confirmo))', re.IGNORECASE)
+        # Pedido explícito (un "dale" suelto no alcanza para confirmar sin preguntar).
+        strong = re.compile(
+            r'\b(quiero el pedido|lo quiero|confirmo\b|confirmame|confirmalo|'
+            r'hac[eé] el pedido|s[ií],? (lo )?(quiero|confirmo))', re.IGNORECASE)
+        from ..services.owner_confirm import confirm_blockers
         now = fields.Datetime.now()
         orders = self.sudo().search([
             ('state', 'in', ('draft', 'sent')), ('cristal_owner_confirm_at', '=', False),
@@ -518,8 +523,25 @@ class SaleOrder(models.Model):
             text = ' '.join(re.sub(r'<[^>]+>', ' ', m.body or '') for m in msgs)
             if not intent.search(text):
                 continue
+            # v1.74 — antes de molestar a Joaco: si el cliente lo pidió con todas las
+            # letras y el pedido pasa TODOS los controles, se confirma solo (el cliente
+            # recibe el aviso con el detalle de pago). Si no, a Joaco con el motivo exacto.
+            if strong.search(text) and not confirm_blockers(self.env, order):
+                try:
+                    with self.env.cr.savepoint():
+                        order.with_context(from_cristal_agent=True).action_confirm()
+                        order.message_post(
+                            body=("✅ Confirmado automáticamente: el cliente lo pidió por "
+                                  "WhatsApp hace más de 24 h y el pedido pasa todos los "
+                                  "controles (monto, zona, stock, bidones, sin deuda)."),
+                            subtype_xmlid='mail.mt_note')
+                    sent += 1
+                    self.env.cr.commit()
+                    continue
+                except Exception:  # noqa: BLE001 — si no se pudo, decide Joaco
+                    _logger.exception("No pude confirmar solo %s", order.name)
             res = request_owner_confirmation(
-                self.env, order, "el cliente lo pidió hace más de 24 h y sigue sin confirmar")
+                self.env, order, "el cliente lo pidió hace más de 24 h", force=True)
             if res.get('ok') and not res.get('already_requested'):
                 sent += 1
                 self.env.cr.commit()

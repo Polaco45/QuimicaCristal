@@ -7,6 +7,27 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.74.0] — 2026-11-17
+
+### Changed — "Pedido para confirmar": motivo exacto, orden adjunta y menos pedidos a Joaco
+Joaco (17/11): "¿en base a qué criterio me sigue mandando pedidos para confirmar, si era autónomo?".
+De 7 pedidos en dos días, 3 llegaron sin motivo. Ahora el motivo lo calcula el sistema con la misma
+lista de control de `confirm_order` (`owner_confirm.confirm_blockers`), incluido qué producto no
+tiene stock y cuánto falta; el mensaje lleva el link al PDF de la orden (y el PDF adjunto si la
+ventana de 24 h está abierta). Si el pedido pasa todos los controles, o solo le falta un dato del
+cliente (dirección, bidones), `escalate_to_joaco` no se lo pide a Joaco y le indica a Claudio qué
+hacer. La alarma de 24 h (`cron_requested_unconfirmed`) confirma sola si el cliente lo pidió con
+todas las letras y el pedido pasa los controles; si no, va a Joaco con el motivo.
+
+### Changed — Ruta del camión: solo Norte y Sur-Oeste; Este y Sur-Este pausados
+Decisión de Joaco del 17/11/2026. Campo `paused` en el circuito: las localidades se siguen
+reconociendo (no son "fuera de zona"), pero no hay salidas; `get_route_info` responde
+`ruta_pausada` (retiro en el local con comisionista, sin fecha) y `create_sale_order` solo cotiza
+con retiro. La rotación es de 7 días por circuito activo (14 con dos). Las salidas corridas de su
+día habitual cierran el día anterior. Migración: calendario Norte 26/11, Sur-Oeste 03/12, Norte
+10/12, Sur-Oeste 17/12, Norte 23/12 y tope `cristal_agent.route_no_departures_after` = 23/12
+(enero lo define Joaco).
+
 ## [18.0.1.72.6] — 2026-11-16
 
 ### Fixed — Las oportunidades automáticas ya no caen en el CRM de Joaco
