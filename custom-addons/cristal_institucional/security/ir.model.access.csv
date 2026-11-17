@@ -2,3 +2,7 @@ id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
 access_cristal_inst_call_user,cristal.inst.call user,model_cristal_inst_call,sales_team.group_sale_salesman,1,1,1,0
 access_cristal_inst_call_manager,cristal.inst.call manager,model_cristal_inst_call,sales_team.group_sale_manager,1,1,1,1
 access_cristal_inst_call_wizard,cristal.inst.call.wizard user,model_cristal_inst_call_wizard,sales_team.group_sale_salesman,1,1,1,1
+access_cristal_inst_stage_log_user,cristal.inst.stage.log user,model_cristal_inst_stage_log,sales_team.group_sale_salesman,1,0,0,0
+access_cristal_inst_stage_log_manager,cristal.inst.stage.log manager,model_cristal_inst_stage_log,sales_team.group_sale_manager,1,1,1,1
+access_cristal_inst_snapshot_user,cristal.inst.snapshot user,model_cristal_inst_snapshot,sales_team.group_sale_salesman,1,0,0,0
+access_cristal_inst_snapshot_manager,cristal.inst.snapshot manager,model_cristal_inst_snapshot,sales_team.group_sale_manager,1,1,1,1

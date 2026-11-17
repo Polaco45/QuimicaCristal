@@ -11,4 +11,16 @@
         <field name="nextcall" eval="(DateTime.now().replace(hour=9, minute=15, second=0) + timedelta(days=1)).strftime('%Y-%m-%d %H:%M:%S')"/>
         <field name="active" eval="True"/>
     </record>
+
+    <!-- Lunes 11:00 UTC = 8:00 AR: resumen de la semana y foto del embudo -->
+    <record id="cron_inst_weekly" model="ir.cron">
+        <field name="name">Institucional: informe semanal</field>
+        <field name="model_id" ref="model_cristal_inst_engine"/>
+        <field name="state">code</field>
+        <field name="code">model._cron_weekly_report()</field>
+        <field name="interval_number">1</field>
+        <field name="interval_type">weeks</field>
+        <field name="nextcall" eval="(DateTime.now() + relativedelta(weekday=0, hour=11, minute=0, second=0, days=1)).strftime('%Y-%m-%d %H:%M:%S')"/>
+        <field name="active" eval="True"/>
+    </record>
 </odoo>

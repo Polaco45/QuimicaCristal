@@ -8,6 +8,7 @@
             <form string="Registrar llamada">
                 <group>
                     <field name="partner_id" readonly="1" options="{'no_open': True}"/>
+                    <field name="script" readonly="1" invisible="not script"/>
                     <field name="result" widget="radio"/>
                     <field name="notes" placeholder="Contá con tus palabras qué pasó en la llamada"/>
                     <field name="next_date"/>

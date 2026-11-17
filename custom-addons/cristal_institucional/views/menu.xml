@@ -12,4 +12,9 @@
               action="action_inst_report"/>
     <menuitem id="menu_inst_report_calls" name="Contactos por día" parent="menu_inst_report" sequence="20"
               action="action_inst_calls"/>
+
+    <menuitem id="menu_inst_report_moves" name="Cambios de etapa" parent="menu_inst_report" sequence="30"
+              action="action_inst_stage_log"/>
+    <menuitem id="menu_inst_report_evolution" name="Evolución semanal" parent="menu_inst_report" sequence="40"
+              action="action_inst_snapshot"/>
 </odoo>

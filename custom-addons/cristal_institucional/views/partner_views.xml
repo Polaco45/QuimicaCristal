@@ -16,6 +16,8 @@
                     <div invisible="not inst_is">
                         <div class="d-flex flex-wrap gap-2 mb-3">
                             <button name="action_inst_call" type="object" string="Registrar llamada" class="btn-primary" icon="fa-phone"/>
+                            <button name="action_inst_send_kit" type="object" string="Enviar kit" class="btn-secondary" icon="fa-gift"/>
+                            <button name="action_inst_first_offer" type="object" string="Propuesta de primera compra" class="btn-secondary" icon="fa-file-text-o" invisible="inst_stage not in ('primera_compra', 'captacion')"/>
                             <button name="action_inst_recompute" type="object" string="Recalcular" class="btn-secondary"/>
                             <button name="action_inst_orders" type="object" string="Ver pedidos" class="btn-secondary"/>
                             <button name="action_inst_discard" type="object" string="Descartar" class="btn-secondary"
@@ -84,9 +86,13 @@
                                 <field name="inst_margin_12m"/>
                                 <field name="inst_margin_pct"/>
                                 <field name="inst_amount_12m"/>
+                                <field name="inst_buys" invisible="not inst_buys"/>
+                                <field name="inst_gaps" invisible="not inst_gaps"/>
                                 <field name="inst_computed_at"/>
                             </group>
                         </group>
+                        <separator string="Guion para la llamada"/>
+                        <field name="inst_script" nolabel="1" readonly="1"/>
                         <separator string="Contactos registrados"/>
                         <field name="inst_call_ids" readonly="1" nolabel="1">
                             <list>
@@ -178,6 +184,7 @@
                 <field name="inst_margin_month" optional="show" sum="Margen por mes"/>
                 <field name="inst_margin_12m" optional="hide" sum="Margen 12 meses"/>
                 <field name="inst_margin_pct" optional="hide" avg="% de margen"/>
+                <field name="inst_gaps" optional="hide"/>
                 <field name="inst_amount_12m" optional="hide" sum="Venta 12 meses"/>
                 <field name="inst_stage_date" optional="hide"/>
             </list>

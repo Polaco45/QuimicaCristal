@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- ============ Cambios de etapa ============ -->
+    <record id="view_inst_stage_log_list" model="ir.ui.view">
+        <field name="name">cristal.inst.stage.log.list</field>
+        <field name="model">cristal.inst.stage.log</field>
+        <field name="arch" type="xml">
+            <list create="0" edit="0">
+                <field name="date"/>
+                <field name="partner_id"/>
+                <field name="stage_from"/>
+                <field name="stage_to"/>
+                <field name="days_in_previous"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_inst_stage_log_pivot" model="ir.ui.view">
+        <field name="name">cristal.inst.stage.log.pivot</field>
+        <field name="model">cristal.inst.stage.log</field>
+        <field name="arch" type="xml">
+            <pivot string="Cambios de etapa">
+                <field name="stage_from" type="row"/>
+                <field name="stage_to" type="col"/>
+                <field name="days_in_previous" type="measure"/>
+            </pivot>
+        </field>
+    </record>
+
+    <record id="view_inst_stage_log_search" model="ir.ui.view">
+        <field name="name">cristal.inst.stage.log.search</field>
+        <field name="model">cristal.inst.stage.log</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="partner_id"/>
+                <filter name="f_real" string="Sin la carga inicial" domain="[('stage_from', '!=', False)]"/>
+                <filter name="f_date" string="Fecha" date="date"/>
+                <group expand="0" string="Agrupar por">
+                    <filter name="g_week" string="Semana" context="{'group_by': 'date:week'}"/>
+                    <filter name="g_from" string="Venía de" context="{'group_by': 'stage_from'}"/>
+                    <filter name="g_to" string="Pasó a" context="{'group_by': 'stage_to'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_inst_stage_log" model="ir.actions.act_window">
+        <field name="name">Cambios de etapa</field>
+        <field name="res_model">cristal.inst.stage.log</field>
+        <field name="view_mode">pivot,list</field>
+        <field name="context">{'search_default_f_real': 1}</field>
+        <field name="search_view_id" ref="view_inst_stage_log_search"/>
+    </record>
+
+    <!-- ============ Evolución semanal ============ -->
+    <record id="view_inst_snapshot_graph" model="ir.ui.view">
+        <field name="name">cristal.inst.snapshot.graph</field>
+        <field name="model">cristal.inst.snapshot</field>
+        <field name="arch" type="xml">
+            <graph string="Evolución del embudo" type="line">
+                <field name="date" interval="week"/>
+                <field name="stage"/>
+                <field name="count" type="measure"/>
+            </graph>
+        </field>
+    </record>
+
+    <record id="view_inst_snapshot_list" model="ir.ui.view">
+        <field name="name">cristal.inst.snapshot.list</field>
+        <field name="model">cristal.inst.snapshot</field>
+        <field name="arch" type="xml">
+            <list create="0" edit="0">
+                <field name="date"/>
+                <field name="stage"/>
+                <field name="count"/>
+                <field name="at_risk"/>
+                <field name="dormant"/>
+                <field name="overdue"/>
+                <field name="margin_month"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="action_inst_snapshot" model="ir.actions.act_window">
+        <field name="name">Evolución semanal</field>
+        <field name="res_model">cristal.inst.snapshot</field>
+        <field name="view_mode">graph,list</field>
+    </record>
+
+    <!-- ============ Propuesta de primera compra en la cotización ============ -->
+    <record id="view_order_form_inst" model="ir.ui.view">
+        <field name="name">sale.order.form.cristal.institucional</field>
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="sale.view_order_form"/>
+        <field name="priority">60</field>
+        <field name="arch" type="xml">
+            <xpath expr="//header" position="inside">
+                <field name="inst_first_offer" invisible="1"/>
+                <button name="action_inst_apply_first_offer" type="object"
+                        string="Aplicar oferta de primera compra"
+                        invisible="not inst_first_offer or state not in ('draft', 'sent')"/>
+            </xpath>
+        </field>
+    </record>
+</odoo>
