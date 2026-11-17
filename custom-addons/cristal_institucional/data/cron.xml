@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- 09:15 UTC = 6:15 AR: antes de que arranque el día -->
+    <record id="cron_inst_refresh" model="ir.cron">
+        <field name="name">Institucional: recalcular etapas, alertas y próximo paso</field>
+        <field name="model_id" ref="model_cristal_inst_engine"/>
+        <field name="state">code</field>
+        <field name="code">model._cron_refresh()</field>
+        <field name="interval_number">1</field>
+        <field name="interval_type">days</field>
+        <field name="nextcall" eval="(DateTime.now().replace(hour=9, minute=15, second=0) + timedelta(days=1)).strftime('%Y-%m-%d %H:%M:%S')"/>
+        <field name="active" eval="True"/>
+    </record>
+</odoo>
