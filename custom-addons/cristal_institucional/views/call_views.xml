@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- ============ Registrar llamada ============ -->
+    <record id="view_inst_call_wizard_form" model="ir.ui.view">
+        <field name="name">cristal.inst.call.wizard.form</field>
+        <field name="model">cristal.inst.call.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Registrar llamada">
+                <group>
+                    <field name="partner_id" readonly="1" options="{'no_open': True}"/>
+                    <field name="result" widget="radio"/>
+                    <field name="notes" placeholder="Contá con tus palabras qué pasó en la llamada"/>
+                    <field name="next_date"/>
+                    <field name="discard_reason" invisible="result != 'no_califica'"/>
+                </group>
+                <group invisible="result in ('no_atendio', 'no_califica')">
+                    <group string="Quién decide las compras">
+                        <field name="decisor_name"/>
+                        <field name="decisor_phone"/>
+                        <field name="decisor_function"/>
+                    </group>
+                    <group string="Ficha de la cuenta" invisible="result == 'contacto'">
+                        <field name="productos" placeholder="Detergente y lavandina: cuál y cuánto. En papel, un producto puntual."/>
+                        <field name="proveedor"/>
+                        <field name="frecuencia"/>
+                        <field name="street"/>
+                        <field name="horario"/>
+                    </group>
+                </group>
+                <footer>
+                    <button name="action_confirm" type="object" string="Guardar" class="btn-primary"/>
+                    <button special="cancel" string="Cancelar" class="btn-secondary"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_inst_call_wizard" model="ir.actions.act_window">
+        <field name="name">Registrar llamada</field>
+        <field name="res_model">cristal.inst.call.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+    </record>
+
+    <!-- ============ Historial de contactos ============ -->
+    <record id="view_inst_call_list" model="ir.ui.view">
+        <field name="name">cristal.inst.call.list</field>
+        <field name="model">cristal.inst.call</field>
+        <field name="arch" type="xml">
+            <list create="0" edit="0">
+                <field name="date"/>
+                <field name="partner_id"/>
+                <field name="result"/>
+                <field name="notes"/>
+                <field name="stage" optional="show"/>
+                <field name="user_id" optional="show"/>
+                <field name="is_contact" optional="hide"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_inst_call_pivot" model="ir.ui.view">
+        <field name="name">cristal.inst.call.pivot</field>
+        <field name="model">cristal.inst.call</field>
+        <field name="arch" type="xml">
+            <pivot string="Contactos por día">
+                <field name="date" interval="day" type="row"/>
+                <field name="result" type="col"/>
+            </pivot>
+        </field>
+    </record>
+
+    <record id="view_inst_call_search" model="ir.ui.view">
+        <field name="name">cristal.inst.call.search</field>
+        <field name="model">cristal.inst.call</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="partner_id"/>
+                <field name="user_id"/>
+                <filter name="f_contact" string="Hubo conversación" domain="[('is_contact', '=', True)]"/>
+                <filter name="f_today" string="Hoy" domain="[('date', '&gt;=', context_today().strftime('%Y-%m-%d 00:00:00'))]"/>
+                <filter name="f_date" string="Fecha" date="date"/>
+                <group expand="0" string="Agrupar por">
+                    <filter name="g_day" string="Día" context="{'group_by': 'date:day'}"/>
+                    <filter name="g_result" string="Resultado" context="{'group_by': 'result'}"/>
+                    <filter name="g_stage" string="Etapa" context="{'group_by': 'stage'}"/>
+                    <filter name="g_user" string="Quién llamó" context="{'group_by': 'user_id'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_inst_calls" model="ir.actions.act_window">
+        <field name="name">Contactos por día</field>
+        <field name="res_model">cristal.inst.call</field>
+        <field name="view_mode">pivot,list</field>
+        <field name="search_view_id" ref="view_inst_call_search"/>
+    </record>
+</odoo>

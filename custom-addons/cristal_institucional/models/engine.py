@@ -205,6 +205,27 @@ class CristalInstEngine(models.AbstractModel):
         if stage == 'descartado':
             step, step_date, deadline = False, False, False
 
+        # Intentos sin respuesta: al tercero se cambia de canal
+        attempts = partner.inst_attempts
+        if step and attempts and stage != 'descartado':
+            if attempts >= 3:
+                step = 'No atiende hace %s intentos: escribirle por WhatsApp o pasar por el local' % attempts
+            else:
+                step = '%s (intento %s)' % (step, attempts + 1)
+
+        # Prioridad para ordenar "Mi día": primero lo que se puede perder y lo que más margen deja
+        weights = {
+            ('recurrente', 'riesgo'): 9, ('recurrente', 'dormido'): 6, ('recurrente', 'ok'): 2,
+            ('primera_compra', 'vence'): 8, ('primera_compra', 'ok'): 7,
+            ('pedido_formal', 'vence'): 8, ('pedido_formal', 'ok'): 7, ('pedido_formal', 'dormido'): 5,
+            ('captacion', 'ok'): 4, ('prospecto', 'ok'): 3,
+        }
+        weight = weights.get((stage, alert), 0)
+        if stage == 'captacion' and info['kit_order']:
+            weight = 6
+        margin_points = min(999.0, (vals.get('inst_margin_12m') or 0.0) / 10000.0)
+        vals['inst_priority'] = round(weight * 1000 + margin_points, 2) if weight else 0.0
+
         vals.update({
             'inst_stage': stage,
             'inst_reason': reason,
