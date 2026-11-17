@@ -64,6 +64,14 @@ class SaleOrder(models.Model):
         string="Aviso de confirmación", copy=False, readonly=True)
     cristal_confirm_notice_note = fields.Char(
         string="Detalle del aviso", copy=False, readonly=True)
+    # v1.73 — Detalle de pago: forma de pago acordada y último total avisado al cliente
+    # (si el pedido cambia después de avisado, se le manda el detalle actualizado).
+    cristal_payment = fields.Selection(
+        [('efectivo', 'Efectivo (contra entrega o al retirar)'),
+         ('transferencia', 'Transferencia anticipada')],
+        string="Forma de pago acordada", copy=False, tracking=True)
+    cristal_notice_total = fields.Float(
+        string="Total avisado al cliente", copy=False, readonly=True)
     # v1.67 — Cuándo se le pidió a Joaco por WhatsApp que confirme este pedido.
     cristal_owner_confirm_at = fields.Datetime(
         string="Confirmación pedida a Joaco (WhatsApp)", copy=False, readonly=True)
@@ -130,6 +138,15 @@ class SaleOrder(models.Model):
                     order._cristal_on_confirm()
                 except Exception as e:
                     _logger.warning("cristal_on_confirm falló para %s: %s", order.id, e)
+        # v1.73 — el detalle de pago de la nota sigue al pedido: si cambian las líneas, la
+        # forma de pago o la entrega, se rehace (nunca queda un total viejo en la cotización).
+        if not self.env.context.get('cristal_no_note_refresh') and (
+                {'order_line', 'cristal_payment', 'cristal_delivery_mode', 'state'} & set(vals)):
+            try:
+                with self.env.cr.savepoint():
+                    self._cristal_refresh_payment_note()
+            except Exception as e:  # noqa: BLE001
+                _logger.warning("Detalle de pago en la nota falló: %s", e)
         return res
 
     def action_confirm(self):
@@ -203,9 +220,19 @@ class SaleOrder(models.Model):
         if not self.cristal_confirm_notice:
             if self.env.context.get('from_cristal_agent'):
                 self.sudo().write({'cristal_confirm_notice': 'skipped',
-                                   'cristal_confirm_notice_note': 'Lo confirmó Claudio'})
+                                   'cristal_confirm_notice_note': 'Lo confirmó Claudio',
+                                   'cristal_notice_total': self.amount_total})
             else:
                 self.sudo().cristal_confirm_notice = 'pending'
+        # v1.73 — al confirmar, el detalle de pago queda en la nota del pedido (PDF) y en
+        # el historial, para quien arma y entrega.
+        if self._cristal_is_mayorista():
+            self.with_context(cristal_payment_note=True)._cristal_refresh_payment_note()
+            from markupsafe import Markup, escape
+            self.sudo().message_post(
+                body=Markup("💵 <b>Detalle de pago al confirmar</b><br/>") + Markup('<br/>').join(
+                    escape(x) for x in self._cristal_payment_detail()),
+                subtype_xmlid='mail.mt_note')
 
     # ───────────── v1.62 — Aviso de pedido confirmado por WhatsApp ─────────────
     def _cristal_is_mayorista(self):
@@ -218,10 +245,114 @@ class SaleOrder(models.Model):
             ('partner_id', 'in', (partner | commercial).ids),
             ('client_type', '=', 'mayorista')]))
 
-    def _cristal_confirm_notice_text(self):
+    # ───────────── v1.73 — Detalle de pago (qué abona el cliente) ─────────────
+    # Joaco (17/11/2026): "tengo muchos problemas a la hora de entregar los pedidos con los
+    # montos que da Claudio. Una vez que confirme un pedido tiene que dar el detalle de
+    # cuánto deberá abonar el cliente, detallando en la cotización también". Un solo
+    # armado, siempre desde el pedido real: mensaje de confirmación, nota de la cotización
+    # y nota interna para quien entrega.
+    def _cristal_payment_detail(self):
+        """Lista de renglones con lo que abona el cliente, calculada del pedido real."""
+        self.ensure_one()
+        order = self.sudo()
+        config = self.env['cristal.agent.config'].sudo().get_active()
+        money = lambda v: '${:,.0f}'.format(v or 0).replace(',', '.')  # noqa: E731
+        bidon = config.bidon_product_id if config and config.bidon_product_id else \
+            self.env['product.product']
+        freight = order._cristal_freight_product(config) or self.env['product.product']
+        tax_included = abs(order.amount_tax) < 0.5
+        amount = (lambda l: l.price_subtotal) if tax_included else (lambda l: l.price_total)
+        out, products, bidones, shipping, gross = [], 0.0, 0.0, 0.0, 0.0
+        has_shipping = False
+        for l in order.order_line:
+            if l.display_type:
+                continue
+            if l.product_id and l.product_id == bidon:
+                bidones += amount(l)
+                nb = int(l.product_uom_qty)
+                out.append(f"• {nb} bidón(es) nuevo(s) de 20 L — {money(amount(l))}")
+                continue
+            if getattr(l, 'is_delivery', False) or (l.product_id and l.product_id == freight):
+                has_shipping = True
+                shipping += amount(l)
+                continue
+            if getattr(l, 'combo_item_id', False) and not amount(l):
+                continue
+            products += amount(l)
+            gross += l.price_unit * l.product_uom_qty
+            name = (l.product_id.display_name or l.name or '').split('\n')[0]
+            out.append(f"• {l.product_uom_qty:g} {name} — {money(amount(l))}")
+        if has_shipping:
+            out.append(f"• Envío — {money(shipping) if shipping else 'sin cargo'}")
+        elif order.cristal_delivery_mode == 'retiro':
+            out.append("• Retira en la planta (sin envío)")
+        net_gross = sum(l.price_subtotal for l in order.order_line
+                        if not l.display_type and l.discount)
+        gross_disc = sum(l.price_unit * l.product_uom_qty for l in order.order_line
+                         if not l.display_type and l.discount)
+        saved = gross_disc - net_gross
+        if saved > 1:
+            out.append(f"Descuento ya aplicado en esos precios: {money(saved)}")
+        try:
+            from ..services.tool_registry import ToolRegistry
+            tool = ToolRegistry.get('create_sale_order')
+            info = tool._bidones_info(self.env, config, order) if tool else None
+            if info and not info['nuevos']:
+                out.append(info['summary'])
+            elif info and info['needed'] > info['nuevos']:
+                rec = info['needed'] - info['nuevos']
+                out.append(f"Envases: además {rec} bidón(es) de recambio, que se canjean por "
+                           f"vacíos con tapa (sin cargo).")
+        except Exception as e:  # noqa: BLE001
+            _logger.warning("Detalle de pago %s: bidones no disponibles: %s", order.name, e)
+        if not tax_included:
+            out.append("(precios con IVA incluido)")
+        out.append(f"TOTAL A PAGAR: {money(order.amount_total)}")
+        pay = dict(self._fields['cristal_payment'].selection).get(order.cristal_payment)
+        if pay:
+            out.append(f"Forma de pago: {pay}")
+        return out
+
+    _PAYMENT_NOTE_RE = r'<p>\s*<(?:strong|b)>Detalle de pago.*?</p>'
+
+    def _cristal_refresh_payment_note(self):
+        """Deja en la nota de la cotización (sale en el PDF) el detalle de pago vigente.
+        Solo pedidos mayoristas de Claudio o que ya lo tenían; nunca pisa el resto de la nota."""
+        import re
+        from markupsafe import Markup, escape
+        for order in self.sudo():
+            if order.state == 'cancel' or not order.order_line:
+                continue
+            current = str(order.note or '')
+            had = bool(re.search(self._PAYMENT_NOTE_RE, current, re.S))
+            if not had and not (self.env.context.get('from_cristal_agent')
+                                or self.env.context.get('cristal_payment_note')):
+                continue
+            body = Markup('<br/>').join(escape(x) for x in order._cristal_payment_detail())
+            block = Markup('<p><strong>Detalle de pago</strong><br/>') + body + Markup('</p>')
+            rest = re.sub(self._PAYMENT_NOTE_RE, '', current, flags=re.S).strip()
+            new = (Markup(rest) if rest and rest != '<p><br></p>' else Markup('')) + block
+            if str(new) != current:
+                super(SaleOrder, order.with_context(cristal_no_note_refresh=True)).write(
+                    {'note': new})
+
+    def _prepare_invoice(self):
+        """El detalle de pago es de la cotización: no pasa a la factura."""
+        import re
+        vals = super()._prepare_invoice()
+        if vals.get('narration'):
+            vals['narration'] = re.sub(self._PAYMENT_NOTE_RE, '', str(vals['narration']),
+                                       flags=re.S) or False
+        return vals
+
+    def _cristal_confirm_notice_text(self, updated=False):
         """Texto del aviso, sin saludo (la plantilla de ventana cerrada ya lo trae)."""
         self.ensure_one()
         from ..services.helpers import fmt_day, to_ar
+        if updated:
+            return self._cristal_detail_html(
+                f"Actualizamos tu pedido {self.name}. Así queda:",
+                "Cualquier duda escribinos por acá.")
         parts = [f"Tu pedido {self.name} quedó confirmado ✅."]
         dep = self.route_departure_id
         if dep and dep.date:
@@ -233,12 +364,22 @@ class SaleOrder(models.Model):
             parts.append(f"Te lo llevamos el {fmt_day(to_ar(self.env, self.commitment_date).date())}.")
         else:
             parts.append("Te avisamos el día de la entrega.")
-        total = f"{self.amount_total:,.0f}".replace(',', '.')
-        parts.append(f"Total: ${total}.")
-        parts.append("Cualquier cosa escribinos por acá.")
-        return " ".join(parts)
+        return self._cristal_detail_html(" ".join(parts) + " Esto es lo que abonás:",
+                                         "Cualquier cosa escribinos por acá.")
 
-    def _cristal_send_confirm_notice(self):
+    def _cristal_detail_html(self, head, tail):
+        """Mensaje con el detalle de pago, un renglón por línea. Si es muy largo para la
+        plantilla de ventana cerrada (una sola variable de ~900 caracteres), los productos
+        se resumen en un renglón: el total y los envases no se cortan nunca."""
+        import html as _html
+        lines = self._cristal_payment_detail()
+        if sum(len(x) + 1 for x in lines) + len(head) + len(tail) > 820:
+            prods = [x for x in lines if x.startswith('• ')]
+            rest = [x for x in lines if not x.startswith('• ')]
+            lines = [f"• {len(prods)} renglones (el detalle completo está en la cotización)"] + rest
+        return "<br>".join(_html.escape(x) for x in [head] + lines + [tail])
+
+    def _cristal_send_confirm_notice(self, updated=False):
         """Manda el aviso por el chat de WhatsApp del cliente (con la ventana cerrada
         sale por la plantilla genérica). Devuelve (estado, detalle)."""
         self.ensure_one()
@@ -252,23 +393,16 @@ class SaleOrder(models.Model):
             order='write_date desc', limit=1)
         if not channel or not channel.wa_account_id or not channel.whatsapp_number:
             return 'skipped', 'Sin chat de WhatsApp'
-        # Si alguien del equipo ya le escribió desde la confirmación, no se repite.
-        config = self.env['cristal.agent.config'].sudo().get_active()
-        bot_pid = config.bot_partner_id.id if config and config.bot_partner_id else 2
-        since = (self.date_order or fields.Datetime.now()) - timedelta(hours=1)
-        human = self.env['mail.message'].sudo().search([
-            ('model', '=', 'discuss.channel'), ('res_id', '=', channel.id),
-            ('date', '>=', since), ('author_id', 'not in', [bot_pid, 2]),
-            ('author_id.user_ids.share', '=', False)], limit=1)   # usuarios internos
-        if human:
-            return 'skipped', f"Ya le escribió {human.author_id.name}"
+        # v1.73 — antes no se mandaba si alguien del equipo ya le había escrito; ahora el
+        # detalle de lo que abona sale SIEMPRE (Joaco 17/11/2026: los montos tienen que
+        # quedar claros antes de la entrega).
         from ..services.tool_registry import ToolRegistry
         tool = ToolRegistry.get('send_whatsapp')
         if not tool:
             return 'pending', 'Herramienta send_whatsapp no disponible'
         env = self.env(context=dict(self.env.context, from_cristal_agent=True))
         res = tool.execute(env=env, run=None, channel_id=channel.id,
-                           body=self._cristal_confirm_notice_text(),
+                           body=self._cristal_confirm_notice_text(updated=updated),
                            wa_account_id=channel.wa_account_id.id,
                            mobile_number=channel.whatsapp_number) or {}
         if res.get('ok'):
@@ -304,10 +438,44 @@ class SaleOrder(models.Model):
             except Exception as e:  # noqa: BLE001
                 _logger.warning("Aviso de confirmación de %s falló: %s", order.name, e)
                 state, note = 'skipped', f"Error: {e}"[:200]
-            order.write({'cristal_confirm_notice': state, 'cristal_confirm_notice_note': note})
+            vals = {'cristal_confirm_notice': state, 'cristal_confirm_notice_note': note}
+            if state == 'sent':
+                vals['cristal_notice_total'] = order.amount_total
+            order.write(vals)
             if state == 'sent':
                 order.message_post(body=f"📲 Aviso de pedido confirmado: {note.lower()}.",
                                    subtype_xmlid='mail.mt_note')
+            self.env.cr.commit()
+        # v1.73 — el pedido cambió DESPUÉS de avisarle el total (alguien agregó o sacó
+        # productos, bidones o envío) y todavía no se entregó: se le manda el detalle
+        # actualizado, para que el monto que tiene el cliente sea el que se le va a cobrar.
+        changed = self.sudo().search([
+            ('state', '=', 'sale'), ('cristal_notice_total', '>', 0),
+            ('date_order', '>=', now - timedelta(days=10)),
+            ('write_date', '<', now - timedelta(minutes=10))], order='id', limit=limit)
+        for order in changed:
+            if abs(order.amount_total - order.cristal_notice_total) < 1:
+                continue
+            if order.picking_ids and all(p.state in ('done', 'cancel') for p in order.picking_ids):
+                order.cristal_notice_total = order.amount_total    # ya entregado: no se avisa
+                self.env.cr.commit()
+                continue
+            old = order.cristal_notice_total
+            try:
+                with self.env.cr.savepoint():
+                    state, note = order._cristal_send_confirm_notice(updated=True)
+            except Exception as e:  # noqa: BLE001
+                _logger.warning("Aviso de cambio de %s falló: %s", order.name, e)
+                state, note = 'skipped', f"Error: {e}"[:200]
+            if state == 'pending':
+                continue                      # espera una plantilla anterior: se reintenta
+            order.cristal_notice_total = order.amount_total
+            order.message_post(
+                body=(f"📲 El total cambió de ${old:,.0f} a ${order.amount_total:,.0f}: "
+                      .replace(',', '.')
+                      + ("se le mandó al cliente el detalle actualizado." if state == 'sent'
+                         else f"NO se le pudo avisar al cliente ({note}). Avisarle antes de entregar.")),
+                subtype_xmlid='mail.mt_note')
             self.env.cr.commit()
         return True
 

@@ -1069,6 +1069,12 @@ class CreateSaleOrder(AgentTool):
             line_details.append(d)
         # Bidones: se informan SIEMPRE, también cuando el pedido queda bajo el mínimo.
         bid_info = self._bidones_info(env, config, order)
+        # v1.73 — el detalle de pago queda escrito en la cotización (sale en el PDF).
+        try:
+            with env.cr.savepoint():
+                order.with_context(cristal_payment_note=True)._cristal_refresh_payment_note()
+        except Exception as e:  # noqa: BLE001
+            _logger.warning("Detalle de pago en la cotización %s falló: %s", order.name, e)
 
         pickup_hint = (" Si el cliente RETIRA en la planta, NO hay compra mínima: "
                        "preguntale si lo retira y, si es así, volvé a llamar "
