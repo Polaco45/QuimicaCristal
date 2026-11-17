@@ -140,7 +140,7 @@
                         <footer class="pt-1">
                             <div class="d-flex text-muted">
                                 <span t-if="record.inst_order_count.raw_value">
-                                    Compras: <field name="inst_order_count"/> · margen por mes <field name="inst_margin_month" widget="monetary"/>
+                                    Compras: <field name="inst_order_count"/> · margen por mes <field name="inst_margin_month" widget="monetary"/> (<field name="inst_margin_pct"/> %)
                                 </span>
                                 <span t-else="">Ficha <field name="inst_ficha_pct"/> %</span>
                             </div>
