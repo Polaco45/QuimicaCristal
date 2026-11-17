@@ -261,7 +261,15 @@ class CristalAgentRouteDeparture(models.Model):
             except Exception:  # noqa: BLE001 — parámetro mal cargado: se ignora
                 _logger.warning("route_no_departures_after inválido: %s", raw)
         circuits = Circuit.search([('active', '=', True), ('paused', '=', False)])
-        period = 7 * max(len(circuits), 1)
+        # v1.74.1 — Joaco (17/11/2026): "en vez de salir todas las semanas salimos cada 2,
+        # una vez a Sur-Oeste y otra a Norte". Semanas entre una salida del camión y la
+        # siguiente (1 = todas las semanas); cada circuito vuelve cada semanas × circuitos.
+        try:
+            every = max(int(self.env['ir.config_parameter'].sudo().get_param(
+                'cristal_agent.route_weeks_between_departures') or 1), 1)
+        except (TypeError, ValueError):
+            every = 1
+        period = 7 * every * max(len(circuits), 1)
         created = 0
         for circuit in circuits:
             if not circuit.first_departure_date:
