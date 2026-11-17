@@ -10,10 +10,15 @@ def post_init_hook(env):
     Lead = env['crm.lead'].sudo().with_context(active_test=False)
     team = env['crm.team'].sudo().search([('name', '=', 'Institucional')], limit=1)
     tags = env['crm.tag'].sudo().search([('name', '=like', 'E_ · %')])
-    leads = Lead.search([
-        ('partner_id', '!=', False),
-        '|', ('team_id', '=', team.id or 0), ('tag_ids', 'in', tags.ids or [0]),
-    ])
+    conds = []
+    if team:
+        conds.append(('team_id', '=', team.id))
+    if tags:
+        conds.append(('tag_ids', 'in', tags.ids))
+    if not conds:
+        return
+    domain = [('partner_id', '!=', False)] + ['|'] * (len(conds) - 1) + conds
+    leads = Lead.search(domain)
     today = date.today()
     by_partner = {}
     for lead in leads:
