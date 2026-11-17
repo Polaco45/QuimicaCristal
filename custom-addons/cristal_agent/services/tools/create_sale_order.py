@@ -692,6 +692,25 @@ class CreateSaleOrder(AgentTool):
                     f"delivery_mode='retiro'. No des fecha de paso ni escales a Joaco."),
             }
 
+        # v1.75 — Joaco (17/11/2026): al mayorista de fuera de nuestras rutas se lo atiende
+        # igual que a cualquiera; lo único que cambia es la entrega (retiro en el local o
+        # con comisionista). Ya no se escala a Joaco por ser de fuera de zona.
+        if not is_pickup and not is_cf and route_ctx and route_ctx['kind'] == 'fuera_zona':
+            self._mark_fuera_zona(env, partner)
+            return {
+                "ok": False,
+                "blocked_out_of_route": True,
+                "message_for_bot": (
+                    f"NO cotizo con envío: {route_ctx.get('canonical') or partner.city} está "
+                    f"fuera de nuestras rutas. Atendelo como a cualquier mayorista (lista, "
+                    f"precios, combos): lo único que cambia es la entrega. Ofrecele retirar en "
+                    f"nuestro local (San Martín 2350, Río Cuarto) o mandar a buscar el pedido "
+                    f"con un comisionista o transporte de su confianza, a su cargo; mismos "
+                    f"precios mayoristas, sin compra mínima ni flete nuestro. Si acepta, volvé "
+                    f"a llamar create_sale_order con delivery_mode='retiro'. No escales a Joaco "
+                    f"por esto."),
+            }
+
         if is_cf and not is_pickup and route_ctx and route_ctx['kind'] in ('circuit', 'fuera_zona'):
             return {
                 "ok": False,
