@@ -31,7 +31,11 @@ def post_init_hook(env):
             vals['inst_contactado'] = today
         lost = [l for l in pleads if (not l.active and not l.probability)
                 or (l.stage_id.name or '').strip().lower().startswith('perdid')]
-        if lost and len(lost) == len(pleads):
+        bought = env['sale.order'].sudo().search_count([
+            ('partner_id', 'child_of', partner.id), ('state', 'in', ('sale', 'done')),
+            ('amount_untaxed', '>', 0)], limit=1)
+        # Una empresa que ya compró nunca se descarta por una oportunidad perdida.
+        if lost and len(lost) == len(pleads) and not bought:
             vals['inst_discarded'] = True
             reason = lost[0].lost_reason_id.name if 'lost_reason_id' in Lead._fields else False
             vals['inst_discard_reason'] = reason or 'Perdido en el CRM'
