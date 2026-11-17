@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <!-- Después del kit: hasta que haga la primera compra -->
+        <record id="chain_kit_10" model="cristal.inst.chain.step">
+            <field name="chain">kit</field><field name="sequence">10</field><field name="day">5</field>
+            <field name="channel">whatsapp</field>
+            <field name="name">¿Cómo les fue con el kit?</field>
+            <field name="message">Hola {nombre}, soy Joaquín de Cristal Limpieza Profesional. ¿Pudieron probar el desengrasante del kit? Contame cómo les fue.</field>
+        </record>
+        <record id="chain_kit_20" model="cristal.inst.chain.step">
+            <field name="chain">kit</field><field name="sequence">20</field><field name="day">8</field>
+            <field name="channel">whatsapp</field>
+            <field name="name">Propuesta de primera compra</field>
+            <field name="message">Hola {nombre}, les armé una propuesta especial de primera compra con lo que usan todas las semanas. ¿Te la paso?</field>
+        </record>
+        <record id="chain_kit_30" model="cristal.inst.chain.step">
+            <field name="chain">kit</field><field name="sequence">30</field><field name="day">13</field>
+            <field name="channel">llamada</field>
+            <field name="name">Cerrar la primera compra</field>
+        </record>
+        <record id="chain_kit_40" model="cristal.inst.chain.step">
+            <field name="chain">kit</field><field name="sequence">40</field><field name="day">21</field>
+            <field name="channel">whatsapp</field>
+            <field name="name">Último aviso de la propuesta</field>
+            <field name="message">Hola {nombre}, la propuesta de primera compra sigue vigente unos días más. ¿La dejamos armada para esta semana?</field>
+        </record>
+
+        <!-- Después de la primera compra: hasta el segundo pedido -->
+        <record id="chain_repo_10" model="cristal.inst.chain.step">
+            <field name="chain">reposicion</field><field name="sequence">10</field><field name="day">21</field>
+            <field name="channel">whatsapp</field>
+            <field name="name">¿Toca reponer?</field>
+            <field name="message">Hola {nombre}, soy Joaquín de Cristal Limpieza Profesional. ¿Cómo les fue con lo que llevaron? Si ya les toca reponer, les armo el mismo pedido.</field>
+        </record>
+        <record id="chain_repo_20" model="cristal.inst.chain.step">
+            <field name="chain">reposicion</field><field name="sequence">20</field><field name="day">26</field>
+            <field name="channel">whatsapp</field>
+            <field name="name">Segundo aviso de reposición</field>
+            <field name="message">Hola {nombre}, ¿les preparo el pedido para esta semana? Decime qué necesitan y lo dejo listo.</field>
+        </record>
+        <record id="chain_repo_30" model="cristal.inst.chain.step">
+            <field name="chain">reposicion</field><field name="sequence">30</field><field name="day">30</field>
+            <field name="channel">llamada</field>
+            <field name="name">Saber si van a reponer</field>
+        </record>
+        <record id="chain_repo_40" model="cristal.inst.chain.step">
+            <field name="chain">reposicion</field><field name="sequence">40</field><field name="day">45</field>
+            <field name="channel">whatsapp</field>
+            <field name="name">Por qué no volvieron</field>
+            <field name="message">Hola {nombre}, hace un tiempo que no nos piden. ¿Les quedó stock o hubo algo que no les cerró? Me sirve saberlo para mejorar.</field>
+        </record>
+
+        <!-- Recurrente que se atrasa: días desde la fecha en que debía reponer -->
+        <record id="chain_late_10" model="cristal.inst.chain.step">
+            <field name="chain">atraso</field><field name="sequence">10</field><field name="day">3</field>
+            <field name="channel">whatsapp</field>
+            <field name="name">Recordatorio de reposición</field>
+            <field name="message">Hola {nombre}, soy Joaquín de Cristal Limpieza Profesional. Por las fechas ya les debe estar tocando reponer. ¿Les armo el pedido de siempre?</field>
+        </record>
+        <record id="chain_late_20" model="cristal.inst.chain.step">
+            <field name="chain">atraso</field><field name="sequence">20</field><field name="day">8</field>
+            <field name="channel">whatsapp</field>
+            <field name="name">Segundo recordatorio</field>
+            <field name="message">Hola {nombre}, ¿cómo vienen de stock? Si querés les dejo el pedido armado para cuando lo necesiten.</field>
+        </record>
+        <record id="chain_late_30" model="cristal.inst.chain.step">
+            <field name="chain">atraso</field><field name="sequence">30</field><field name="day">14</field>
+            <field name="channel">llamada</field>
+            <field name="name">Se está atrasando: saber qué pasó</field>
+        </record>
+        <record id="chain_late_40" model="cristal.inst.chain.step">
+            <field name="chain">atraso</field><field name="sequence">40</field><field name="day">30</field>
+            <field name="channel">visita</field>
+            <field name="name">Pasar por el local: saber por qué dejó de comprar</field>
+        </record>
+    </data>
+</odoo>

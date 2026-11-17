@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_inst_chain_step_list" model="ir.ui.view">
+        <field name="name">cristal.inst.chain.step.list</field>
+        <field name="model">cristal.inst.chain.step</field>
+        <field name="arch" type="xml">
+            <list editable="bottom" default_group_by="chain">
+                <field name="chain"/>
+                <field name="sequence" widget="handle"/>
+                <field name="day"/>
+                <field name="channel"/>
+                <field name="name"/>
+                <field name="message"/>
+                <field name="active" widget="boolean_toggle"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_inst_chain_step_search" model="ir.ui.view">
+        <field name="name">cristal.inst.chain.step.search</field>
+        <field name="model">cristal.inst.chain.step</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="name"/>
+                <filter name="f_inactive" string="Inactivos" domain="[('active', '=', False)]"/>
+                <group expand="0" string="Agrupar por">
+                    <filter name="g_chain" string="Cadena" context="{'group_by': 'chain'}"/>
+                    <filter name="g_channel" string="Canal" context="{'group_by': 'channel'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_inst_chain_step" model="ir.actions.act_window">
+        <field name="name">Cadena de avisos</field>
+        <field name="res_model">cristal.inst.chain.step</field>
+        <field name="view_mode">list</field>
+        <field name="search_view_id" ref="view_inst_chain_step_search"/>
+    </record>
+</odoo>

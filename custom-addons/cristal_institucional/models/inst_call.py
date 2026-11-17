@@ -32,7 +32,7 @@ class CristalInstCall(models.Model):
     @api.depends('result')
     def _compute_is_contact(self):
         for call in self:
-            call.is_contact = call.result != 'no_atendio'
+            call.is_contact = call.result not in ('no_atendio', 'whatsapp')
 
 
 class CristalInstCallWizard(models.TransientModel):
@@ -41,6 +41,8 @@ class CristalInstCallWizard(models.TransientModel):
 
     partner_id = fields.Many2one('res.partner', 'Empresa', required=True)
     script = fields.Html('Guion', related='partner_id.inst_script', sanitize=False)
+    chain_message = fields.Text('Mensaje para mandar', related='partner_id.inst_chain_message')
+    decisor_whatsapp = fields.Char('Mandar a', related='partner_id.inst_decisor_phone')
     result = fields.Selection(CALL_RESULTS, 'Resultado', required=True, default='no_atendio')
     notes = fields.Text('Qué pasó')
     next_date = fields.Date(
@@ -106,7 +108,7 @@ class CristalInstCallWizard(models.TransientModel):
             raise UserError('Esta empresa no está marcada como cliente institucional.')
         today = fields.Date.context_today(self)
         vals = {'inst_last_call': today, 'inst_last_result': self.result}
-        talked = self.result != 'no_atendio'
+        talked = self.result not in ('no_atendio', 'whatsapp')
         if talked and not partner.inst_contactado:
             vals['inst_contactado'] = today
 
@@ -125,12 +127,15 @@ class CristalInstCallWizard(models.TransientModel):
             if value and value != partner[field_name]:
                 vals[field_name] = value
 
-        if talked:
-            vals['inst_attempts'] = 0
-            vals['inst_postponed_until'] = self.next_date or False
-        else:
+        if self.result == 'no_atendio':
             vals['inst_attempts'] = partner.inst_attempts + 1
             vals['inst_postponed_until'] = self.next_date or _next_workday(today)
+        else:
+            vals['inst_attempts'] = 0
+            vals['inst_postponed_until'] = self.next_date or False
+        # El paso de la cadena queda hecho y se pasa al siguiente
+        if partner.inst_chain_step_id and self.result in ('whatsapp', 'contacto', 'decisor', 'kit', 'posponer'):
+            vals['inst_chain_done'] = partner.inst_chain_step_id.sequence
         if self.result == 'no_califica':
             vals['inst_discarded'] = True
             vals['inst_discard_reason'] = (
