@@ -105,6 +105,8 @@ class CristalAgentRouteSelftest(models.TransientModel):
         Circuit.search([('paused', '=', True)]).write({'paused': False})
         env['ir.config_parameter'].sudo().set_param(
             'cristal_agent.route_no_departures_after', '')
+        env['ir.config_parameter'].sudo().set_param(
+            'cristal_agent.route_weeks_between_departures', '')
 
         # Salidas fijas para el caso del 29/09/2026 (idempotente).
         for circ, d in ((so, date(2026, 10, 15)), (este, date(2026, 10, 29))):
@@ -2207,6 +2209,16 @@ class CristalAgentRouteSelftest(models.TransientModel):
                              order='date')
             gaps = {(b.date - a.date).days for a, b in zip(fut, fut[1:])}
             assert len(fut) >= 2 and gaps == {14}, (fut.mapped('date'), gaps)
+            # Una salida cada 2 semanas (v1.74.1): cada circuito vuelve cada 28 días.
+            env['ir.config_parameter'].sudo().set_param(
+                'cristal_agent.route_weeks_between_departures', '2')
+            Dep.search([('date', '>', date.today())]).filtered(
+                lambda d: not d.order_ids).unlink()
+            Dep.generate_upcoming(weeks=12)
+            fut = Dep.search([('circuit_id', '=', este.id), ('date', '>', date.today())],
+                             order='date')
+            gaps = {(b.date - a.date).days for a, b in zip(fut, fut[1:])}
+            assert len(fut) >= 2 and gaps == {28}, (fut.mapped('date'), gaps)
             return 'motivo calculado + link al PDF · pausado → retiro, sin fecha · 2 circuitos → cada 14 días'
         self._case(results, "75. Motivo de confirmación y circuitos pausados", c_v174)
 

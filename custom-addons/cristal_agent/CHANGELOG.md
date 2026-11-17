@@ -7,6 +7,13 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.74.1] — 2026-11-17
+
+### Changed — Ruta: una salida cada dos semanas
+Joaco (17/11): "en vez de salir todas las semanas salimos cada 2, una vez a Sur-Oeste y otra a
+Norte". Parámetro `cristal_agent.route_weeks_between_departures` (2): cada circuito vuelve cada
+semanas × circuitos activos (28 días). Calendario: Sur-Oeste 26/11, Norte 10/12, Sur-Oeste mié 23/12.
+
 ## [18.0.1.74.0] — 2026-11-17
 
 ### Changed — "Pedido para confirmar": motivo exacto, orden adjunta y menos pedidos a Joaco
