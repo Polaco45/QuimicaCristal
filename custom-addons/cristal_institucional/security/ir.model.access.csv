@@ -10,3 +10,4 @@ access_cristal_inst_chain_step_user,cristal.inst.chain.step user,model_cristal_i
 access_cristal_inst_chain_step_manager,cristal.inst.chain.step manager,model_cristal_inst_chain_step,sales_team.group_sale_manager,1,1,1,1
 access_cristal_inst_day_user,cristal.inst.day user,model_cristal_inst_day,sales_team.group_sale_salesman,1,1,1,0
 access_cristal_inst_day_manager,cristal.inst.day manager,model_cristal_inst_day,sales_team.group_sale_manager,1,1,1,1
+access_cristal_inst_skip_wizard,cristal.inst.skip.wizard user,model_cristal_inst_skip_wizard,sales_team.group_sale_salesman,1,1,1,1

@@ -115,13 +115,17 @@ class CrmLead(models.Model):
         return True
 
     def action_inst_skip_today(self):
-        """Sacar esta cuenta de "Mi día" de hoy. Vuelve a entrar en el orden que le toque."""
-        today = fields.Date.context_today(self)
-        partners = self.mapped('inst_partner_id').sudo().filtered('inst_is')
-        partners.with_context(inst_engine=True, tracking_disable=True).write(
-            {'inst_skip_date': today, 'inst_pinned_date': False, 'inst_today': False})
-        self.env['cristal.inst.engine'].recompute(partners)
-        return True
+        """Sacar esta cuenta de "Mi día": pregunta el motivo, porque de eso depende qué pasa después."""
+        self.ensure_one()
+        partner = self._inst_partner()
+        return {
+            'type': 'ir.actions.act_window',
+            'name': 'Sacar de hoy',
+            'res_model': 'cristal.inst.skip.wizard',
+            'view_mode': 'form',
+            'target': 'new',
+            'context': {'default_partner_id': partner.id},
+        }
 
     def action_inst_recompute(self):
         self.env['cristal.inst.engine'].recompute(self.mapped('inst_partner_id'))
