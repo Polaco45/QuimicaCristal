@@ -17,6 +17,8 @@ DEFAULTS = {
     'risk_factor_pct': 150,            # en riesgo: pasó 1,5 veces su ritmo
     'dormant_cycles': 3,               # dormido: pasó 3 veces su ritmo...
     'dormant_min_days': 90,            # ...o al menos 90 días
+    'daily_calls': 15,                 # llamadas nuevas por día hábil (prospectos y captación)
+    'default_user_id': 18,             # responsable cuando la empresa no tiene vendedor
 }
 KIT_TAG_PARAM = 'cristal_institucional.kit_tag'
 KIT_TAG_DEFAULT = 'Regalo captación'
@@ -37,13 +39,17 @@ class CristalInstEngine(models.AbstractModel):
             except (TypeError, ValueError):
                 out[key] = default
         out['kit_tag'] = icp.get_param(KIT_TAG_PARAM, KIT_TAG_DEFAULT)
+        # espera: los WhatsApp no se piden a mano, quedan listos para cuando el número esté conectado
+        # manual: aparecen como paso para mandarlos a mano
+        out['whatsapp_mode'] = icp.get_param('cristal_institucional.whatsapp_mode', 'espera')
         return out
 
     # ------------------------------------------------------------------- datos
     @api.model
     def _gather(self, partners, params):
         """Devuelve por empresa: compras reales (fecha, monto, margen) y el kit."""
-        data = {p.id: {'orders': [], 'kit_order': False, 'kit_date': False, 'fams': set()} for p in partners}
+        data = {p.id: {'orders': [], 'kit_order': False, 'kit_date': False, 'fams': set(), 'quote': 0.0}
+                for p in partners}
         if not partners:
             return data
         since = fields.Date.context_today(self) - timedelta(days=365)
@@ -77,6 +83,8 @@ class CristalInstEngine(models.AbstractModel):
                     (order.date_order.date(), order.amount_untaxed, order.margin or 0.0))
                 if order.date_order.date() >= since:
                     recent[order.id] = pid
+            elif order.state in ('draft', 'sent') and order.amount_untaxed > 0:
+                data[pid]['quote'] = max(data[pid]['quote'], order.amount_untaxed)
         # Qué familias de productos compró cada empresa en los últimos 12 meses
         if recent:
             lines = self.env['sale.order.line'].sudo().search([
@@ -229,6 +237,15 @@ class CristalInstEngine(models.AbstractModel):
             step = 'Llamar: conseguir a quien decide las compras'
             step_date = today
 
+        # Cola de llamadas: prospectos y captación sin un paso con fecha propia se reparten
+        # de a pocos por día hábil. La fecha la pone _fill_queue.
+        pool = (stage in ('prospecto', 'captacion') and not info['kit_order']
+                and partner.inst_last_result != 'kit')
+        if pool:
+            step_date = partner.inst_queue_date or False
+            if partner.inst_attempts and not step_date:
+                step_date = today       # un reintento no vuelve al final de la cola
+
         # Cadena de avisos: después del kit, después de la primera compra, o recurrente atrasado
         chain, anchor = False, False
         if stage == 'primera_compra' and kit_date:
@@ -240,9 +257,23 @@ class CristalInstEngine(models.AbstractModel):
         same = chain and partner.inst_chain == chain and partner.inst_chain_anchor == anchor
         done = partner.inst_chain_done if same else 0
         chain_step = False
+        auto_step = False
         if chain:
             steps = params.get('chains', {}).get(chain, [])
-            nxt = next((s for s in steps if s['sequence'] > done), None)
+            pending = [s for s in steps if s['sequence'] > done]
+            if params.get('whatsapp_mode') == 'manual':
+                nxt = pending[0] if pending else None
+            else:
+                # Los WhatsApp no se le piden a una persona: quedan listos para salir solos.
+                # El próximo paso de la persona es la primera llamada o visita de la cadena.
+                manual = [s for s in pending if s['channel'] != 'whatsapp']
+                nxt = manual[0] if manual else None
+                elapsed = (today - anchor).days
+                limit = nxt['day'] if nxt else 10 ** 6
+                ready = [s for s in pending
+                         if s['channel'] == 'whatsapp' and s['day'] <= elapsed and s['day'] < limit]
+                if ready and elapsed < limit:
+                    auto_step = ready[-1]['id']
             if nxt:
                 chain_step = nxt['id']
                 step = '%s: %s' % (nxt['channel_label'], nxt['name'])
@@ -261,6 +292,7 @@ class CristalInstEngine(models.AbstractModel):
             'inst_chain_anchor': anchor,
             'inst_chain_done': done,
             'inst_chain_step_id': chain_step,
+            'inst_auto_step_id': auto_step,
         })
 
         # Posponer: corre el paso y la fecha límite
@@ -268,6 +300,9 @@ class CristalInstEngine(models.AbstractModel):
         if postponed and stage != 'descartado':
             if postponed > today:
                 step_date = postponed
+                pool = False
+                if partner.inst_last_result == 'whatsapp' and step and not chain:
+                    step = 'Esperando respuesta al WhatsApp. Si no contesta: %s%s' % (step[:1].lower(), step[1:])
                 if deadline and deadline < postponed:
                     deadline = postponed
                 if alert in ('riesgo', 'dormido'):
@@ -300,7 +335,22 @@ class CristalInstEngine(models.AbstractModel):
         if stage == 'captacion' and info['kit_order']:
             weight = 6
         margin_points = min(999.0, (vals.get('inst_margin_12m') or 0.0) / 10000.0)
+        if pool:
+            # En la cola van primero los que ya tienen con quién hablar, teléfono y una cotización pedida
+            margin_points = 0.0
+            if partner.inst_attempts:
+                margin_points += 500
+            if partner.inst_decisor_id:
+                margin_points += 200
+            if partner.phone or partner.mobile:
+                margin_points += 150
+            margin_points += min(99.0, (info.get('quote') or 0.0) / 10000.0)
         vals['inst_priority'] = round(weight * 1000 + margin_points, 2) if weight else 0.0
+        vals['inst_in_pool'] = bool(pool and stage != 'descartado')
+        if not vals['inst_in_pool']:
+            vals['inst_queue_date'] = False
+        elif step_date and not partner.inst_queue_date:
+            vals['inst_queue_date'] = step_date
 
         vals.update({
             'inst_stage': stage,
@@ -314,12 +364,32 @@ class CristalInstEngine(models.AbstractModel):
         })
         if stage != partner.inst_stage:
             vals['inst_stage_date'] = today
+        if not step_date or step_date > today:
+            vals['inst_today'] = False      # ya no es para hoy: sale de "Mi día"
         return vals
+
+    @api.model
+    def _pick_today(self, params, today):
+        """"Mi día" de verdad: de todo lo que vence, solo lo más importante, hasta el cupo diario.
+        Lo que no entra hoy no se pierde: queda primero en la fila de mañana."""
+        quota = max(1, params.get('daily_calls') or 15)
+        Partner = self.env['res.partner'].sudo().with_context(inst_engine=True, tracking_disable=True)
+        if today.weekday() >= 5:
+            Partner.search([('inst_today', '=', True)]).write({'inst_today': False})
+            return
+        due = Partner.search([
+            ('inst_is', '=', True), ('inst_stage', '!=', 'descartado'),
+            ('inst_next_step', '!=', False), ('inst_next_step_date', '<=', today),
+        ], order='inst_priority desc, inst_next_step_date, id')
+        chosen = due[:quota]
+        (Partner.search([('inst_today', '=', True)]) - chosen).write({'inst_today': False})
+        chosen.filtered(lambda p: not p.inst_today).write({'inst_today': True})
 
     # ---------------------------------------------------------------- cálculo
     @api.model
     def recompute(self, partners=None):
         Partner = self.env['res.partner'].sudo()
+        full = partners is None
         if partners is None:
             partners = Partner.search([('inst_is', '=', True)])
         else:
@@ -335,6 +405,7 @@ class CristalInstEngine(models.AbstractModel):
             params['chains'].setdefault(chain_step.chain, []).append({
                 'id': chain_step.id, 'sequence': chain_step.sequence, 'day': chain_step.day,
                 'name': chain_step.name, 'channel_label': channel_labels.get(chain_step.channel, ''),
+                'channel': chain_step.channel,
             })
         StageLog = self.env['cristal.inst.stage.log'].sudo()
         today = fields.Date.context_today(self)
@@ -363,12 +434,284 @@ class CristalInstEngine(models.AbstractModel):
                         'days_in_previous': (today - previous_date).days if previous_date else 0,
                     })
                 partner.write(diff)
+        if full:
+            self._fill_queue(params, today)
+            self._pick_today(params, today)
+        self._sync_crm(partners, params)
         _logger.info('Institucional: %s empresas evaluadas, %s con cambios', len(partners), changed)
         return changed
 
     @api.model
     def _cron_refresh(self):
+        self._scope()
         self.recompute()
+
+    # ------------------------------------------------- quién entra al sistema
+    @api.model
+    def _scope(self):
+        """Suma al flujo institucional a toda empresa que corresponde:
+        la que tiene la etiqueta EMPRESA, y la que no la tiene pero es una persona jurídica
+        que nos compró y no es revendedora. Las segundas quedan marcadas "para revisar"."""
+        Partner = self.env['res.partner'].sudo().with_context(inst_engine=True, tracking_disable=True)
+        Category = self.env['res.partner.category'].sudo()
+        tag_inst = Category.search([('name', '=ilike', 'EMPRESA')])
+        tag_whole = Category.search([('name', 'ilike', 'mayorista')])
+        company_partners = self.env['res.company'].sudo().search([]).mapped('partner_id')
+        internal = self.env['res.users'].sudo().with_context(active_test=False).search(
+            [('share', '=', False)]).mapped('partner_id')
+        skip = (company_partners | internal).ids
+        Partner.search([('inst_is', '=', True), ('inst_source', '=', False)]).write({'inst_source': 'alejandra'})
+        added = 0
+        if tag_inst:
+            tagged = Partner.search([
+                ('category_id', 'in', tag_inst.ids), ('parent_id', '=', False),
+                ('inst_is', '=', False), ('inst_excluded', '=', False), ('id', 'not in', skip)])
+            if tagged:
+                tagged.write({'inst_is': True, 'inst_source': 'etiqueta'})
+                added += len(tagged)
+        # Sin etiqueta: personas jurídicas (CUIT 30, 33 o 34, o marcadas como empresa)
+        # con al menos una compra confirmada, que no sean mayoristas.
+        buyers = self.env['sale.order'].sudo()._read_group(
+            [('state', 'in', ('sale', 'done')), ('amount_untaxed', '>', 0)],
+            groupby=['partner_id'])
+        buyer_ids = self.env['res.partner'].sudo().browse(
+            [p.id for (p,) in buyers]).mapped('commercial_partner_id').ids
+        if buyer_ids:
+            domain = [
+                ('id', 'in', buyer_ids), ('parent_id', '=', False),
+                ('inst_is', '=', False), ('inst_excluded', '=', False), ('id', 'not in', skip),
+                '|', '|', '|', ('is_company', '=', True),
+                ('vat', '=like', '30%'), ('vat', '=like', '33%'), ('vat', '=like', '34%'),
+            ]
+            if tag_whole:
+                domain.append(('category_id', 'not in', tag_whole.ids))
+            candidates = Partner.search(domain)
+            if 'agent_level' in Partner._fields:
+                candidates = candidates.filtered(lambda p: p.agent_level in (False, 'none'))
+            if candidates:
+                candidates.write({'inst_is': True, 'inst_source': 'criterio', 'inst_review': True})
+                added += len(candidates)
+        if added:
+            _logger.info('Institucional: %s empresas nuevas entraron al flujo', added)
+        return added
+
+    @api.model
+    def _pull_more(self, count):
+        """Suma a "Mi día" las cuentas que siguen en prioridad."""
+        today = fields.Date.context_today(self)
+        Partner = self.env['res.partner'].sudo().with_context(inst_engine=True, tracking_disable=True)
+        more = Partner.search([
+            ('inst_is', '=', True), ('inst_stage', '!=', 'descartado'), ('inst_today', '=', False),
+            ('inst_next_step', '!=', False),
+            '|', ('inst_next_step_date', '<=', today), ('inst_in_pool', '=', True),
+        ], order='inst_priority desc, id', limit=count)
+        if not more:
+            return 0
+        more.filtered('inst_in_pool').write({'inst_queue_date': today, 'inst_next_step_date': today})
+        more.write({'inst_today': True})
+        self._sync_crm(more, self._params())
+        return len(more)
+
+    # ------------------------------------------------------- cola de llamadas
+    @api.model
+    def _next_workday(self, day):
+        nxt = day + timedelta(days=1)
+        while nxt.weekday() >= 5:
+            nxt += timedelta(days=1)
+        return nxt
+
+    @api.model
+    def _fill_queue(self, params, today):
+        """Reparte prospectos y captación de a pocos por día hábil, por prioridad.
+        Así todos tienen un próximo paso con fecha y "Mi día" no explota."""
+        quota = max(1, params.get('daily_calls') or 15)
+        Partner = self.env['res.partner'].sudo().with_context(inst_engine=True, tracking_disable=True)
+        pool = Partner.search([('inst_is', '=', True), ('inst_in_pool', '=', True)], order='inst_priority desc, id')
+        start = today
+        while start.weekday() >= 5:
+            start += timedelta(days=1)
+        fixed = pool.filtered(lambda p: p.inst_queue_date and p.inst_queue_date <= start)
+        load = {start: len(fixed)}
+        plan = {}
+        day = start
+        for partner in pool - fixed:
+            while load.get(day, 0) >= quota:
+                day = self._next_workday(day)
+            load[day] = load.get(day, 0) + 1
+            if partner.inst_queue_date != day or partner.inst_next_step_date != day:
+                plan.setdefault(day, []).append(partner.id)
+        for day, ids in plan.items():
+            Partner.browse(ids).write({'inst_queue_date': day, 'inst_next_step_date': day})
+        return True
+
+    # ----------------------------------------------------------- CRM
+    INST_STAGE_NAMES = [
+        ('prospecto', 'Prospecto', 100),
+        ('captacion', '1 · Captación', 101),
+        ('primera_compra', '2 · Primera compra', 102),
+        ('pedido_formal', '3 · Pedido formal', 103),
+        ('recurrente', '4 · Recurrente', 104),
+        ('descartado', 'Descartado', 105),
+    ]
+
+    @api.model
+    def _inst_team(self, create=True):
+        Team = self.env['crm.team'].sudo()
+        team = Team.search([('name', '=', 'Institucional')], limit=1)
+        if not team and create:
+            team = Team.create({'name': 'Institucional'})
+        return team
+
+    @api.model
+    def _inst_stages(self, team):
+        Stage = self.env['crm.stage'].sudo()
+        existing = {s.name: s for s in Stage.search([('team_id', '=', team.id)])}
+        out = {}
+        for key, name, sequence in self.INST_STAGE_NAMES:
+            stage = existing.get(name)
+            if not stage:
+                stage = Stage.create({
+                    'name': name, 'team_id': team.id, 'sequence': sequence,
+                    'fold': key == 'descartado',
+                })
+            out[key] = stage
+        return out
+
+    @api.model
+    def action_pipeline(self):
+        """Abre el flujo institucional del CRM con sus columnas propias."""
+        team = self._inst_team()
+        self._inst_stages(team)
+        ref = lambda xmlid: self.env.ref('cristal_institucional.%s' % xmlid).id
+        return {
+            'type': 'ir.actions.act_window',
+            'name': 'Institucional',
+            'res_model': 'crm.lead',
+            'view_mode': 'kanban,list,form,activity',
+            'views': [(ref('view_lead_inst_kanban'), 'kanban'), (ref('view_lead_inst_list'), 'list'),
+                      (False, 'form'), (False, 'activity')],
+            'search_view_id': [ref('view_lead_inst_search'), 'search'],
+            'domain': [('inst_account', '=', True)],
+            'context': {'default_team_id': team.id, 'default_type': 'opportunity',
+                        'search_default_inst_open': 1},
+        }
+
+    @api.model
+    def action_refresh_now(self):
+        """Botón "Actualizar ahora": suma empresas nuevas y recalcula todo."""
+        self._scope()
+        self.recompute()
+        return self.action_pipeline()
+
+    @api.model
+    def _sync_crm(self, partners, params):
+        """Una tarjeta por empresa en el CRM, en la columna de su etapa, con el
+        próximo paso como actividad. El prospecto vive como lead; desde captación es oportunidad."""
+        if not partners:
+            return
+        team = self._inst_team()
+        stages = self._inst_stages(team)
+        act_type = self.env.ref('cristal_institucional.mail_activity_type_inst', raise_if_not_found=False)
+        Lead = self.env['crm.lead'].sudo().with_context(
+            active_test=False, tracking_disable=True, mail_create_nosubscribe=True,
+            mail_create_nolog=True, mail_notrack=True, mail_auto_subscribe_no_notify=True)
+        Users = self.env['res.users'].sudo()
+        default_user = Users.browse(params.get('default_user_id') or 0).exists()
+
+        accounts = {}
+        for lead in Lead.search([('inst_account', '=', True), ('inst_partner_id', 'in', partners.ids)],
+                                order='id'):
+            if lead.inst_partner_id.id in accounts:
+                lead.write({'inst_account': False})      # nunca dos tarjetas para la misma empresa
+            else:
+                accounts[lead.inst_partner_id.id] = lead
+        missing = partners.filtered(lambda p: p.id not in accounts)
+        if missing:
+            candidates = Lead.search([('inst_partner_id', 'in', missing.ids), ('team_id', '=', team.id)])
+            best = {}
+            for lead in candidates:
+                rank = (lead.active, lead.type == 'opportunity', lead.id)
+                pid = lead.inst_partner_id.id
+                if pid not in best or rank > best[pid][0]:
+                    best[pid] = (rank, lead)
+            for partner in missing:
+                if partner.id in best:
+                    lead = best[partner.id][1]
+                    lead.write({'inst_account': True})
+                else:
+                    owner = partner.user_id if (partner.user_id and not partner.user_id.share
+                                                and partner.user_id.active) else default_user
+                    lead = Lead.create({
+                        'name': partner.name,
+                        'partner_id': partner.id,
+                        'team_id': team.id,
+                        'user_id': owner.id or False,
+                        'type': 'lead' if partner.inst_stage == 'prospecto' else 'opportunity',
+                        'stage_id': stages.get(partner.inst_stage or 'prospecto').id,
+                        'inst_account': True,
+                    })
+                accounts[partner.id] = lead
+
+        Activity = self.env['mail.activity'].sudo().with_context(mail_activity_quick_update=True)
+        lead_model_id = self.env['ir.model']._get_id('crm.lead')
+        current = {}
+        if act_type:
+            for activity in Activity.search([
+                    ('res_model', '=', 'crm.lead'), ('res_id', 'in', [l.id for l in accounts.values()]),
+                    ('activity_type_id', '=', act_type.id)]):
+                if activity.res_id in current:
+                    activity.unlink()
+                else:
+                    current[activity.res_id] = activity
+
+        for partner in partners:
+            lead = accounts.get(partner.id)
+            if not lead:
+                continue
+            stage = stages.get(partner.inst_stage or 'prospecto')
+            vals = {}
+            if lead.stage_id != stage:
+                vals['stage_id'] = stage.id
+            wanted_type = 'lead' if partner.inst_stage == 'prospecto' else 'opportunity'
+            if lead.type != wanted_type:
+                vals['type'] = wanted_type
+            if not lead.active:
+                vals['active'] = True
+            if lead.team_id != team:
+                vals['team_id'] = team.id
+            if not lead.user_id and default_user:
+                vals['user_id'] = default_user.id
+            if vals:
+                lead.write(vals)
+            if not act_type:
+                continue
+            activity = current.get(lead.id)
+            if partner.inst_next_step and partner.inst_next_step_date:
+                owner = lead.user_id or default_user
+                # En la lista de actividades de Odoo solo queda "para hoy" lo que entró en Mi día;
+                # lo demás que venció pasa a mañana, así no se acumula en rojo.
+                when = partner.inst_next_step_date
+                today = fields.Date.context_today(self)
+                if when <= today and not partner.inst_today:
+                    when = self._next_workday(today)
+                avals = {
+                    'summary': partner.inst_next_step[:240],
+                    'date_deadline': when,
+                    'user_id': owner.id or self.env.uid,
+                }
+                if activity:
+                    diff = {k: v for k, v in avals.items()
+                            if (activity[k].id if k == 'user_id' else activity[k]) != v}
+                    if diff:
+                        activity.write(diff)
+                else:
+                    avals.update({
+                        'res_model_id': lead_model_id, 'res_id': lead.id,
+                        'activity_type_id': act_type.id, 'automated': True,
+                    })
+                    Activity.create(avals)
+            elif activity:
+                activity.unlink()
 
     # ---------------------------------------------------------- informe semanal
     @api.model

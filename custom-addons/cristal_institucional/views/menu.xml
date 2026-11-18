@@ -1,25 +1,40 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
+    <!-- Todo vive dentro del CRM -->
+    <menuitem id="menu_crm_inst" name="Institucional" parent="crm.crm_menu_root" sequence="3"
+              groups="sales_team.group_sale_salesman"/>
+    <menuitem id="menu_crm_inst_today" name="Mi día" parent="menu_crm_inst" sequence="10"
+              action="action_server_inst_today"/>
+    <menuitem id="menu_crm_inst_pipeline" name="Tablero" parent="menu_crm_inst" sequence="20"
+              action="action_server_inst_pipeline"/>
+    <menuitem id="menu_crm_inst_days" name="Mis días" parent="menu_crm_inst" sequence="30"
+              action="action_inst_days"/>
+    <menuitem id="menu_crm_inst_refresh" name="Actualizar ahora" parent="menu_crm_inst" sequence="40"
+              action="action_server_inst_refresh"/>
+
+    <!-- Acceso directo desde el menú principal: abre lo mismo -->
     <menuitem id="menu_inst_root" name="Institucional" sequence="26"
               groups="sales_team.group_sale_salesman"
               web_icon="cristal_institucional,static/description/icon.png"/>
-    <menuitem id="menu_inst_board" name="Tablero" parent="menu_inst_root" sequence="10"
-              action="action_inst_board"/>
-    <menuitem id="menu_inst_today" name="Mi día" parent="menu_inst_root" sequence="20"
-              action="action_inst_today"/>
+    <menuitem id="menu_inst_today" name="Mi día" parent="menu_inst_root" sequence="10"
+              action="action_server_inst_today"/>
+    <menuitem id="menu_inst_board" name="Tablero" parent="menu_inst_root" sequence="20"
+              action="action_server_inst_pipeline"/>
+    <menuitem id="menu_inst_days" name="Mis días" parent="menu_inst_root" sequence="25"
+              action="action_inst_days"/>
     <menuitem id="menu_inst_report" name="Reportes" parent="menu_inst_root" sequence="30"/>
     <menuitem id="menu_inst_report_funnel" name="Embudo y margen" parent="menu_inst_report" sequence="10"
               action="action_inst_report"/>
     <menuitem id="menu_inst_report_calls" name="Contactos por día" parent="menu_inst_report" sequence="20"
               action="action_inst_calls"/>
-
     <menuitem id="menu_inst_report_moves" name="Cambios de etapa" parent="menu_inst_report" sequence="30"
               action="action_inst_stage_log"/>
     <menuitem id="menu_inst_report_evolution" name="Evolución semanal" parent="menu_inst_report" sequence="40"
               action="action_inst_snapshot"/>
-
     <menuitem id="menu_inst_config" name="Configuración" parent="menu_inst_root" sequence="90"
               groups="sales_team.group_sale_manager"/>
     <menuitem id="menu_inst_config_chain" name="Cadena de avisos" parent="menu_inst_config" sequence="10"
               action="action_inst_chain_step"/>
+    <menuitem id="menu_inst_config_refresh" name="Actualizar ahora" parent="menu_inst_config" sequence="20"
+              action="action_server_inst_refresh"/>
 </odoo>
