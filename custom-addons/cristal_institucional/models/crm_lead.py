@@ -22,6 +22,9 @@ class CrmLead(models.Model):
     inst_deadline = fields.Date(related='inst_partner_id.inst_deadline', string='Fecha límite')
     inst_priority = fields.Float(related='inst_partner_id.inst_priority', store=True, string='Prioridad')
     inst_today = fields.Boolean(related='inst_partner_id.inst_today', store=True, string='Es para hoy')
+    inst_no_phone = fields.Boolean(related='inst_partner_id.inst_no_phone', store=True, string='Sin teléfono')
+    inst_phone = fields.Char(related='inst_partner_id.inst_phone', string='Teléfono para llamar')
+    inst_last_note = fields.Char(related='inst_partner_id.inst_last_note', string='Última nota')
     inst_auto_step_id = fields.Many2one(
         related='inst_partner_id.inst_auto_step_id', store=True, string='WhatsApp listo para salir solo')
     inst_chain_channel = fields.Selection(
@@ -83,6 +86,16 @@ class CrmLead(models.Model):
         if team and self._context.get('default_team_id') == team.id:
             return stages.sudo().search([('team_id', '=', team.id)], order='sequence, id')
         return super()._read_group_stage_ids(stages, domain)
+
+    def write(self, vals):
+        res = super().write(vals)
+        # Si otra regla o una persona mueve la tarjeta de una cuenta (por ejemplo a "Ganado" al
+        # confirmar un pedido), vuelve sola a la columna que le corresponde.
+        if ({'stage_id', 'active', 'type'} & set(vals)) and not self.env.context.get('inst_sync'):
+            accounts = self.filtered('inst_account')
+            if accounts:
+                self.env['cristal.inst.engine']._resync(accounts.mapped('inst_partner_id'))
+        return res
 
     def _inst_partner(self):
         self.ensure_one()

@@ -195,6 +195,7 @@
                 <filter name="al_dormido" string="Dormido" domain="[('inst_alert', '=', 'dormido')]"/>
                 <filter name="al_vence" string="Fecha límite vencida" domain="[('inst_alert', '=', 'vence')]"/>
                 <separator/>
+                <filter name="no_phone" string="Falta teléfono" domain="[('inst_no_phone', '=', True)]"/>
                 <filter name="rv_review" string="Para revisar (las sumó el sistema)" domain="[('inst_review', '=', True)]"/>
                 <filter name="auto_ready" string="Con WhatsApp listo para salir solo" domain="[('inst_auto_step_id', '!=', False)]"/>
                 <group expand="0" string="Agrupar por">

@@ -39,4 +39,15 @@ class SaleOrder(models.Model):
                     raise UserError(
                         'La propuesta de primera compra deja %.1f %% de margen y el piso es %.0f %%. '
                         'Bajá el descuento o cambiá los productos antes de confirmar.' % (pct, floor))
-        return super().action_confirm()
+        res = super().action_confirm()
+        # Un pedido confirmado puede cambiar la etapa de la empresa: se recalcula en el momento
+        self._inst_touch()
+        return res
+
+    def _inst_touch(self):
+        self.env['cristal.inst.engine']._touch(self.mapped('partner_id.commercial_partner_id'))
+
+    def _action_cancel(self):
+        res = super()._action_cancel()
+        self._inst_touch()
+        return res
