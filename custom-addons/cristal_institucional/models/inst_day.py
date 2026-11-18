@@ -97,7 +97,7 @@ class CristalInstDay(models.Model):
         for day in self:
             leads = Lead.search([
                 ('inst_account', '=', True), ('inst_today', '=', True),
-                '|', ('user_id', '=', day.user_id.id), ('user_id', '=', False),
+                ('user_id', '=', day.user_id.id),
             ], order='inst_priority desc')
             day.lead_ids = leads
             day.pending = len(leads)
