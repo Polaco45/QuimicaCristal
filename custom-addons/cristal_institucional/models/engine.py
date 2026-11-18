@@ -52,7 +52,7 @@ class CristalInstEngine(models.AbstractModel):
     @api.model
     def _gather(self, partners, params):
         """Devuelve por empresa: compras reales (fecha, monto, margen) y el kit."""
-        data = {p.id: {'orders': [], 'kit_order': False, 'kit_date': False, 'fams': set(), 'quote': 0.0}
+        data = {p.id: {'orders': [], 'kit_order': False, 'kit_date': False, 'fams': {}, 'quote': 0.0}
                 for p in partners}
         if not partners:
             return data
@@ -98,7 +98,11 @@ class CristalInstEngine(models.AbstractModel):
                 ('product_id', '!=', False),
             ])
             for line in lines:
-                data[recent[line.order_id.id]]['fams'].add(self._family(line.product_id.categ_id))
+                if line.product_id.type == 'service':
+                    continue        # fletes y servicios no son "lo que compra"
+                fams = data[recent[line.order_id.id]]['fams']
+                fam = self._family(line.product_id.categ_id)
+                fams[fam] = fams.get(fam, 0.0) + line.price_subtotal
         if 'pos.order' in self.env:
             PosOrder = self.env['pos.order'].sudo()
             pos_orders = PosOrder.search([
@@ -171,10 +175,11 @@ class CristalInstEngine(models.AbstractModel):
         vals['inst_cycle_days'] = cycle if dates else 0
 
         # Qué compra y qué le falta sumar (fabricación propia)
-        fams = info.get('fams') or set()
+        fams = info.get('fams') or {}
         short = lambda fam: fam.split(' / ')[-1]
         gaps = [short(f) for f in params.get('ref_fams', []) if f not in fams] if count else []
-        vals['inst_buys'] = ', '.join(sorted(short(f) for f in fams))[:250] or False
+        top = sorted(fams, key=lambda f: -fams[f])[:5]      # lo que más compra, primero
+        vals['inst_buys'] = ', '.join(short(f) for f in top)[:250] or False
         vals['inst_gaps'] = ', '.join(gaps)[:250] or False
 
         alert = 'ok'
