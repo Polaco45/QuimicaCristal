@@ -7,6 +7,15 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.76.0] — 2026-11-18
+
+### Changed — Claudio confirma solo: Joaco ya no interviene en pedidos
+Joaco (18/11): "no quiero intervenir más yo en pedidos, que sea autónomo". Sin tope de monto;
+`confirm_order` y `escalate_to_joaco` ya no derivan a Joaco (parámetro
+`cristal_agent.owner_confirm_whatsapp`, 0): indican cómo resolver cada traba con el cliente. La
+alarma de 24 h confirma sola o le pide el OK al cliente con lo que falta
+(`sale.order.cristal_send_ok_reminder`, campo `cristal_ok_reminder_at`).
+
 ## [18.0.1.75.0] — 2026-11-17
 
 ### Changed — Consumidor final con atención simple y mayoristas de fuera de ruta sin escalar

@@ -107,6 +107,11 @@ class CristalAgentRouteSelftest(models.TransientModel):
             'cristal_agent.route_no_departures_after', '')
         env['ir.config_parameter'].sudo().set_param(
             'cristal_agent.route_weeks_between_departures', '')
+        # v1.76 — los casos viejos prueban el esquema con tope de monto y pedido a Joaco;
+        # el caso 76 prueba el esquema autónomo.
+        config.write({'auto_confirm_max_amount': 200000.0})
+        env['ir.config_parameter'].sudo().set_param(
+            'cristal_agent.owner_confirm_whatsapp', '1')
 
         # Salidas fijas para el caso del 29/09/2026 (idempotente).
         for circ, d in ((so, date(2026, 10, 15)), (este, date(2026, 10, 29))):
@@ -2221,6 +2226,43 @@ class CristalAgentRouteSelftest(models.TransientModel):
             assert len(fut) >= 2 and gaps == {28}, (fut.mapped('date'), gaps)
             return 'motivo calculado + link al PDF · pausado → retiro, sin fecha · 2 circuitos → cada 14 días'
         self._case(results, "75. Motivo de confirmación y circuitos pausados", c_v174)
+
+        # 76) v1.76: Joaco ya no confirma — sin tope, se resuelve con el cliente
+        def c_autonomo():
+            from ..services import owner_confirm as oc
+            ICP = env['ir.config_parameter'].sudo()
+            ICP.set_param('cristal_agent.owner_confirm_whatsapp', '0')
+            cfg.write({'auto_confirm_max_amount': 0.0})
+            assert not oc.owner_confirm_enabled(env)
+            p = mk_lc('Autonomo RC', 'Rio Cuarto', mobile='+5493589990077')
+            o = SaleOrder.browse(quote(p, 250000)['order_id'])
+            probs = oc.confirm_blockers(env, o)
+            assert not any('supera el monto' in x for x in probs), probs
+            sent = []
+            orig = oc._send_to_owner
+            oc._send_to_owner = lambda env_, cfg_, text, **kw: sent.append(text) or {'ok': True}
+            try:
+                r = ToolRegistry.get('escalate_to_joaco').execute(
+                    env=env, run=None, related_partner_id=p.id,
+                    message=f"PEDIDO PARA CONFIRMAR — Autonomo RC. Cotización {o.name}, total $250.000.")
+            finally:
+                oc._send_to_owner = orig
+            assert r.get('not_escalated') and not sent, (r, sent)
+            assert 'ya no confirma' in r['message_for_bot'], r
+            r = ToolRegistry.get('confirm_order').execute(
+                env=env, run=None, partner_id=p.id, order_id=o.id, payment='efectivo')
+            if r.get('not_confirmed'):
+                assert 'CON EL CLIENTE' in r['message_for_bot'] and 'escalá' not in r['message_for_bot'], r
+            else:
+                assert r.get('ok') and o.state == 'sale', r
+            p2 = mk_lc('Autonomo Recordatorio', 'Rio Cuarto', mobile='+5493589990078')
+            o2 = SaleOrder.browse(quote(p2, 90000)['order_id'])
+            txt = o2._cristal_ok_reminder_text()
+            assert o2.name in txt and '¿La confirmamos?' in txt and 'efectivo o por transferencia' in txt, txt
+            assert len(txt) < 850, len(txt)
+            assert o2.cristal_send_ok_reminder()[o2.name] == 'sin chat de WhatsApp'
+            return 'sin tope · escalar pedido → no llega a Joaco · confirm_order guía al cliente · recordatorio con lo que falta'
+        self._case(results, "76. Claudio autónomo: Joaco no confirma pedidos", c_autonomo)
 
         # 71) v1.68: combos de entrada (precio de combo repartido y 20 % de primera compra)
         def c_entry_combos():

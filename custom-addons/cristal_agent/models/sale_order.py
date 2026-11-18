@@ -75,6 +75,9 @@ class SaleOrder(models.Model):
     # v1.67 — Cuándo se le pidió a Joaco por WhatsApp que confirme este pedido.
     cristal_owner_confirm_at = fields.Datetime(
         string="Confirmación pedida a Joaco (WhatsApp)", copy=False, readonly=True)
+    # v1.76 — Cuándo se le pidió el OK al CLIENTE (recordatorio de cotización sin confirmar).
+    cristal_ok_reminder_at = fields.Datetime(
+        string="OK pedido al cliente (WhatsApp)", copy=False, readonly=True)
 
     # ───────────────────── Flete de la ruta (v1.37) ─────────────────────
     def _cristal_freight_product(self, config):
@@ -481,15 +484,107 @@ class SaleOrder(models.Model):
             self.env.cr.commit()
         return True
 
+    # ───────────── v1.76 — Recordatorio de OK al cliente (Joaco ya no confirma) ─────────────
+    def _cristal_ok_missing(self):
+        """Qué le falta a esta cotización para que Claudio la confirme, dicho para el
+        CLIENTE (lista de frases). Sale de la lista de control de confirm_order."""
+        self.ensure_one()
+        import re
+        from ..services.owner_confirm import confirm_blockers
+        out = []
+        for p in confirm_blockers(self.env, self):
+            if p.startswith('falta la dirección'):
+                out.append("la dirección exacta de entrega (o si lo retira en el local)")
+            elif p.startswith('falta confirmar los bidones'):
+                out.append("cuántos bidones vacíos de 20 L con tapa tiene para el recambio")
+            elif p.startswith('envío fuera de'):
+                out.append("si lo retira en nuestro local o lo manda a buscar con un "
+                           "comisionista (a su localidad no llega nuestro reparto)")
+            elif p.startswith('no hay stock suficiente de'):
+                m = re.match(r'no hay stock suficiente de (.+?)(?: \(pide|$)', p)
+                name = re.sub(r'^\[[^\]]+\]\s*', '', m.group(1)) if m else 'un producto'
+                out.append(f"si lo confirmamos con lo que tenemos hoy de {name} o prefiere "
+                           f"esperar la reposición")
+            elif p.startswith('tiene facturas vencidas'):
+                out.append("regularizar el saldo pendiente de su cuenta (le paso el detalle "
+                           "si lo necesita)")
+            elif p.startswith('la salida del camión'):
+                out.append("si lo retira en el local o lo dejamos para la próxima salida "
+                           "del camión")
+        if not self.cristal_payment:
+            out.append("si paga en efectivo o por transferencia")
+        return out
+
+    def _cristal_ok_reminder_text(self):
+        """Texto del recordatorio: total, cómo se entrega y qué falta para confirmar."""
+        self.ensure_one()
+        from ..services.helpers import fmt_day
+        total = f"${self.amount_total:,.0f}".replace(',', '.')
+        dep = self.route_departure_id
+        if self.cristal_delivery_mode == 'retiro':
+            entrega = "Lo retira en nuestro local (San Martín 2350, Río Cuarto)."
+        elif dep and dep.date and dep.state in ('preventa', 'rescate') \
+                and not dep.circuit_id.paused:
+            entrega = f"Va en el camión del {fmt_day(dep.date)}."
+        elif self.partner_id.agent_zone in ('rio_cuarto', 'las_higueras'):
+            entrega = "Se lo llevamos por la mañana; le avisamos el día."
+        else:
+            entrega = ""
+        missing = self._cristal_ok_missing()
+        ask = ("Para dejarlo confirmado necesito que me diga: " + "; ".join(missing) + "."
+               if missing else "Con su OK lo dejo confirmado.")
+        return (f"Le escribo por su cotización {self.name}: el total es {total}. "
+                + (entrega + " " if entrega else "")
+                + "¿La confirmamos? " + ask)
+
+    def cristal_send_ok_reminder(self):
+        """Le pide el OK al cliente por WhatsApp (una vez por cotización). Devuelve
+        {nombre: resultado}. Lo usa el cron y se puede disparar a mano."""
+        from ..services.tool_registry import ToolRegistry
+        tool = ToolRegistry.get('send_whatsapp')
+        out = {}
+        for order in self.sudo():
+            if order.state not in ('draft', 'sent'):
+                out[order.name] = 'no es cotización'
+                continue
+            if order.cristal_ok_reminder_at:
+                out[order.name] = 'ya se le pidió'
+                continue
+            partner = order.partner_id
+            ch = self.env['discuss.channel'].sudo().search([
+                ('channel_type', '=', 'whatsapp'), ('channel_partner_ids', 'in', partner.ids)],
+                order='write_date desc', limit=1)
+            if not tool or not ch or not ch.wa_account_id or not ch.whatsapp_number:
+                out[order.name] = 'sin chat de WhatsApp'
+                continue
+            text = order._cristal_ok_reminder_text()
+            env2 = self.env(context=dict(self.env.context, from_cristal_agent=True,
+                                         wa_transactional=True))
+            try:
+                res = tool.execute(env=env2, run=None, channel_id=ch.id, body=text,
+                                   wa_account_id=ch.wa_account_id.id,
+                                   mobile_number=ch.whatsapp_number) or {}
+            except Exception as e:  # noqa: BLE001
+                _logger.warning("Recordatorio de OK de %s falló: %s", order.name, e)
+                res = {'error': str(e)[:120]}
+            if res.get('ok'):
+                order.cristal_ok_reminder_at = fields.Datetime.now()
+                order.message_post(body="📲 Se le pidió el OK al cliente por WhatsApp: " + text,
+                                   subtype_xmlid='mail.mt_note')
+                out[order.name] = 'enviado'
+            else:
+                out[order.name] = 'no salió: ' + str(res.get('error') or res.get('message') or '')[:120]
+        return out
+
     @api.model
     def cron_requested_unconfirmed(self, limit=5):
-        """v1.71 — Cotización mayorista que el cliente PIDIÓ por WhatsApp ("quiero el
-        pedido", "confirmo", "dale") y sigue sin confirmar 24 h después: se le pide a Joaco
-        por WhatsApp que la confirme (responde "OK S0xxxx"). Casos reales de la auditoría de
-        recompra: 80928 escribió "quiero el pedido" y la cotización seguía en borrador."""
+        """Cotización mayorista que el cliente PIDIÓ por WhatsApp ("quiero el pedido",
+        "confirmo", "dale") y sigue sin confirmar 24 h después.
+        v1.76 — Joaco (18/11/2026): "no quiero intervenir más yo en pedidos, que sea
+        autónomo". Ya no se le pide a Joaco: si pasa todos los controles se confirma sola;
+        si le falta algo, se le pide el OK al CLIENTE con lo que falta (una vez)."""
         import re
         from ..services.helpers import within_contact_hours
-        from ..services.owner_confirm import request_owner_confirmation
         if not within_contact_hours(self.env):
             return 0
         intent = re.compile(
@@ -502,7 +597,7 @@ class SaleOrder(models.Model):
         from ..services.owner_confirm import confirm_blockers
         now = fields.Datetime.now()
         orders = self.sudo().search([
-            ('state', 'in', ('draft', 'sent')), ('cristal_owner_confirm_at', '=', False),
+            ('state', 'in', ('draft', 'sent')), ('cristal_ok_reminder_at', '=', False),
             ('pricelist_id.name', '=', 'Lista Mayorista'),
             ('create_date', '<', now - timedelta(hours=24)),
             ('create_date', '>', now - timedelta(days=14))], order='create_date desc')
@@ -523,10 +618,11 @@ class SaleOrder(models.Model):
             text = ' '.join(re.sub(r'<[^>]+>', ' ', m.body or '') for m in msgs)
             if not intent.search(text):
                 continue
-            # v1.74 — antes de molestar a Joaco: si el cliente lo pidió con todas las
-            # letras y el pedido pasa TODOS los controles, se confirma solo (el cliente
-            # recibe el aviso con el detalle de pago). Si no, a Joaco con el motivo exacto.
-            if strong.search(text) and not confirm_blockers(self.env, order):
+            # Si el cliente lo pidió con todas las letras, ya dijo cómo paga y el pedido
+            # pasa TODOS los controles, se confirma solo (recibe el aviso con el detalle de
+            # pago). Si no, se le pide el OK al cliente con lo que falta.
+            if strong.search(text) and order.cristal_payment \
+                    and not confirm_blockers(self.env, order):
                 try:
                     with self.env.cr.savepoint():
                         order.with_context(from_cristal_agent=True).action_confirm()
@@ -538,13 +634,11 @@ class SaleOrder(models.Model):
                     sent += 1
                     self.env.cr.commit()
                     continue
-                except Exception:  # noqa: BLE001 — si no se pudo, decide Joaco
+                except Exception:  # noqa: BLE001 — si no se pudo, se le pide el OK
                     _logger.exception("No pude confirmar solo %s", order.name)
-            res = request_owner_confirmation(
-                self.env, order, "el cliente lo pidió hace más de 24 h", force=True)
-            if res.get('ok') and not res.get('already_requested'):
+            if order.cristal_send_ok_reminder().get(order.name) == 'enviado':
                 sent += 1
-                self.env.cr.commit()
+            self.env.cr.commit()
         return sent
 
     def _cristal_referral_on_confirm(self):
