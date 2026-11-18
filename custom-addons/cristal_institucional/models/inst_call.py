@@ -156,7 +156,7 @@ class CristalInstCallWizard(models.TransientModel):
         partner.message_post(body=body, subtype_xmlid='mail.mt_note')
 
         # Ya se trabajó hoy: sale de "Mi día" y vuelve a la fila con su nueva prioridad
-        vals.update({'inst_queue_date': False, 'inst_today': False})
+        vals.update({'inst_queue_date': False, 'inst_today': False, 'inst_pinned_date': False})
         partner.with_context(inst_engine=True).write(vals)
         if self.result == 'kit' and not partner.inst_kit_order_id:
             # Aceptó el kit: el pedido sin cargo se arma solo

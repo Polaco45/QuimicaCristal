@@ -372,6 +372,19 @@ class CristalInstEngine(models.AbstractModel):
             vals['inst_stage_date'] = today
         if not step_date or step_date > today:
             vals['inst_today'] = False      # ya no es para hoy: sale de "Mi día"
+        # Lo que la persona decidió a mano manda sobre el cálculo
+        if partner.inst_skip_date == today:
+            vals['inst_today'] = False
+        elif partner.inst_pinned_date == today and stage != 'descartado':
+            vals['inst_today'] = True
+            if not step:
+                vals['inst_next_step'] = 'Llamar'
+            if not step_date or step_date > today:
+                vals['inst_next_step_date'] = today
+        if partner.inst_skip_date and partner.inst_skip_date < today:
+            vals['inst_skip_date'] = False
+        if partner.inst_pinned_date and partner.inst_pinned_date < today:
+            vals['inst_pinned_date'] = False
         # Responsable: el vendedor de la empresa si forma parte del equipo institucional;
         # si no, el responsable por defecto. Nadie queda sin asignar.
         seller = partner.user_id
@@ -394,8 +407,11 @@ class CristalInstEngine(models.AbstractModel):
         due = Partner.search([
             ('inst_is', '=', True), ('inst_stage', '!=', 'descartado'),
             ('inst_next_step', '!=', False), ('inst_next_step_date', '<=', today),
+            '|', ('inst_skip_date', '=', False), ('inst_skip_date', '!=', today),
         ], order='inst_priority desc, inst_next_step_date, id')
-        chosen = Partner
+        # Lo que la persona agregó a mano entra siempre
+        chosen = Partner.search([('inst_is', '=', True), ('inst_pinned_date', '=', today),
+                                 ('inst_stage', '!=', 'descartado')])
         # Cada responsable tiene su propio día. Se reserva un lugar para empresas nuevas,
         # así cuidar a los clientes no deja la captación en cero.
         for user in due.mapped('inst_user_id'):
@@ -529,6 +545,7 @@ class CristalInstEngine(models.AbstractModel):
         more = Partner.search([
             ('inst_is', '=', True), ('inst_stage', '!=', 'descartado'), ('inst_today', '=', False),
             ('inst_next_step', '!=', False),
+            '|', ('inst_skip_date', '=', False), ('inst_skip_date', '!=', today),
             '|', ('inst_next_step_date', '<=', today), ('inst_in_pool', '=', True),
         ], order='inst_priority desc, id', limit=count)
         if not more:

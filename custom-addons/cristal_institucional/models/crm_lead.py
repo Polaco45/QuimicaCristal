@@ -103,6 +103,26 @@ class CrmLead(models.Model):
     def action_inst_orders(self):
         return self._inst_partner().action_inst_orders()
 
+    def action_inst_add_today(self):
+        """Agregar esta cuenta a "Mi día" de hoy, aunque el sistema la tuviera para otra fecha."""
+        today = fields.Date.context_today(self)
+        partners = self.mapped('inst_partner_id').sudo().filtered('inst_is')
+        if not partners:
+            raise UserError('Esta oportunidad no es una cuenta institucional.')
+        partners.with_context(inst_engine=True, tracking_disable=True).write(
+            {'inst_pinned_date': today, 'inst_skip_date': False})
+        self.env['cristal.inst.engine'].recompute(partners)
+        return True
+
+    def action_inst_skip_today(self):
+        """Sacar esta cuenta de "Mi día" de hoy. Vuelve a entrar en el orden que le toque."""
+        today = fields.Date.context_today(self)
+        partners = self.mapped('inst_partner_id').sudo().filtered('inst_is')
+        partners.with_context(inst_engine=True, tracking_disable=True).write(
+            {'inst_skip_date': today, 'inst_pinned_date': False, 'inst_today': False})
+        self.env['cristal.inst.engine'].recompute(partners)
+        return True
+
     def action_inst_recompute(self):
         self.env['cristal.inst.engine'].recompute(self.mapped('inst_partner_id'))
         return True

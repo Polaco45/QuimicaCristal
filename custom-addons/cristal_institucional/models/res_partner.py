@@ -85,6 +85,8 @@ class ResPartner(models.Model):
     inst_in_pool = fields.Boolean('En la fila de llamadas', copy=False, index=True, readonly=True)
     inst_queue_date = fields.Date('Día asignado en la fila', copy=False, readonly=True)
     inst_today = fields.Boolean('Es para hoy', copy=False, index=True, readonly=True)
+    inst_pinned_date = fields.Date('Agregada a mano para el día', copy=False, readonly=True)
+    inst_skip_date = fields.Date('Sacada a mano del día', copy=False, readonly=True)
     inst_auto_step_id = fields.Many2one(
         'cristal.inst.chain.step', 'WhatsApp listo para salir solo', copy=False, readonly=True,
         ondelete='set null',
