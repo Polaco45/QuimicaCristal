@@ -282,7 +282,7 @@ class CristalInstEngine(models.AbstractModel):
                 chain_step = nxt['id']
                 step = '%s: %s' % (nxt['channel_label'], nxt['name'])
                 if chain == 'atraso' and alert == 'ok':
-                    step = 'Si no repone antes: %s%s' % (step[:1].lower(), step[1:])
+                    step = 'Si no repone antes de esta fecha: %s' % nxt['channel_label'].lower()
                 step_date = anchor + timedelta(days=nxt['day'])
                 # Entre un aviso y el siguiente se respeta la espera de la cadena,
                 # aunque el cliente venga muy atrasado.
@@ -721,8 +721,8 @@ class CristalInstEngine(models.AbstractModel):
                 # lo demás que venció pasa a mañana, así no se acumula en rojo.
                 when = partner.inst_next_step_date
                 today = fields.Date.context_today(self)
-                if when <= today and not partner.inst_today:
-                    when = self._next_workday(today)
+                if when <= today:
+                    when = today if partner.inst_today else self._next_workday(today)
                 avals = {
                     'summary': partner.inst_next_step[:240],
                     'date_deadline': when,
