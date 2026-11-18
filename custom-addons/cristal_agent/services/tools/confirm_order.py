@@ -122,6 +122,16 @@ class ConfirmOrder(AgentTool):
                                        "Preguntale cuál prefiere."}
         config = env['cristal.agent.config'].sudo().get_active()
         problems = self._problems(env, config, partner, order)
+        from ..owner_confirm import owner_confirm_enabled, autonomous_guidance
+        if problems and not owner_confirm_enabled(env):
+            # v1.76 — Joaco ya no confirma pedidos: se resuelve con el cliente.
+            return {"ok": False, "not_confirmed": True, "problems": problems,
+                    "message_for_bot": (
+                        "NO lo confirmé todavía. Resolvelo CON EL CLIENTE y volvé a llamar "
+                        "confirm_order: " + autonomous_guidance(problems) + ". Decile al "
+                        "cliente qué falta y que con eso queda confirmado. NO digas "
+                        "'pendiente de confirmación de Joaquín' ni escales a Joaco: él ya no "
+                        "confirma pedidos.")}
         if problems:
             return {"ok": False, "not_confirmed": True, "problems": problems,
                     "message_for_bot": (

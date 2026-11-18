@@ -241,3 +241,41 @@ def handle_owner_reply(env, text):
     _send_to_owner(env, config, f"✅ Confirmé {order.name} de {order.partner_id.name}. "
                                 f"Le aviso al cliente.")
     return True
+
+
+# v1.76 — Joaco (18/11/2026): "no quiero intervenir más yo en pedidos, que sea autónomo".
+# Ya no se le pide a Joaco que confirme: lo que la lista de control no deja pasar se
+# resuelve con el cliente. Se puede volver al esquema anterior con el parámetro
+# cristal_agent.owner_confirm_whatsapp = 1.
+def owner_confirm_enabled(env):
+    return str(env['ir.config_parameter'].sudo().get_param(
+        'cristal_agent.owner_confirm_whatsapp') or '0').strip() == '1'
+
+
+def autonomous_guidance(problems):
+    """Qué tiene que hacer Claudio con cada motivo, sin pasar por Joaco."""
+    tips = []
+    for p in problems or []:
+        if p.startswith('falta la dirección'):
+            tips.append("pedile la dirección exacta (o si retira en el local)")
+        elif p.startswith('falta confirmar los bidones'):
+            tips.append("preguntale cuántos bidones vacíos de 20 L con tapa tiene y cargalo "
+                        "con create_sale_order (bidones_nuevos)")
+        elif p.startswith('envío fuera de'):
+            tips.append("su localidad no tiene reparto: ofrecé retiro en el local o "
+                        "comisionista y recotizá con delivery_mode='retiro'")
+        elif p.startswith('no hay stock suficiente de'):
+            tips.append(p + ": decíselo y preguntale si lo confirmás con lo que hay "
+                            "(ajustá la cantidad) o si espera la reposición")
+        elif p.startswith('tiene facturas vencidas'):
+            tips.append("tiene saldo vencido: decile con respeto que para confirmar primero "
+                        "hay que regularizarlo y pasale el saldo; no confirmes hasta entonces")
+        elif p.startswith('la salida del camión'):
+            tips.append("esa salida del camión ya pasó o se postergó: recotizá para la "
+                        "próxima salida (get_route_info) o con retiro")
+        elif p.startswith('descuento mayor'):
+            tips.append("la cotización tiene un descuento mayor al permitido: recotizá con "
+                        "los descuentos normales")
+        else:
+            tips.append(p)
+    return "; ".join(tips)

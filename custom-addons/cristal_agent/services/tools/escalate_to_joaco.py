@@ -65,6 +65,19 @@ class EscalateToJoaco(AgentTool):
             m = _re_pc.search(r'\bS\d{4,6}\b', message)
             order = env['sale.order'].sudo().search([('name', '=', m.group(0))], limit=1) \
                 if m else env['sale.order']
+            from ..owner_confirm import (owner_confirm_enabled, confirm_blockers,
+                                         autonomous_guidance)
+            if not owner_confirm_enabled(env):
+                # v1.76 — Joaco ya no confirma pedidos: no se le manda nada.
+                problems = confirm_blockers(env, order) if order else []
+                return {"ok": False, "not_escalated": True, "message_for_bot": (
+                    "NO se lo pasé a Joaco: él ya no confirma pedidos. Lo confirmás VOS con "
+                    "confirm_order cuando el cliente da el OK"
+                    + (". Antes resolvé con el cliente: " + autonomous_guidance(problems)
+                       if problems else " (falta solo saber si paga en efectivo o por "
+                                        "transferencia, si todavía no lo dijo)")
+                    + ". No le digas 'pendiente de confirmación de Joaquín': decile qué "
+                      "falta y que con eso queda confirmado.")}
             if order:
                 from ..owner_confirm import request_owner_confirmation
                 plain = _re_pc.sub(r'<[^>]+>', ' ', message)
