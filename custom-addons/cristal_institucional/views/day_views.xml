@@ -15,61 +15,88 @@
                     <field name="state" widget="statusbar"/>
                 </header>
                 <sheet>
+                    <field name="blocked_by_previous" invisible="1"/>
+                    <field name="met" invisible="1"/>
                     <div class="alert alert-warning" role="alert" invisible="not blocked_by_previous">
                         Tenés un día anterior sin cerrar. Cerralo antes de seguir.
                     </div>
-                    <div class="alert alert-success" role="alert" invisible="not met">
-                        <field name="headline" readonly="1"/>
+                    <!-- Franja de objetivos: una sola línea, la lista es lo importante -->
+                    <div class="alert alert-success mb-2" role="alert" invisible="not met">
+                        <field name="headline" readonly="1" class="fw-bold"/>
                     </div>
-                    <div class="alert alert-info" role="alert" invisible="met">
-                        <field name="headline" readonly="1"/>
+                    <div class="alert alert-info mb-2" role="alert" invisible="met">
+                        <field name="headline" readonly="1" class="fw-bold"/>
                     </div>
-                    <field name="blocked_by_previous" invisible="1"/>
-                    <field name="met" invisible="1"/>
-                    <group>
-                        <group string="Hoy">
-                            <field name="date" readonly="1"/>
-                            <field name="user_id" readonly="1" options="{'no_open': True}"/>
-                            <field name="target" readonly="state == 'closed'"/>
-                            <field name="contacts"/>
-                            <field name="progress" widget="progressbar"/>
-                            <field name="missing"/>
-                            <field name="calls"/>
-                            <field name="pending"/>
-                        </group>
-                        <group string="Esta semana">
-                            <field name="week_contacts"/>
-                            <field name="week_target"/>
-                            <field name="week_progress" widget="progressbar"/>
-                            <field name="week_kits"/>
-                            <field name="week_kits_target"/>
-                            <field name="week_kits_progress" widget="progressbar"/>
-                            <field name="week_first_orders"/>
-                            <field name="week_reorders"/>
-                            <field name="streak"/>
-                        </group>
+                    <group col="6">
+                        <field name="progress" widget="progressbar" string="Hoy"/>
+                        <field name="week_progress" widget="progressbar" string="Semana"/>
+                        <field name="week_kits_progress" widget="progressbar" string="Kits de la semana"/>
                     </group>
+
                     <separator string="Para hoy, en orden de importancia"/>
-                    <field name="lead_ids" nolabel="1" readonly="1">
-                        <list decoration-danger="inst_alert == 'dormido'" decoration-warning="inst_alert in ('riesgo', 'vence')">
-                            <field name="partner_id" string="Empresa"/>
-                            <button name="action_inst_call" type="object" string="Llamada" icon="fa-phone"/>
-                            <button name="action_inst_skip_today" type="object" string="Sacar de hoy" icon="fa-times"/>
-                            <field name="inst_stage" widget="badge"/>
-                            <field name="inst_alert" widget="badge" optional="show"/>
-                            <field name="inst_next_step"/>
-                            <field name="phone"/>
-                            <field name="inst_decisor_id" optional="show"/>
-                        </list>
+                    <field name="lead_ids" nolabel="1" readonly="1" mode="kanban">
+                        <kanban create="0">
+                            <field name="inst_alert"/>
+                            <field name="inst_stage"/>
+                            <field name="company_currency"/>
+                            <field name="inst_order_count"/>
+                            <field name="inst_days_late"/>
+                            <field name="inst_no_phone"/>
+                            <templates>
+                                <t t-name="card">
+                                    <div class="d-flex flex-wrap align-items-center gap-2">
+                                        <field name="partner_id" class="fw-bold fs-5"/>
+                                        <field name="inst_stage" widget="badge"/>
+                                        <span t-if="record.inst_alert.raw_value == 'riesgo'" class="badge text-bg-warning">En riesgo</span>
+                                        <span t-if="record.inst_alert.raw_value == 'vence'" class="badge text-bg-warning">Plazo vencido</span>
+                                        <span t-if="record.inst_alert.raw_value == 'dormido'" class="badge text-bg-danger">Dormido</span>
+                                        <span t-if="record.inst_no_phone.raw_value" class="badge text-bg-secondary">Sin teléfono</span>
+                                    </div>
+                                    <div class="mt-1 fs-6">
+                                        <strong>Qué hacer: </strong><field name="inst_next_step"/>
+                                    </div>
+                                    <div t-if="record.inst_phone.raw_value" class="mt-1">
+                                        <strong>Teléfono: </strong><field name="inst_phone"/>
+                                    </div>
+                                    <div class="mt-1 text-muted">
+                                        <field name="inst_reason"/>
+                                    </div>
+                                    <div t-if="record.inst_order_count.raw_value" class="mt-1 text-muted">
+                                        Margen por mes <field name="inst_margin_month" widget="monetary"/>
+                                        · última compra <field name="inst_last_order"/>
+                                        <span t-if="record.inst_days_late.raw_value"> · <field name="inst_days_late"/> días de atraso</span>
+                                    </div>
+                                    <div t-if="record.inst_buys.raw_value" class="mt-1 text-muted">
+                                        Compra: <field name="inst_buys"/>
+                                    </div>
+                                    <div t-if="record.inst_last_note.raw_value" class="mt-1 fst-italic">
+                                        <field name="inst_last_note"/>
+                                    </div>
+                                    <footer class="pt-2">
+                                        <div class="d-flex gap-2">
+                                            <button name="action_inst_call" type="object" class="btn btn-primary btn-sm">
+                                                Registrar llamada
+                                            </button>
+                                            <button name="action_inst_skip_today" type="object" class="btn btn-secondary btn-sm">
+                                                Sacar de hoy
+                                            </button>
+                                        </div>
+                                    </footer>
+                                </t>
+                            </templates>
+                        </kanban>
                     </field>
+
                     <group invisible="state == 'closed'">
                         <group>
-                            <field name="add_lead_id" options="{'no_create': True, 'no_open': True}"/>
+                            <field name="add_lead_id" options="{'no_create': True, 'no_open': True}"
+                                   placeholder="Escribí el nombre de la empresa"/>
                         </group>
                         <group>
                             <button name="action_add" type="object" string="Agregar a hoy" class="btn-secondary" icon="fa-plus"/>
                         </group>
                     </group>
+
                     <separator string="Ya hechos hoy"/>
                     <field name="call_ids" nolabel="1" readonly="1">
                         <list>
@@ -79,6 +106,29 @@
                             <field name="notes"/>
                         </list>
                     </field>
+
+                    <separator string="Objetivos"/>
+                    <group>
+                        <group string="Hoy">
+                            <field name="date" readonly="1"/>
+                            <field name="user_id" readonly="1" options="{'no_open': True}"/>
+                            <field name="target" readonly="state == 'closed'"/>
+                            <field name="contacts"/>
+                            <field name="missing"/>
+                            <field name="calls"/>
+                            <field name="pending"/>
+                        </group>
+                        <group string="Esta semana">
+                            <field name="week_contacts"/>
+                            <field name="week_target"/>
+                            <field name="week_kits"/>
+                            <field name="week_kits_target"/>
+                            <field name="week_first_orders"/>
+                            <field name="week_reorders"/>
+                            <field name="streak"/>
+                        </group>
+                    </group>
+
                     <separator string="Cierre del día"/>
                     <group>
                         <field name="explanation" readonly="state == 'closed'"

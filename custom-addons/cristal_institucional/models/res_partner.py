@@ -88,6 +88,9 @@ class ResPartner(models.Model):
     inst_today = fields.Boolean('Es para hoy', copy=False, index=True, readonly=True)
     inst_pinned_date = fields.Date('Agregada a mano para el día', copy=False, readonly=True)
     inst_skip_date = fields.Date('Sacada a mano del día', copy=False, readonly=True)
+    inst_no_phone = fields.Boolean('Sin teléfono', copy=False, index=True, readonly=True)
+    inst_phone = fields.Char('Teléfono para llamar', compute='_compute_inst_contact_info')
+    inst_last_note = fields.Char('Última nota', compute='_compute_inst_contact_info')
     inst_missing_data = fields.Boolean(
         'Falta un teléfono o contacto válido', copy=False, index=True,
         help='Se marcó al sacarla del día porque no hay cómo contactarla. Se limpia al registrar un contacto.')
@@ -212,6 +215,26 @@ class ResPartner(models.Model):
             else:
                 html = False
             partner.inst_script = html
+
+    @api.depends('phone', 'mobile', 'inst_decisor_id', 'inst_decisor_id.phone', 'inst_decisor_id.mobile',
+                 'inst_call_ids')
+    def _compute_inst_contact_info(self):
+        Call = self.env['cristal.inst.call'].sudo()
+        for partner in self:
+            decisor = partner.inst_decisor_id
+            numbers = []
+            for label, number in ((decisor.name, decisor.mobile or decisor.phone),
+                                  (False, partner.mobile or partner.phone)):
+                if number and number not in [n for _l, n in numbers]:
+                    numbers.append((label, number))
+            partner.inst_phone = ' · '.join(
+                ('%s: %s' % (label, number)) if label else number for label, number in numbers) or False
+            last = Call.search([('partner_id', '=', partner.id), ('notes', '!=', False)],
+                               order='date desc, id desc', limit=1) if partner.id else Call
+            if last:
+                partner.inst_last_note = '%s: %s' % (last.date.strftime('%d/%m'), (last.notes or '')[:220])
+            else:
+                partner.inst_last_note = False
 
     @api.depends('inst_chain_step_id', 'inst_decisor_id', 'name')
     def _compute_inst_chain_message(self):

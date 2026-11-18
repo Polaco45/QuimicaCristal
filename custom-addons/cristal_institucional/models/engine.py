@@ -317,14 +317,26 @@ class CristalInstEngine(models.AbstractModel):
                 vals['inst_postponed_until'] = False
         if stage != 'descartado' and alert == 'ok' and deadline and deadline < today:
             alert = 'vence'
-            step = 'Fecha límite vencida: %s. Posponer con nueva fecha o descartar' % (step or '')
+            step = 'Venció el plazo. %s' % (step or 'Posponer con nueva fecha o descartar')
             step_date = today
         if stage == 'descartado':
             step, step_date, deadline = False, False, False
 
-        # Sin forma de contactarla: el paso es conseguir el dato
-        if partner.inst_missing_data and step and stage != 'descartado':
+        # Cuánto se atrasó, para que el paso diga algo concreto
+        if chain == 'atraso' and late > 0 and step and alert in ('riesgo', 'dormido'):
+            step = '%s (%s días de atraso)' % (step, late)
+
+        # Sin forma de contactarla: el paso es conseguir el dato, y no ocupa lugar en la fila de llamadas
+        decisor = partner.inst_decisor_id
+        has_phone = bool(partner.phone or partner.mobile or decisor.phone or decisor.mobile)
+        no_phone = bool(stage != 'descartado' and not has_phone)
+        vals['inst_no_phone'] = no_phone
+        if (no_phone or partner.inst_missing_data) and step and stage != 'descartado':
             step = 'Conseguir un teléfono o contacto válido'
+            if no_phone and pool:
+                pool = False
+                current = partner.inst_next_step_date
+                step_date = current if (current and current > today) else today + timedelta(days=30)
 
         # Intentos sin respuesta: al tercero se cambia de canal
         attempts = partner.inst_attempts
@@ -491,6 +503,32 @@ class CristalInstEngine(models.AbstractModel):
     def _cron_refresh(self):
         self._scope()
         self.recompute()
+
+    @api.model
+    def _touch(self, partners):
+        """Recalcula en el momento las empresas tocadas por un pedido o una entrega.
+        Nunca frena la operación de ventas o de depósito: si algo falla, queda en el log
+        y se corrige en la corrida de la noche."""
+        try:
+            partners = partners.sudo().filtered('inst_is')
+            if partners:
+                with self.env.cr.savepoint():
+                    self.recompute(partners)
+        except Exception:  # noqa: BLE001
+            _logger.exception('Institucional: no se pudo recalcular en el momento')
+        return True
+
+    @api.model
+    def _resync(self, partners):
+        """Vuelve a poner la tarjeta en su columna si alguien o algo la movió."""
+        try:
+            partners = partners.sudo().filtered('inst_is')
+            if partners:
+                with self.env.cr.savepoint():
+                    self._sync_crm(partners, self._params())
+        except Exception:  # noqa: BLE001
+            _logger.exception('Institucional: no se pudo reacomodar la tarjeta')
+        return True
 
     # ------------------------------------------------- quién entra al sistema
     @api.model
@@ -663,7 +701,7 @@ class CristalInstEngine(models.AbstractModel):
         act_type = self.env.ref('cristal_institucional.mail_activity_type_inst', raise_if_not_found=False)
         Lead = self.env['crm.lead'].sudo().with_context(
             active_test=False, tracking_disable=True, mail_create_nosubscribe=True,
-            mail_create_nolog=True, mail_notrack=True, mail_auto_subscribe_no_notify=True)
+            mail_create_nolog=True, mail_notrack=True, mail_auto_subscribe_no_notify=True, inst_sync=True)
         Users = self.env['res.users'].sudo()
         default_user = Users.browse(params.get('default_user_id') or 0).exists()
 
