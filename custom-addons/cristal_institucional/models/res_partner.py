@@ -68,6 +68,27 @@ class ResPartner(models.Model):
         'Prioridad', index=True, copy=False, readonly=True,
         help='Ordena "Mi día": primero lo que más vale y lo que está por perderse.')
 
+    # --- Cómo entró y cola de trabajo ---------------------------------------
+    inst_source = fields.Selection([
+        ('alejandra', 'Base que ya se venía trabajando'),
+        ('etiqueta', 'Etiqueta EMPRESA'),
+        ('criterio', 'La sumó el sistema (empresa que nos compró)'),
+        ('manual', 'Carga manual'),
+    ], 'Cómo entró', copy=False, index=True)
+    inst_review = fields.Boolean(
+        'Para revisar', copy=False, index=True,
+        help='La sumó el sistema sin que tuviera la etiqueta EMPRESA. Revisar si realmente es institucional.')
+    inst_excluded = fields.Boolean(
+        'No es institucional', copy=False,
+        help='Marcala para sacarla del flujo y que el sistema no la vuelva a sumar.')
+    inst_in_pool = fields.Boolean('En la fila de llamadas', copy=False, index=True, readonly=True)
+    inst_queue_date = fields.Date('Día asignado en la fila', copy=False, readonly=True)
+    inst_today = fields.Boolean('Es para hoy', copy=False, index=True, readonly=True)
+    inst_auto_step_id = fields.Many2one(
+        'cristal.inst.chain.step', 'WhatsApp listo para salir solo', copy=False, readonly=True,
+        ondelete='set null',
+        help='Aviso de la cadena que saldría automáticamente si el número de instituciones estuviera conectado.')
+
     # --- Cadena de avisos ----------------------------------------------------
     inst_chain = fields.Selection(INST_CHAINS, 'Cadena de avisos', copy=False, readonly=True)
     inst_chain_anchor = fields.Date('La cadena cuenta desde', copy=False, readonly=True)
@@ -227,6 +248,19 @@ class ResPartner(models.Model):
             partner.inst_ficha_falta = ', '.join(missing) if missing else False
 
     def write(self, vals):
+        if vals.get('inst_excluded'):
+            # "No es institucional": sale del flujo y su tarjeta del CRM se archiva
+            vals = dict(vals, inst_is=False, inst_today=False, inst_in_pool=False, inst_review=False)
+            leads = self.env['crm.lead'].sudo().search(
+                [('inst_account', '=', True), ('inst_partner_id', 'in', self.ids)])
+            if leads:
+                self.env['mail.activity'].sudo().search(
+                    [('res_model', '=', 'crm.lead'), ('res_id', 'in', leads.ids),
+                     ('automated', '=', True)]).unlink()
+                leads.with_context(tracking_disable=True).write({'active': False, 'inst_account': False})
+        if (vals.get('inst_is') and 'inst_source' not in vals and not self.env.context.get('inst_engine')
+                and not any(self.mapped('inst_source'))):
+            vals = dict(vals, inst_source='manual')
         res = super().write(vals)
         triggers = {'inst_is', 'inst_decisor_id', 'inst_contactado', 'inst_kit_date',
                     'inst_discarded', 'inst_postponed_until'}

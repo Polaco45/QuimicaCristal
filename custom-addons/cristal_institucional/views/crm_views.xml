@@ -1,0 +1,222 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- ============ La cuenta institucional dentro de la oportunidad ============ -->
+    <record id="view_lead_form_inst" model="ir.ui.view">
+        <field name="name">crm.lead.form.cristal.institucional</field>
+        <field name="model">crm.lead</field>
+        <field name="inherit_id" ref="crm.crm_lead_view_form"/>
+        <field name="priority">70</field>
+        <field name="arch" type="xml">
+            <xpath expr="//notebook" position="inside">
+                <page string="Institucional" name="cristal_inst_page" invisible="not inst_account">
+                    <field name="inst_account" invisible="1"/>
+                    <field name="inst_partner_id" invisible="1"/>
+                    <field name="company_currency" invisible="1"/>
+                    <div class="d-flex flex-wrap gap-2 mb-3">
+                        <button name="action_inst_call" type="object" string="Registrar llamada" class="btn-primary" icon="fa-phone"/>
+                        <button name="action_inst_send_kit" type="object" string="Enviar kit" class="btn-secondary" icon="fa-gift"/>
+                        <button name="action_inst_first_offer" type="object" string="Propuesta de primera compra" class="btn-secondary" icon="fa-file-text-o"
+                                invisible="inst_stage not in ('primera_compra', 'captacion')"/>
+                        <button name="action_inst_orders" type="object" string="Ver pedidos" class="btn-secondary"/>
+                        <button name="action_inst_recompute" type="object" string="Recalcular" class="btn-secondary"/>
+                        <button name="action_inst_discard" type="object" string="Descartar" class="btn-secondary"
+                                invisible="inst_stage == 'descartado'"
+                                confirm="¿Descartar esta empresa? Sale del flujo y no se le agenda ningún paso."/>
+                        <button name="action_inst_reactivate" type="object" string="Reactivar" class="btn-secondary"
+                                invisible="inst_stage != 'descartado'"/>
+                    </div>
+                    <group>
+                        <group string="Dónde está">
+                            <field name="inst_stage" widget="badge"
+                                   decoration-muted="inst_stage in ('prospecto', 'descartado')"
+                                   decoration-info="inst_stage == 'captacion'"
+                                   decoration-warning="inst_stage == 'primera_compra'"
+                                   decoration-primary="inst_stage == 'pedido_formal'"
+                                   decoration-success="inst_stage == 'recurrente'"/>
+                            <field name="inst_reason"/>
+                            <field name="inst_alert" widget="badge"
+                                   decoration-success="inst_alert == 'ok'"
+                                   decoration-warning="inst_alert in ('riesgo', 'vence')"
+                                   decoration-danger="inst_alert == 'dormido'"/>
+                            <field name="inst_source"/>
+                            <field name="inst_review"/>
+                        </group>
+                        <group string="Próximo paso">
+                            <field name="inst_next_step"/>
+                            <field name="inst_next_step_date"/>
+                            <field name="inst_deadline" invisible="not inst_deadline"/>
+                            <field name="inst_chain_message" invisible="not inst_chain_message" widget="CopyClipboardText"/>
+                            <field name="inst_auto_step_id" invisible="not inst_auto_step_id" options="{'no_open': True}"/>
+                            <field name="inst_postponed_until"/>
+                        </group>
+                    </group>
+                    <separator string="Guion para la llamada"/>
+                    <field name="inst_script" nolabel="1" readonly="1"/>
+                    <group>
+                        <group string="Ficha de la cuenta">
+                            <field name="inst_ficha_pct" widget="progressbar"/>
+                            <field name="inst_ficha_falta" invisible="not inst_ficha_falta"/>
+                            <field name="inst_decisor_id" domain="[('parent_id', '=', inst_partner_id)]"
+                                   context="{'default_parent_id': inst_partner_id, 'default_type': 'contact'}"/>
+                            <field name="inst_decisor_phone"/>
+                            <field name="inst_productos"/>
+                            <field name="inst_proveedor"/>
+                            <field name="inst_frecuencia"/>
+                            <field name="inst_entrega_horario"/>
+                            <field name="inst_kit_order_id"/>
+                            <field name="inst_kit_date"/>
+                        </group>
+                        <group string="Indicadores de la cuenta">
+                            <field name="inst_order_count"/>
+                            <field name="inst_last_order"/>
+                            <field name="inst_cycle_days"/>
+                            <field name="inst_next_expected"/>
+                            <field name="inst_days_late"/>
+                            <field name="inst_margin_month"/>
+                            <field name="inst_margin_12m"/>
+                            <field name="inst_margin_pct"/>
+                            <field name="inst_amount_12m"/>
+                            <field name="inst_buys" invisible="not inst_buys"/>
+                            <field name="inst_gaps" invisible="not inst_gaps"/>
+                        </group>
+                    </group>
+                    <separator string="Contactos registrados"/>
+                    <field name="inst_call_ids" readonly="1" nolabel="1">
+                        <list>
+                            <field name="date"/>
+                            <field name="result"/>
+                            <field name="notes"/>
+                            <field name="user_id" optional="show"/>
+                        </list>
+                    </field>
+                </page>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- ============ Tablero institucional del CRM ============ -->
+    <record id="view_lead_inst_kanban" model="ir.ui.view">
+        <field name="name">crm.lead.kanban.cristal.institucional</field>
+        <field name="model">crm.lead</field>
+        <field name="priority">99</field>
+        <field name="arch" type="xml">
+            <kanban default_group_by="stage_id" records_draggable="0" groups_draggable="0"
+                    group_create="0" group_delete="0" group_edit="0" quick_create="0" create="0"
+                    default_order="inst_priority desc, inst_next_step_date" class="o_kanban_small_column">
+                <field name="inst_alert"/>
+                <field name="inst_today"/>
+                <field name="company_currency"/>
+                <field name="activity_state"/>
+                <templates>
+                    <t t-name="card">
+                        <field name="partner_id" class="fw-bold fs-5"/>
+                        <div t-if="record.inst_next_step.raw_value" class="mt-1">
+                            <field name="inst_next_step"/>
+                        </div>
+                        <div class="d-flex flex-wrap gap-1 mt-1 align-items-center">
+                            <span t-if="record.inst_today.raw_value" class="badge text-bg-primary">Hoy</span>
+                            <span t-if="record.inst_next_step_date.raw_value" class="badge text-bg-light">
+                                <field name="inst_next_step_date"/>
+                            </span>
+                            <span t-if="record.inst_alert.raw_value == 'riesgo'" class="badge text-bg-warning">En riesgo</span>
+                            <span t-if="record.inst_alert.raw_value == 'vence'" class="badge text-bg-warning">Fecha límite vencida</span>
+                            <span t-if="record.inst_alert.raw_value == 'dormido'" class="badge text-bg-danger">Dormido</span>
+                        </div>
+                        <footer class="pt-1">
+                            <div class="d-flex text-muted">
+                                <span t-if="record.inst_margin_month.raw_value">
+                                    Margen por mes <field name="inst_margin_month" widget="monetary"/>
+                                </span>
+                            </div>
+                            <field name="user_id" widget="many2one_avatar_user" class="ms-auto"/>
+                        </footer>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
+    <record id="view_lead_inst_list" model="ir.ui.view">
+        <field name="name">crm.lead.list.cristal.institucional</field>
+        <field name="model">crm.lead</field>
+        <field name="priority">99</field>
+        <field name="arch" type="xml">
+            <list create="0" default_order="inst_priority desc, inst_next_step_date"
+                  decoration-danger="inst_alert == 'dormido'" decoration-warning="inst_alert in ('riesgo', 'vence')">
+                <field name="company_currency" column_invisible="1"/>
+                <field name="partner_id" string="Empresa"/>
+                <button name="action_inst_call" type="object" string="Llamada" icon="fa-phone"/>
+                <field name="inst_stage" widget="badge"
+                       decoration-muted="inst_stage in ('prospecto', 'descartado')"
+                       decoration-info="inst_stage == 'captacion'"
+                       decoration-warning="inst_stage == 'primera_compra'"
+                       decoration-primary="inst_stage == 'pedido_formal'"
+                       decoration-success="inst_stage == 'recurrente'"/>
+                <field name="inst_alert" widget="badge" optional="show"
+                       decoration-success="inst_alert == 'ok'"
+                       decoration-warning="inst_alert in ('riesgo', 'vence')"
+                       decoration-danger="inst_alert == 'dormido'"/>
+                <field name="inst_next_step"/>
+                <field name="inst_next_step_date"/>
+                <field name="phone" optional="show"/>
+                <field name="inst_decisor_id" optional="show"/>
+                <field name="user_id" optional="show"/>
+                <field name="inst_last_order" optional="show"/>
+                <field name="inst_margin_month" optional="show" sum="Margen por mes"/>
+                <field name="inst_source" optional="hide"/>
+                <field name="inst_review" optional="hide"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_lead_inst_search" model="ir.ui.view">
+        <field name="name">crm.lead.search.cristal.institucional</field>
+        <field name="model">crm.lead</field>
+        <field name="priority">99</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="partner_id" string="Empresa"
+                       filter_domain="['|', '|', ('partner_id', 'ilike', self), ('phone', 'ilike', self), ('name', 'ilike', self)]"/>
+                <field name="user_id"/>
+                <filter name="inst_open" string="En el flujo" domain="[('inst_stage', '!=', 'descartado')]"/>
+                <filter name="inst_mine" string="Mis cuentas" domain="[('user_id', '=', uid)]"/>
+                <filter name="inst_today" string="Para hoy" domain="[('inst_today', '=', True)]"/>
+                <separator/>
+                <filter name="st_prospecto" string="Prospecto" domain="[('inst_stage', '=', 'prospecto')]"/>
+                <filter name="st_captacion" string="1 · Captación" domain="[('inst_stage', '=', 'captacion')]"/>
+                <filter name="st_primera" string="2 · Primera compra" domain="[('inst_stage', '=', 'primera_compra')]"/>
+                <filter name="st_formal" string="3 · Pedido formal" domain="[('inst_stage', '=', 'pedido_formal')]"/>
+                <filter name="st_recurrente" string="4 · Recurrente" domain="[('inst_stage', '=', 'recurrente')]"/>
+                <separator/>
+                <filter name="al_riesgo" string="En riesgo" domain="[('inst_alert', '=', 'riesgo')]"/>
+                <filter name="al_dormido" string="Dormido" domain="[('inst_alert', '=', 'dormido')]"/>
+                <filter name="al_vence" string="Fecha límite vencida" domain="[('inst_alert', '=', 'vence')]"/>
+                <separator/>
+                <filter name="rv_review" string="Para revisar (las sumó el sistema)" domain="[('inst_review', '=', True)]"/>
+                <filter name="auto_ready" string="Con WhatsApp listo para salir solo" domain="[('inst_auto_step_id', '!=', False)]"/>
+                <group expand="0" string="Agrupar por">
+                    <filter name="g_stage" string="Etapa" context="{'group_by': 'stage_id'}"/>
+                    <filter name="g_alert" string="Alerta" context="{'group_by': 'inst_alert'}"/>
+                    <filter name="g_user" string="Responsable" context="{'group_by': 'user_id'}"/>
+                    <filter name="g_source" string="Cómo entró" context="{'group_by': 'inst_source'}"/>
+                    <filter name="g_step" string="Semana del próximo paso" context="{'group_by': 'inst_next_step_date:week'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- Acciones: se arman en el servidor para usar las columnas del equipo Institucional -->
+    <record id="action_server_inst_pipeline" model="ir.actions.server">
+        <field name="name">Institucional</field>
+        <field name="model_id" ref="crm.model_crm_lead"/>
+        <field name="state">code</field>
+        <field name="code">action = env['cristal.inst.engine'].action_pipeline()</field>
+    </record>
+
+    <record id="action_server_inst_refresh" model="ir.actions.server">
+        <field name="name">Actualizar ahora</field>
+        <field name="model_id" ref="crm.model_crm_lead"/>
+        <field name="state">code</field>
+        <field name="code">action = env['cristal.inst.engine'].action_refresh_now()</field>
+    </record>
+</odoo>

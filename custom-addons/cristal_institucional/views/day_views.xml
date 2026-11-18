@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_inst_day_form" model="ir.ui.view">
+        <field name="name">cristal.inst.day.form</field>
+        <field name="model">cristal.inst.day</field>
+        <field name="arch" type="xml">
+            <form string="Mi día" create="0" delete="0">
+                <header>
+                    <button name="action_more" type="object" string="Traer 5 más" class="btn-secondary"
+                            invisible="state == 'closed'"/>
+                    <button name="action_close" type="object" string="Cerrar el día" class="btn-primary"
+                            invisible="state == 'closed'"/>
+                    <button name="action_reopen" type="object" string="Reabrir" class="btn-secondary"
+                            invisible="state != 'closed'" groups="sales_team.group_sale_manager"/>
+                    <field name="state" widget="statusbar"/>
+                </header>
+                <sheet>
+                    <div class="alert alert-warning" role="alert" invisible="not blocked_by_previous">
+                        Tenés un día anterior sin cerrar. Cerralo antes de seguir.
+                    </div>
+                    <div class="alert alert-success" role="alert" invisible="not met">
+                        <field name="headline" readonly="1"/>
+                    </div>
+                    <div class="alert alert-info" role="alert" invisible="met">
+                        <field name="headline" readonly="1"/>
+                    </div>
+                    <field name="blocked_by_previous" invisible="1"/>
+                    <field name="met" invisible="1"/>
+                    <group>
+                        <group string="Hoy">
+                            <field name="date" readonly="1"/>
+                            <field name="user_id" readonly="1" options="{'no_open': True}"/>
+                            <field name="target" readonly="state == 'closed'"/>
+                            <field name="contacts"/>
+                            <field name="progress" widget="progressbar"/>
+                            <field name="missing"/>
+                            <field name="calls"/>
+                            <field name="pending"/>
+                        </group>
+                        <group string="Esta semana">
+                            <field name="week_contacts"/>
+                            <field name="week_target"/>
+                            <field name="week_progress" widget="progressbar"/>
+                            <field name="week_kits"/>
+                            <field name="week_kits_target"/>
+                            <field name="week_kits_progress" widget="progressbar"/>
+                            <field name="week_first_orders"/>
+                            <field name="week_reorders"/>
+                            <field name="streak"/>
+                        </group>
+                    </group>
+                    <separator string="Para hoy, en orden de importancia"/>
+                    <field name="lead_ids" nolabel="1" readonly="1">
+                        <list decoration-danger="inst_alert == 'dormido'" decoration-warning="inst_alert in ('riesgo', 'vence')">
+                            <field name="partner_id" string="Empresa"/>
+                            <button name="action_inst_call" type="object" string="Llamada" icon="fa-phone"/>
+                            <field name="inst_stage" widget="badge"/>
+                            <field name="inst_alert" widget="badge" optional="show"/>
+                            <field name="inst_next_step"/>
+                            <field name="phone"/>
+                            <field name="inst_decisor_id" optional="show"/>
+                        </list>
+                    </field>
+                    <separator string="Cierre del día"/>
+                    <group>
+                        <field name="explanation" readonly="state == 'closed'"
+                               placeholder="Si no llegaste al objetivo, contá por qué. Si llegaste, podés anotar qué funcionó."/>
+                        <field name="closed_at" invisible="not closed_at"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_inst_day_list" model="ir.ui.view">
+        <field name="name">cristal.inst.day.list</field>
+        <field name="model">cristal.inst.day</field>
+        <field name="arch" type="xml">
+            <list create="0" decoration-success="met" decoration-danger="not met and state == 'closed'">
+                <field name="date"/>
+                <field name="user_id"/>
+                <field name="target"/>
+                <field name="contacts"/>
+                <field name="calls"/>
+                <field name="progress" widget="progressbar"/>
+                <field name="met"/>
+                <field name="state"/>
+                <field name="explanation"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="action_inst_days" model="ir.actions.act_window">
+        <field name="name">Mis días</field>
+        <field name="res_model">cristal.inst.day</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <record id="action_server_inst_today" model="ir.actions.server">
+        <field name="name">Mi día</field>
+        <field name="model_id" ref="model_cristal_inst_day"/>
+        <field name="state">code</field>
+        <field name="code">action = env['cristal.inst.day'].action_open_today()</field>
+    </record>
+</odoo>

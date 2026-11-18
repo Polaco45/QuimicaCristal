@@ -81,8 +81,9 @@ class ResPartner(models.Model):
         [('cf', 'Consumidor final'), ('negocio', 'Negocio')], string='Tipo de cliente',
         compute='_compute_cristal_customer_type', store=True, index=True)
     cristal_wholesale_buyer = fields.Boolean(
-        string='Compra a precio mayorista', readonly=True,
-        help='Tiene pedidos confirmados con una lista que no es la de consumidor final '
+        string='Compra con lista de empresa o mayorista', readonly=True,
+        help='Tiene pedidos confirmados con una lista que no es la de consumidor final: L.E, Lista Mayorista o Crilimp. '
+             'No quiere decir que revenda '
              '(se recalcula cada noche). Lo vuelve "negocio".')
 
     # ── Origen ────────────────────────────────────────────────────

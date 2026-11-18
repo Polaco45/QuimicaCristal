@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <record id="mail_activity_type_inst" model="mail.activity.type">
+            <field name="name">Paso institucional</field>
+            <field name="summary">Próximo paso de la cuenta</field>
+            <field name="icon">fa-phone</field>
+            <field name="res_model">crm.lead</field>
+            <field name="sequence">3</field>
+        </record>
+    </data>
+</odoo>

@@ -155,6 +155,11 @@ class CristalInstCallWizard(models.TransientModel):
             body += Markup('<p>Volver a contactar el %s.</p>') % self.next_date.strftime('%d/%m/%Y')
         partner.message_post(body=body, subtype_xmlid='mail.mt_note')
 
+        # Ya se trabajó hoy: sale de "Mi día" y vuelve a la fila con su nueva prioridad
+        vals.update({'inst_queue_date': False, 'inst_today': False})
         partner.with_context(inst_engine=True).write(vals)
+        if self.result == 'kit' and not partner.inst_kit_order_id:
+            # Aceptó el kit: el pedido sin cargo se arma solo
+            partner.action_inst_send_kit()
         self.env['cristal.inst.engine'].recompute(partner)
         return {'type': 'ir.actions.act_window_close'}
