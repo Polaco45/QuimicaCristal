@@ -17,6 +17,9 @@
                         <button name="action_inst_send_kit" type="object" string="Enviar kit" class="btn-secondary" icon="fa-gift"/>
                         <button name="action_inst_first_offer" type="object" string="Propuesta de primera compra" class="btn-secondary" icon="fa-file-text-o"
                                 invisible="inst_stage not in ('primera_compra', 'captacion')"/>
+                        <field name="inst_today" invisible="1"/>
+                        <button name="action_inst_add_today" type="object" string="Agregar a mi día" class="btn-secondary" icon="fa-plus" invisible="inst_today"/>
+                        <button name="action_inst_skip_today" type="object" string="Sacar de mi día" class="btn-secondary" icon="fa-times" invisible="not inst_today"/>
                         <button name="action_inst_orders" type="object" string="Ver pedidos" class="btn-secondary"/>
                         <button name="action_inst_recompute" type="object" string="Recalcular" class="btn-secondary"/>
                         <button name="action_inst_discard" type="object" string="Descartar" class="btn-secondary"

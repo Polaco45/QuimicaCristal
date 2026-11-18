@@ -34,6 +34,10 @@ class CristalInstDay(models.Model):
     missing = fields.Integer('Te faltan', compute='_compute_progress')
     pending = fields.Integer('Quedan en la lista', compute='_compute_leads')
     lead_ids = fields.Many2many('crm.lead', string='Para hoy', compute='_compute_leads')
+    call_ids = fields.Many2many('cristal.inst.call', string='Ya hechos hoy', compute='_compute_progress')
+    add_lead_id = fields.Many2one(
+        'crm.lead', 'Agregar una cuenta', domain="[('inst_account', '=', True), ('inst_today', '=', False)]",
+        help='Elegí la empresa y tocá "Agregar a hoy".')
     met = fields.Boolean('Objetivo cumplido', compute='_compute_progress')
     headline = fields.Char('Cómo venís', compute='_compute_progress')
 
@@ -77,7 +81,9 @@ class CristalInstDay(models.Model):
     def _compute_progress(self):
         for day in self:
             calls = day._calls(day.date, day.date) if day.date and day.user_id else self.env['cristal.inst.call']
-            contacts = len(calls.filtered(lambda c: c.result != 'no_atendio'))
+            # Un contacto es una empresa con la que hubo algo más que "no atendió"
+            contacts = len(calls.filtered(lambda c: c.result != 'no_atendio').mapped('partner_id'))
+            day.call_ids = calls
             target = max(1, day.target or 1)
             day.calls = len(calls)
             day.contacts = contacts
@@ -118,7 +124,7 @@ class CristalInstDay(models.Model):
                 continue
             monday = day.date - timedelta(days=day.date.weekday())
             calls = day._calls(monday, day.date)
-            day.week_contacts = len(calls.filtered(lambda c: c.result != 'no_atendio'))
+            day.week_contacts = len({(c.partner_id.id, c.date.date()) for c in calls if c.result != 'no_atendio'})
             day.week_target = (day.target or 15) * 5
             day.week_progress = min(100, round(100 * day.week_contacts / max(1, day.week_target)))
             day.week_kits = len(calls.filtered(lambda c: c.result == 'kit'))
@@ -177,6 +183,17 @@ class CristalInstDay(models.Model):
         if not day:
             day = self.create({'user_id': user.id, 'date': today, 'target': self._target()})
         return day._open()
+
+    def action_add(self):
+        """Suma a hoy la cuenta elegida en "Agregar una cuenta"."""
+        self.ensure_one()
+        if self.state == 'closed':
+            raise UserError('Este día ya está cerrado.')
+        if not self.add_lead_id:
+            raise UserError('Primero elegí la empresa en "Agregar una cuenta".')
+        self.add_lead_id.action_inst_add_today()
+        self.add_lead_id = False
+        return True
 
     def action_more(self):
         """Trae a la lista de hoy las cinco cuentas que siguen en prioridad."""
