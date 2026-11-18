@@ -37,6 +37,7 @@ CALL_RESULTS = [
     ('posponer', 'Me pidió que lo llame más adelante'),
     ('pedido', 'Hizo un pedido'),
     ('no_califica', 'No califica o no le interesa'),
+    ('omitido', 'Sacada de la lista del día'),
 ]
 
 
@@ -87,6 +88,9 @@ class ResPartner(models.Model):
     inst_today = fields.Boolean('Es para hoy', copy=False, index=True, readonly=True)
     inst_pinned_date = fields.Date('Agregada a mano para el día', copy=False, readonly=True)
     inst_skip_date = fields.Date('Sacada a mano del día', copy=False, readonly=True)
+    inst_missing_data = fields.Boolean(
+        'Falta un teléfono o contacto válido', copy=False, index=True,
+        help='Se marcó al sacarla del día porque no hay cómo contactarla. Se limpia al registrar un contacto.')
     inst_auto_step_id = fields.Many2one(
         'cristal.inst.chain.step', 'WhatsApp listo para salir solo', copy=False, readonly=True,
         ondelete='set null',

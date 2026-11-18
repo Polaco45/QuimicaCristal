@@ -32,7 +32,7 @@ class CristalInstCall(models.Model):
     @api.depends('result')
     def _compute_is_contact(self):
         for call in self:
-            call.is_contact = call.result not in ('no_atendio', 'whatsapp')
+            call.is_contact = call.result not in ('no_atendio', 'whatsapp', 'omitido')
 
 
 class CristalInstCallWizard(models.TransientModel):
@@ -43,7 +43,8 @@ class CristalInstCallWizard(models.TransientModel):
     script = fields.Html('Guion', related='partner_id.inst_script', sanitize=False)
     chain_message = fields.Text('Mensaje para mandar', related='partner_id.inst_chain_message')
     decisor_whatsapp = fields.Char('Mandar a', related='partner_id.inst_decisor_phone')
-    result = fields.Selection(CALL_RESULTS, 'Resultado', required=True, default='no_atendio')
+    result = fields.Selection([r for r in CALL_RESULTS if r[0] != 'omitido'], 'Resultado', required=True,
+                              default='no_atendio')
     notes = fields.Text('Qué pasó')
     next_date = fields.Date(
         'Volver a contactar el',
@@ -157,9 +158,89 @@ class CristalInstCallWizard(models.TransientModel):
 
         # Ya se trabajó hoy: sale de "Mi día" y vuelve a la fila con su nueva prioridad
         vals.update({'inst_queue_date': False, 'inst_today': False, 'inst_pinned_date': False})
+        if self.result != 'no_atendio':
+            vals['inst_missing_data'] = False
         partner.with_context(inst_engine=True).write(vals)
         if self.result == 'kit' and not partner.inst_kit_order_id:
             # Aceptó el kit: el pedido sin cargo se arma solo
             partner.action_inst_send_kit()
+        self.env['cristal.inst.engine'].recompute(partner)
+        return {'type': 'ir.actions.act_window_close'}
+
+
+SKIP_REASONS = [
+    ('otro_dia', 'Lo dejo para otro día'),
+    ('hecho', 'Ya lo resolví por otro lado'),
+    ('no_ahora', 'No hace falta contactarlo por ahora'),
+    ('sin_dato', 'No tengo teléfono o el dato está mal'),
+    ('no_contactar', 'No contactarlo más'),
+    ('no_institucional', 'No es un cliente institucional'),
+]
+
+
+class CristalInstSkipWizard(models.TransientModel):
+    _name = 'cristal.inst.skip.wizard'
+    _description = 'Institucional: sacar una cuenta del día'
+
+    partner_id = fields.Many2one('res.partner', 'Empresa', required=True)
+    reason = fields.Selection(SKIP_REASONS, 'Por qué la sacás', required=True, default='otro_dia')
+    date = fields.Date('Volver a traerla el', default=lambda self: _next_workday(fields.Date.context_today(self)))
+    notes = fields.Char('Comentario')
+    consequence = fields.Char('Qué va a pasar', compute='_compute_consequence')
+
+    @api.depends('reason', 'date')
+    def _compute_consequence(self):
+        for wizard in self:
+            when = wizard.date.strftime('%d/%m/%Y') if wizard.date else 'la fecha que elijas'
+            wizard.consequence = {
+                'otro_dia': 'Vuelve a tu lista el %s, con el mismo paso.' % when,
+                'hecho': 'Se da por hecho el paso de hoy y pasa al siguiente de su cadena.',
+                'no_ahora': 'No te aparece por 30 días. Si compra antes, se acomoda sola.',
+                'sin_dato': 'Queda marcada como "falta un teléfono o contacto válido" y vuelve en 7 días '
+                            'para conseguirlo.',
+                'no_contactar': 'Pasa a Descartado: no se le agenda ningún paso ni recibe avisos.',
+                'no_institucional': 'Sale del flujo institucional y el sistema no la vuelve a sumar.',
+            }.get(wizard.reason, False)
+
+    def action_confirm(self):
+        self.ensure_one()
+        partner = self.partner_id.commercial_partner_id
+        today = fields.Date.context_today(self)
+        label = dict(SKIP_REASONS)[self.reason]
+        note = label + ((': %s' % self.notes) if self.notes else '')
+        if self.reason == 'no_institucional':
+            partner.message_post(
+                body=Markup('<p><strong>Sacada del flujo institucional</strong></p><p>%s</p>') % note,
+                subtype_xmlid='mail.mt_note')
+            partner.write({'inst_excluded': True})
+            return {'type': 'ir.actions.act_window_close'}
+        vals = {'inst_today': False, 'inst_pinned_date': False, 'inst_queue_date': False,
+                'inst_skip_date': today}
+        if self.reason == 'otro_dia':
+            if not self.date or self.date <= today:
+                raise UserError('Elegí una fecha posterior a hoy para volver a traerla.')
+            vals['inst_postponed_until'] = self.date
+        elif self.reason == 'hecho':
+            vals['inst_attempts'] = 0
+            vals['inst_last_call'] = today
+            if partner.inst_chain_step_id:
+                vals['inst_chain_done'] = partner.inst_chain_step_id.sequence
+            else:
+                vals['inst_postponed_until'] = today + timedelta(days=7)
+        elif self.reason == 'no_ahora':
+            vals['inst_postponed_until'] = today + timedelta(days=30)
+        elif self.reason == 'sin_dato':
+            vals['inst_missing_data'] = True
+            vals['inst_postponed_until'] = today + timedelta(days=7)
+        elif self.reason == 'no_contactar':
+            vals['inst_discarded'] = True
+            vals['inst_discard_reason'] = self.notes or 'No contactar más'
+        self.env['cristal.inst.call'].create({
+            'partner_id': partner.id, 'result': 'omitido', 'notes': note, 'stage': partner.inst_stage,
+        })
+        partner.message_post(
+            body=Markup('<p><strong>Sacada de la lista del día</strong></p><p>%s</p>') % note,
+            subtype_xmlid='mail.mt_note')
+        partner.with_context(inst_engine=True).write(vals)
         self.env['cristal.inst.engine'].recompute(partner)
         return {'type': 'ir.actions.act_window_close'}

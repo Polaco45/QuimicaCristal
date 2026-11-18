@@ -45,6 +45,29 @@
         <field name="target">new</field>
     </record>
 
+    <!-- ============ Sacar una cuenta del día ============ -->
+    <record id="view_inst_skip_wizard_form" model="ir.ui.view">
+        <field name="name">cristal.inst.skip.wizard.form</field>
+        <field name="model">cristal.inst.skip.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Sacar de hoy">
+                <group>
+                    <field name="partner_id" readonly="1" options="{'no_open': True}"/>
+                    <field name="reason" widget="radio"/>
+                    <field name="date" invisible="reason != 'otro_dia'" required="reason == 'otro_dia'"/>
+                    <field name="notes" placeholder="Opcional: un detalle para acordarte después"/>
+                </group>
+                <div class="alert alert-info" role="alert">
+                    <field name="consequence" readonly="1"/>
+                </div>
+                <footer>
+                    <button name="action_confirm" type="object" string="Sacar de hoy" class="btn-primary"/>
+                    <button special="cancel" string="Cancelar" class="btn-secondary"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
     <!-- ============ Historial de contactos ============ -->
     <record id="view_inst_call_list" model="ir.ui.view">
         <field name="name">cristal.inst.call.list</field>

@@ -82,10 +82,10 @@ class CristalInstDay(models.Model):
         for day in self:
             calls = day._calls(day.date, day.date) if day.date and day.user_id else self.env['cristal.inst.call']
             # Un contacto es una empresa con la que hubo algo más que "no atendió"
-            contacts = len(calls.filtered(lambda c: c.result != 'no_atendio').mapped('partner_id'))
+            contacts = len(calls.filtered(lambda c: c.result not in ('no_atendio', 'omitido')).mapped('partner_id'))
             day.call_ids = calls
             target = max(1, day.target or 1)
-            day.calls = len(calls)
+            day.calls = len(calls.filtered(lambda c: c.result != 'omitido'))
             day.contacts = contacts
             day.progress = min(100, round(100 * contacts / target))
             day.missing = max(0, target - contacts)
@@ -124,7 +124,7 @@ class CristalInstDay(models.Model):
                 continue
             monday = day.date - timedelta(days=day.date.weekday())
             calls = day._calls(monday, day.date)
-            day.week_contacts = len({(c.partner_id.id, c.date.date()) for c in calls if c.result != 'no_atendio'})
+            day.week_contacts = len({(c.partner_id.id, c.date.date()) for c in calls if c.result not in ('no_atendio', 'omitido')})
             day.week_target = (day.target or 15) * 5
             day.week_progress = min(100, round(100 * day.week_contacts / max(1, day.week_target)))
             day.week_kits = len(calls.filtered(lambda c: c.result == 'kit'))

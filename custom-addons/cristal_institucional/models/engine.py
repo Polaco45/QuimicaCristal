@@ -322,6 +322,10 @@ class CristalInstEngine(models.AbstractModel):
         if stage == 'descartado':
             step, step_date, deadline = False, False, False
 
+        # Sin forma de contactarla: el paso es conseguir el dato
+        if partner.inst_missing_data and step and stage != 'descartado':
+            step = 'Conseguir un teléfono o contacto válido'
+
         # Intentos sin respuesta: al tercero se cambia de canal
         attempts = partner.inst_attempts
         if step and attempts and stage != 'descartado':
