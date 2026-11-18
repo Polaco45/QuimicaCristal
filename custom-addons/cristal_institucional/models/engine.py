@@ -17,7 +17,8 @@ DEFAULTS = {
     'risk_factor_pct': 150,            # en riesgo: pasó 1,5 veces su ritmo
     'dormant_cycles': 3,               # dormido: pasó 3 veces su ritmo...
     'dormant_min_days': 90,            # ...o al menos 90 días
-    'daily_calls': 15,                 # llamadas nuevas por día hábil (prospectos y captación)
+    'daily_calls': 15,                 # contactos por día y por persona
+    'daily_new': 5,                    # de esos, cuántos se reservan para empresas nuevas (prospectos y captación)
     'default_user_id': 18,             # responsable cuando la empresa no tiene vendedor
 }
 KIT_TAG_PARAM = 'cristal_institucional.kit_tag'
@@ -42,6 +43,9 @@ class CristalInstEngine(models.AbstractModel):
         # espera: los WhatsApp no se piden a mano, quedan listos para cuando el número esté conectado
         # manual: aparecen como paso para mandarlos a mano
         out['whatsapp_mode'] = icp.get_param('cristal_institucional.whatsapp_mode', 'espera')
+        # Quiénes trabajan cuentas institucionales (ids de usuario separados por coma)
+        raw = icp.get_param('cristal_institucional.team_user_ids', str(out['default_user_id']))
+        out['team_user_ids'] = {int(x) for x in raw.replace(' ', '').split(',') if x.isdigit()}
         return out
 
     # ------------------------------------------------------------------- datos
@@ -277,6 +281,8 @@ class CristalInstEngine(models.AbstractModel):
             if nxt:
                 chain_step = nxt['id']
                 step = '%s: %s' % (nxt['channel_label'], nxt['name'])
+                if chain == 'atraso' and alert == 'ok':
+                    step = 'Si no repone antes: %s%s' % (step[:1].lower(), step[1:])
                 step_date = anchor + timedelta(days=nxt['day'])
                 # Entre un aviso y el siguiente se respeta la espera de la cadena,
                 # aunque el cliente venga muy atrasado.
@@ -366,6 +372,13 @@ class CristalInstEngine(models.AbstractModel):
             vals['inst_stage_date'] = today
         if not step_date or step_date > today:
             vals['inst_today'] = False      # ya no es para hoy: sale de "Mi día"
+        # Responsable: el vendedor de la empresa si forma parte del equipo institucional;
+        # si no, el responsable por defecto. Nadie queda sin asignar.
+        seller = partner.user_id
+        if seller and seller.active and seller.id in params.get('team_user_ids', ()):
+            vals['inst_user_id'] = seller.id
+        else:
+            vals['inst_user_id'] = params.get('default_user_id') or False
         return vals
 
     @api.model
@@ -377,11 +390,24 @@ class CristalInstEngine(models.AbstractModel):
         if today.weekday() >= 5:
             Partner.search([('inst_today', '=', True)]).write({'inst_today': False})
             return
+        new_share = min(quota, max(0, params.get('daily_new') or 0))
         due = Partner.search([
             ('inst_is', '=', True), ('inst_stage', '!=', 'descartado'),
             ('inst_next_step', '!=', False), ('inst_next_step_date', '<=', today),
         ], order='inst_priority desc, inst_next_step_date, id')
-        chosen = due[:quota]
+        chosen = Partner
+        # Cada responsable tiene su propio día. Se reserva un lugar para empresas nuevas,
+        # así cuidar a los clientes no deja la captación en cero.
+        for user in due.mapped('inst_user_id'):
+            mine = due.filtered(lambda p, u=user: p.inst_user_id == u)
+            accounts = mine.filtered(lambda p: not p.inst_in_pool)
+            fresh = mine.filtered('inst_in_pool')
+            take_new = fresh[:new_share]
+            take_acc = accounts[:quota - len(take_new)]
+            rest = quota - len(take_new) - len(take_acc)
+            if rest > 0:
+                take_new |= (fresh - take_new)[:rest]
+            chosen |= take_acc | take_new
         (Partner.search([('inst_today', '=', True)]) - chosen).write({'inst_today': False})
         chosen.filtered(lambda p: not p.inst_today).write({'inst_today': True})
 
@@ -524,22 +550,24 @@ class CristalInstEngine(models.AbstractModel):
     def _fill_queue(self, params, today):
         """Reparte prospectos y captación de a pocos por día hábil, por prioridad.
         Así todos tienen un próximo paso con fecha y "Mi día" no explota."""
-        quota = max(1, params.get('daily_calls') or 15)
+        quota = max(1, params.get('daily_new') or params.get('daily_calls') or 5)
         Partner = self.env['res.partner'].sudo().with_context(inst_engine=True, tracking_disable=True)
         pool = Partner.search([('inst_is', '=', True), ('inst_in_pool', '=', True)], order='inst_priority desc, id')
         start = today
         while start.weekday() >= 5:
             start += timedelta(days=1)
-        fixed = pool.filtered(lambda p: p.inst_queue_date and p.inst_queue_date <= start)
-        load = {start: len(fixed)}
         plan = {}
-        day = start
-        for partner in pool - fixed:
-            while load.get(day, 0) >= quota:
-                day = self._next_workday(day)
-            load[day] = load.get(day, 0) + 1
-            if partner.inst_queue_date != day or partner.inst_next_step_date != day:
-                plan.setdefault(day, []).append(partner.id)
+        for user in pool.mapped('inst_user_id'):
+            mine = pool.filtered(lambda p, u=user: p.inst_user_id == u)
+            fixed = mine.filtered(lambda p: p.inst_queue_date and p.inst_queue_date <= start)
+            load = {start: len(fixed)}
+            day = start
+            for partner in mine - fixed:
+                while load.get(day, 0) >= quota:
+                    day = self._next_workday(day)
+                load[day] = load.get(day, 0) + 1
+                if partner.inst_queue_date != day or partner.inst_next_step_date != day:
+                    plan.setdefault(day, []).append(partner.id)
         for day, ids in plan.items():
             Partner.browse(ids).write({'inst_queue_date': day, 'inst_next_step_date': day})
         return True
@@ -679,8 +707,9 @@ class CristalInstEngine(models.AbstractModel):
                 vals['active'] = True
             if lead.team_id != team:
                 vals['team_id'] = team.id
-            if not lead.user_id and default_user:
-                vals['user_id'] = default_user.id
+            owner = partner.inst_user_id or default_user
+            if owner and lead.user_id != owner:
+                vals['user_id'] = owner.id      # toda cuenta tiene un responsable
             if vals:
                 lead.write(vals)
             if not act_type:

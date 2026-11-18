@@ -81,6 +81,7 @@ class ResPartner(models.Model):
     inst_excluded = fields.Boolean(
         'No es institucional', copy=False,
         help='Marcala para sacarla del flujo y que el sistema no la vuelva a sumar.')
+    inst_user_id = fields.Many2one('res.users', 'Responsable institucional', copy=False, index=True, readonly=True)
     inst_in_pool = fields.Boolean('En la fila de llamadas', copy=False, index=True, readonly=True)
     inst_queue_date = fields.Date('Día asignado en la fila', copy=False, readonly=True)
     inst_today = fields.Boolean('Es para hoy', copy=False, index=True, readonly=True)
