@@ -25,6 +25,10 @@
                         <field name="decisor_name"/>
                         <field name="decisor_phone"/>
                         <field name="decisor_function"/>
+                        <field name="people" readonly="1" invisible="not people"/>
+                        <field name="extra_name" placeholder="Otra persona que conviene tener (dueño, encargado, administración)"/>
+                        <field name="extra_phone" invisible="not extra_name"/>
+                        <field name="extra_function" invisible="not extra_name"/>
                     </group>
                     <group string="Ficha de la cuenta" invisible="result == 'contacto'">
                         <field name="productos" placeholder="Detergente y lavandina: cuál y cuánto. En papel, un producto puntual."/>
