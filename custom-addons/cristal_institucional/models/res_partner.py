@@ -244,6 +244,7 @@ class ResPartner(models.Model):
         text = re.sub(r'<br\s*/?>', ' — ', text)
         text = re.sub(r'<[^>]+>', '', text)
         text = re.sub(r'[🚗\s]+Visita realizada\s*—\s*\d{4}-\d{2}-\d{2}\s*·\s*', '', text).strip(' —·\n')
+        text = re.sub(r'^Otro\s*—\s*', '', text)
         return '%s: %s' % (msg.date.strftime('%d/%m'), re.sub(r'\s+', ' ', text)[:220])
 
     def _inst_facts(self):
