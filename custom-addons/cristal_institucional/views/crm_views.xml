@@ -13,7 +13,7 @@
                     <field name="inst_partner_id" invisible="1"/>
                     <field name="company_currency" invisible="1"/>
                     <div class="d-flex flex-wrap gap-2 mb-3">
-                        <button name="action_inst_call" type="object" string="Registrar llamada" class="btn-primary" icon="fa-phone"/>
+                        <button name="action_inst_call" type="object" string="Registrar contacto" class="btn-primary" icon="fa-phone"/>
                         <button name="action_inst_send_kit" type="object" string="Enviar kit" class="btn-secondary" icon="fa-gift"/>
                         <button name="action_inst_first_offer" type="object" string="Propuesta de primera compra" class="btn-secondary" icon="fa-file-text-o"
                                 invisible="inst_stage not in ('primera_compra', 'captacion')"/>
@@ -149,7 +149,7 @@
                   decoration-danger="inst_alert == 'dormido'" decoration-warning="inst_alert in ('riesgo', 'vence')">
                 <field name="company_currency" column_invisible="1"/>
                 <field name="partner_id" string="Empresa"/>
-                <button name="action_inst_call" type="object" string="Llamada" icon="fa-phone"/>
+                <button name="action_inst_call" type="object" string="Contacto" icon="fa-phone"/>
                 <field name="inst_stage" widget="badge"
                        decoration-muted="inst_stage in ('prospecto', 'descartado', 'inactivo')"
                        decoration-info="inst_stage == 'captacion'"

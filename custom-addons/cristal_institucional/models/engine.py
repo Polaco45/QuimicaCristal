@@ -328,6 +328,20 @@ class CristalInstEngine(models.AbstractModel):
             'inst_auto_step_id': auto_step,
         })
 
+        # Lo que contestó el cliente la última vez define el paso, por encima de la cadena.
+        # Se limpia solo si después de esa respuesta entró una compra.
+        custom_on = False
+        if partner.inst_custom_step and stage != 'descartado':
+            set_on = partner.inst_custom_set
+            if dates and set_on and dates[-1] >= set_on:
+                vals['inst_custom_step'] = False
+                vals['inst_custom_set'] = False
+            else:
+                custom_on = True
+                step = partner.inst_custom_step
+                step_date = today
+                pool = False
+
         # Posponer: corre el paso y la fecha límite
         postponed = partner.inst_postponed_until
         if postponed and stage != 'descartado':
@@ -342,7 +356,7 @@ class CristalInstEngine(models.AbstractModel):
                     alert = 'ok'
             else:
                 vals['inst_postponed_until'] = False
-        if stage != 'descartado' and alert == 'ok' and deadline and deadline < today:
+        if stage != 'descartado' and alert == 'ok' and deadline and deadline < today and not custom_on:
             alert = 'vence'
             step = 'Venció el plazo. %s' % (step or 'Posponer con nueva fecha o descartar')
             step_date = today
@@ -350,7 +364,7 @@ class CristalInstEngine(models.AbstractModel):
             step, step_date, deadline = False, False, False
 
         # Cuánto se atrasó, para que el paso diga algo concreto
-        if chain == 'atraso' and late > 0 and step and alert in ('riesgo', 'dormido'):
+        if chain == 'atraso' and late > 0 and step and alert in ('riesgo', 'dormido') and not custom_on:
             step = '%s (%s días de atraso)' % (step, late)
 
         # Sin forma de contactarla: el paso es conseguir el dato, y no ocupa lugar en la fila de llamadas

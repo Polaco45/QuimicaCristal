@@ -30,8 +30,8 @@ INST_FRECUENCIAS = [
 
 
 CALL_RESULTS = [
-    ('no_atendio', 'No atendió'),
-    ('whatsapp', 'Le mandé el WhatsApp'),
+    ('no_atendio', 'No atendió o no contestó'),
+    ('whatsapp', 'Le escribí y espero respuesta'),
     ('contacto', 'Atendió otra persona: conseguí el contacto de quien decide'),
     ('decisor', 'Hablé con quien decide'),
     ('kit', 'Hablé con quien decide y acepta el kit'),
@@ -40,6 +40,34 @@ CALL_RESULTS = [
     ('no_califica', 'No califica o no le interesa'),
     ('omitido', 'Sacada de la lista del día'),
 ]
+
+
+CALL_CHANNELS = [
+    ('llamada', 'Llamada'),
+    ('whatsapp', 'WhatsApp'),
+    ('visita', 'Visita'),
+    ('otro', 'Otro'),
+]
+
+# Lo que contesta un cliente cuando se lo consulta por la reposición.
+ACCOUNT_OUTCOMES = [
+    ('va_a_pedir', 'Va a pedir'),
+    ('tiene_stock', 'Todavía tiene stock'),
+    ('otro_proveedor', 'Le está comprando a otro'),
+    ('precio', 'Dice que estamos caros'),
+    ('problema', 'Tuvo un problema con nosotros'),
+    ('cerro', 'Cerró o ya no necesita'),
+]
+
+# Para cada respuesta: el próximo paso y en cuántos días (si no se elige otra fecha).
+OUTCOME_RULES = {
+    'va_a_pedir': ('Confirmar el pedido que dijo que iba a hacer', 3),
+    'tiene_stock': ('Volver a consultar: dijo que todavía tenía stock', 14),
+    'otro_proveedor': ('Armarle una propuesta para recuperarlo: le está comprando a otro', 2),
+    'precio': ('Revisar precios y pasarle una propuesta: dijo que estamos caros', 2),
+    'problema': ('Resolver el reclamo que planteó y volver a contactarlo', 1),
+    'cerro': ('Confirmar si corresponde descartarlo: dijo que cerró o ya no necesita', 30),
+}
 
 
 class ResPartner(models.Model):
@@ -99,6 +127,11 @@ class ResPartner(models.Model):
              'Sirve de punto de partida hasta cargar quién decide.')
     inst_phone = fields.Char('Teléfono para llamar', compute='_compute_inst_contact_info')
     inst_last_note = fields.Char('Última nota', compute='_compute_inst_contact_info')
+    inst_custom_step = fields.Char(
+        'Paso definido por la última respuesta', copy=False, readonly=True,
+        help='Lo que contestó el cliente define el próximo paso y pisa la cadena automática, '
+             'hasta el próximo contacto o hasta que compre.')
+    inst_custom_set = fields.Date('Respuesta registrada el', copy=False, readonly=True)
     inst_missing_data = fields.Boolean(
         'Falta un teléfono o contacto válido', copy=False, index=True,
         help='Se marcó al sacarla del día porque no hay cómo contactarla. Se limpia al registrar un contacto.')
@@ -322,7 +355,7 @@ class ResPartner(models.Model):
         self.ensure_one()
         return {
             'type': 'ir.actions.act_window',
-            'name': 'Registrar llamada',
+            'name': 'Registrar contacto',
             'res_model': 'cristal.inst.call.wizard',
             'view_mode': 'form',
             'target': 'new',

@@ -78,7 +78,7 @@
                                     <footer class="pt-2">
                                         <div class="d-flex gap-2">
                                             <button name="action_inst_call" type="object" class="btn btn-primary btn-sm">
-                                                Registrar llamada
+                                                Registrar contacto
                                             </button>
                                             <button name="action_inst_skip_today" type="object" class="btn btn-secondary btn-sm">
                                                 Sacar de hoy
