@@ -5,7 +5,8 @@ from markupsafe import Markup
 from odoo import api, fields, models
 from odoo.exceptions import UserError
 
-from .res_partner import CALL_RESULTS, INST_FRECUENCIAS, INST_STAGES
+from .res_partner import (
+    ACCOUNT_OUTCOMES, CALL_CHANNELS, CALL_RESULTS, INST_FRECUENCIAS, INST_STAGES, OUTCOME_RULES)
 
 
 def _next_workday(day):
@@ -24,7 +25,9 @@ class CristalInstCall(models.Model):
     partner_id = fields.Many2one('res.partner', 'Empresa', required=True, index=True, ondelete='cascade')
     date = fields.Datetime('Fecha', required=True, default=fields.Datetime.now, index=True)
     user_id = fields.Many2one('res.users', 'Quién llamó', default=lambda self: self.env.user)
+    channel = fields.Selection(CALL_CHANNELS, 'Canal', default='llamada')
     result = fields.Selection(CALL_RESULTS, 'Resultado', required=True)
+    outcome = fields.Selection(ACCOUNT_OUTCOMES, 'Qué dijo')
     notes = fields.Text('Qué pasó')
     stage = fields.Selection(INST_STAGES, 'Etapa en ese momento')
     is_contact = fields.Boolean('Hubo conversación', compute='_compute_is_contact', store=True)
@@ -37,9 +40,15 @@ class CristalInstCall(models.Model):
 
 class CristalInstCallWizard(models.TransientModel):
     _name = 'cristal.inst.call.wizard'
-    _description = 'Institucional: registrar llamada'
+    _description = 'Institucional: registrar contacto'
 
     partner_id = fields.Many2one('res.partner', 'Empresa', required=True)
+    channel = fields.Selection(CALL_CHANNELS, 'Por dónde fue', required=True, default='llamada')
+    is_account = fields.Boolean('Ya es cliente', compute='_compute_is_account')
+    outcome = fields.Selection(
+        ACCOUNT_OUTCOMES, 'Qué te dijo',
+        help='De esto depende el próximo paso. Si no elegís nada, sigue la cadena normal.')
+    outcome_hint = fields.Char('Qué va a pasar', compute='_compute_outcome_hint')
     script = fields.Html('Guion', related='partner_id.inst_script', sanitize=False)
     chain_message = fields.Text('Mensaje para mandar', related='partner_id.inst_chain_message')
     decisor_whatsapp = fields.Char('Mandar a', related='partner_id.inst_decisor_phone')
@@ -61,6 +70,23 @@ class CristalInstCallWizard(models.TransientModel):
     horario = fields.Char('Horario de entrega')
     discard_reason = fields.Char('Motivo')
 
+    @api.depends('partner_id')
+    def _compute_is_account(self):
+        for wizard in self:
+            wizard.is_account = wizard.partner_id.commercial_partner_id.inst_stage in (
+                'recurrente', 'pedido_formal', 'inactivo')
+
+    @api.depends('outcome', 'next_date')
+    def _compute_outcome_hint(self):
+        today = fields.Date.context_today(self)
+        for wizard in self:
+            rule = OUTCOME_RULES.get(wizard.outcome)
+            if not rule:
+                wizard.outcome_hint = False
+                continue
+            when = wizard.next_date or (today + timedelta(days=rule[1]))
+            wizard.outcome_hint = 'Tu próximo paso: "%s", el %s.' % (rule[0], when.strftime('%d/%m/%Y'))
+
     @api.model
     def default_get(self, fields_list):
         res = super().default_get(fields_list)
@@ -72,6 +98,8 @@ class CristalInstCallWizard(models.TransientModel):
             decisor = partner.inst_decisor_id
             res.update({
                 'partner_id': partner.id,
+                'channel': partner.inst_chain_channel if partner.inst_chain_channel in (
+                    'llamada', 'whatsapp', 'visita') else 'llamada',
                 'decisor_name': decisor.name or False,
                 'decisor_phone': decisor.mobile or decisor.phone or False,
                 'decisor_function': decisor.function or False,
@@ -142,14 +170,34 @@ class CristalInstCallWizard(models.TransientModel):
             vals['inst_discard_reason'] = (
                 self.discard_reason or (self.notes or '').strip().split('\n')[0][:120] or 'No califica')
 
+        # Lo que contestó el cliente define el próximo paso (pisa la cadena automática)
+        outcome = self.outcome if (talked and self.is_account) else False
+        if self.result == 'pedido':
+            vals['inst_custom_step'] = 'Cargar el pedido que hizo'
+            vals['inst_custom_set'] = today
+            vals['inst_postponed_until'] = False
+        elif outcome and outcome in OUTCOME_RULES:
+            text, days = OUTCOME_RULES[outcome]
+            vals['inst_custom_step'] = text
+            vals['inst_custom_set'] = today
+            vals['inst_postponed_until'] = self.next_date or (today + timedelta(days=days))
+        elif talked:
+            vals['inst_custom_step'] = False
+            vals['inst_custom_set'] = False
+
         self.env['cristal.inst.call'].create({
             'partner_id': partner.id,
+            'channel': self.channel,
             'result': self.result,
+            'outcome': outcome,
             'notes': self.notes,
             'stage': partner.inst_stage,
         })
         label = dict(CALL_RESULTS)[self.result]
-        body = Markup('<p><strong>Llamada institucional: %s</strong></p>') % label
+        if outcome:
+            label = '%s. %s' % (label, dict(ACCOUNT_OUTCOMES)[outcome])
+        body = Markup('<p><strong>Contacto institucional por %s: %s</strong></p>') % (
+            dict(CALL_CHANNELS)[self.channel].lower(), label)
         if self.notes:
             body += Markup('<p>%s</p>') % self.notes
         if self.next_date:
