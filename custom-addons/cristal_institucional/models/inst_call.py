@@ -55,6 +55,10 @@ class CristalInstCallWizard(models.TransientModel):
     result = fields.Selection([r for r in CALL_RESULTS if r[0] != 'omitido'], 'Resultado', required=True,
                               default='no_atendio')
     notes = fields.Text('Qué pasó')
+    next_step_text = fields.Char(
+        'Próximo paso (opcional)',
+        help='Si ya sabés qué toca después (por ejemplo "Mandarle el WhatsApp a Jonathan"), escribilo acá: '
+             'manda sobre el paso automático hasta el próximo contacto.')
     next_date = fields.Date(
         'Volver a contactar el',
         help='Dejalo vacío y el sistema pone la fecha que corresponde a la etapa.')
@@ -195,7 +199,13 @@ class CristalInstCallWizard(models.TransientModel):
 
         # Lo que contestó el cliente define el próximo paso (pisa la cadena automática)
         outcome = self.outcome if (talked and self.is_account) else False
-        if self.result == 'pedido':
+        own_step = (self.next_step_text or '').strip()
+        if own_step and self.result != 'no_califica':
+            # Lo que escribe la persona manda sobre todo lo automático
+            vals['inst_custom_step'] = own_step[:240]
+            vals['inst_custom_set'] = today
+            vals['inst_postponed_until'] = self.next_date if (self.next_date and self.next_date > today) else False
+        elif self.result == 'pedido':
             vals['inst_custom_step'] = 'Cargar el pedido que hizo'
             vals['inst_custom_set'] = today
             vals['inst_postponed_until'] = False

@@ -17,6 +17,7 @@
                     <field name="outcome" widget="radio" invisible="not is_account or result in ('no_atendio', 'whatsapp', 'no_califica', 'pedido')"/>
                     <field name="outcome_hint" invisible="not outcome_hint" readonly="1"/>
                     <field name="notes" placeholder="Contá con tus palabras qué pasó"/>
+                    <field name="next_step_text" placeholder="Opcional: qué toca después, con tus palabras"/>
                     <field name="next_date"/>
                     <field name="discard_reason" invisible="result != 'no_califica'"/>
                 </group>
