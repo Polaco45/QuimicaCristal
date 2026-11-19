@@ -31,7 +31,7 @@
                     <group>
                         <group string="Dónde está">
                             <field name="inst_stage" widget="badge"
-                                   decoration-muted="inst_stage in ('prospecto', 'descartado')"
+                                   decoration-muted="inst_stage in ('prospecto', 'descartado', 'inactivo')"
                                    decoration-info="inst_stage == 'captacion'"
                                    decoration-warning="inst_stage == 'primera_compra'"
                                    decoration-primary="inst_stage == 'pedido_formal'"
@@ -62,6 +62,7 @@
                             <field name="inst_decisor_id" domain="[('parent_id', '=', inst_partner_id)]"
                                    context="{'default_parent_id': inst_partner_id, 'default_type': 'contact'}"/>
                             <field name="inst_decisor_phone"/>
+                            <field name="inst_contact_hint" invisible="not inst_contact_hint"/>
                             <field name="inst_productos"/>
                             <field name="inst_proveedor"/>
                             <field name="inst_frecuencia"/>
@@ -150,7 +151,7 @@
                 <field name="partner_id" string="Empresa"/>
                 <button name="action_inst_call" type="object" string="Llamada" icon="fa-phone"/>
                 <field name="inst_stage" widget="badge"
-                       decoration-muted="inst_stage in ('prospecto', 'descartado')"
+                       decoration-muted="inst_stage in ('prospecto', 'descartado', 'inactivo')"
                        decoration-info="inst_stage == 'captacion'"
                        decoration-warning="inst_stage == 'primera_compra'"
                        decoration-primary="inst_stage == 'pedido_formal'"
@@ -190,6 +191,7 @@
                 <filter name="st_primera" string="2 · Primera compra" domain="[('inst_stage', '=', 'primera_compra')]"/>
                 <filter name="st_formal" string="3 · Pedido formal" domain="[('inst_stage', '=', 'pedido_formal')]"/>
                 <filter name="st_recurrente" string="4 · Recurrente" domain="[('inst_stage', '=', 'recurrente')]"/>
+                <filter name="st_inactivo" string="Inactivo" domain="[('inst_stage', '=', 'inactivo')]"/>
                 <separator/>
                 <filter name="al_riesgo" string="En riesgo" domain="[('inst_alert', '=', 'riesgo')]"/>
                 <filter name="al_dormido" string="Dormido" domain="[('inst_alert', '=', 'dormido')]"/>

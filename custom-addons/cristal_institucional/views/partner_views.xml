@@ -29,7 +29,7 @@
                         <group>
                             <group string="Dónde está">
                                 <field name="inst_stage" widget="badge"
-                                       decoration-muted="inst_stage in ('prospecto', 'descartado')"
+                                       decoration-muted="inst_stage in ('prospecto', 'descartado', 'inactivo')"
                                        decoration-info="inst_stage == 'captacion'"
                                        decoration-warning="inst_stage == 'primera_compra'"
                                        decoration-primary="inst_stage == 'pedido_formal'"
@@ -164,7 +164,7 @@
                 <button name="action_inst_call" type="object" string="Llamada" icon="fa-phone"/>
                 <field name="industry_id" string="Rubro" optional="show"/>
                 <field name="inst_stage" widget="badge"
-                       decoration-muted="inst_stage in ('prospecto', 'descartado')"
+                       decoration-muted="inst_stage in ('prospecto', 'descartado', 'inactivo')"
                        decoration-info="inst_stage == 'captacion'"
                        decoration-warning="inst_stage == 'primera_compra'"
                        decoration-primary="inst_stage == 'pedido_formal'"

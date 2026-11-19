@@ -58,6 +58,9 @@
                                     <div t-if="record.inst_phone.raw_value" class="mt-1">
                                         <strong>Teléfono: </strong><field name="inst_phone"/>
                                     </div>
+                                    <div t-if="record.inst_contact_hint.raw_value" class="mt-1">
+                                        <strong>Posible contacto: </strong><field name="inst_contact_hint"/>
+                                    </div>
                                     <div class="mt-1 text-muted">
                                         <field name="inst_reason"/>
                                     </div>

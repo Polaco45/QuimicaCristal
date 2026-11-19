@@ -9,6 +9,7 @@ INST_STAGES = [
     ('primera_compra', '2 · Primera compra'),
     ('pedido_formal', '3 · Pedido formal'),
     ('recurrente', '4 · Recurrente'),
+    ('inactivo', 'Inactivo'),
     ('descartado', 'Descartado'),
 ]
 
@@ -89,6 +90,13 @@ class ResPartner(models.Model):
     inst_pinned_date = fields.Date('Agregada a mano para el día', copy=False, readonly=True)
     inst_skip_date = fields.Date('Sacada a mano del día', copy=False, readonly=True)
     inst_no_phone = fields.Boolean('Sin teléfono', copy=False, index=True, readonly=True)
+    inst_rubro_auto = fields.Boolean(
+        'Rubro puesto por el sistema', copy=False,
+        help='El rubro lo dedujo el sistema por las etiquetas o el nombre. Si está mal, corregilo.')
+    inst_contact_hint = fields.Char(
+        'Posible contacto', copy=False, readonly=True,
+        help='Contactos ya cargados en la empresa, o el nombre anotado en una oportunidad vieja. '
+             'Sirve de punto de partida hasta cargar quién decide.')
     inst_phone = fields.Char('Teléfono para llamar', compute='_compute_inst_contact_info')
     inst_last_note = fields.Char('Última nota', compute='_compute_inst_contact_info')
     inst_missing_data = fields.Boolean(
@@ -197,6 +205,14 @@ class ResPartner(models.Model):
                     '%s Soy Joaquín, de Cristal. ¿Cómo les fue con lo que llevaron?' % hello,
                     '¿Ya les toca reponer? Les armo el mismo pedido y lo entregamos.',
                     '¿Cada cuánto les conviene que les avise para reponer?',
+                ]
+            elif stage == 'inactivo':
+                lines = [
+                    '%s Soy Joaquín, de Cristal Limpieza Profesional. Ustedes nos compraban y hace un tiempo '
+                    'que no sabemos nada. Quería saber cómo están.' % hello,
+                    '¿Hubo algo que no les cerró, o simplemente cambiaron de proveedor?',
+                    'Cambiamos la formulación del desengrasante. Les llevo sin cargo un kit para que lo prueben.',
+                    '¿Quién hace hoy los pedidos de limpieza? ¿A qué dirección y en qué horario se lo llevo?',
                 ]
             elif stage == 'recurrente':
                 if partner.inst_alert in ('riesgo', 'dormido'):
