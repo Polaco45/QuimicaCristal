@@ -172,13 +172,10 @@ class CristalInstDay(models.Model):
 
     @api.model
     def action_open_today(self):
-        """Abre el día de hoy. Si quedó un día anterior sin cerrar, primero hay que cerrarlo."""
+        """Abre siempre el día de hoy. Si quedó un día anterior sin cerrar, se avisa arriba
+        con un botón para cerrarlo, sin tapar el avance de hoy."""
         user = self.env.user
         today = fields.Date.context_today(self)
-        pending = self.search([('user_id', '=', user.id), ('date', '<', today), ('state', '=', 'open')],
-                              order='date', limit=1)
-        if pending:
-            return pending._open('Cerrá primero el día anterior')
         day = self.search([('user_id', '=', user.id), ('date', '=', today)], limit=1)
         if not day:
             day = self.create({'user_id': user.id, 'date': today, 'target': self._target()})
@@ -218,3 +215,12 @@ class CristalInstDay(models.Model):
     def action_reopen(self):
         self.write({'state': 'open', 'closed_at': False})
         return True
+
+    def action_open_previous(self):
+        """Lleva al día anterior que quedó sin cerrar."""
+        self.ensure_one()
+        pending = self.search([('user_id', '=', self.user_id.id), ('date', '<', self.date), ('state', '=', 'open')],
+                              order='date', limit=1)
+        if not pending:
+            raise UserError('No hay días anteriores sin cerrar.')
+        return pending._open('Cerrar el día anterior')

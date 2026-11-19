@@ -18,7 +18,8 @@
                     <field name="blocked_by_previous" invisible="1"/>
                     <field name="met" invisible="1"/>
                     <div class="alert alert-warning" role="alert" invisible="not blocked_by_previous">
-                        Tenés un día anterior sin cerrar. Cerralo antes de seguir.
+                        Tenés un día anterior sin cerrar.
+                        <button name="action_open_previous" type="object" string="Ir a cerrarlo" class="btn-link p-0 ms-1"/>
                     </div>
                     <!-- Franja de objetivos: una sola línea, la lista es lo importante -->
                     <div class="alert alert-success mb-2" role="alert" invisible="not met">
