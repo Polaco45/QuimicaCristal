@@ -17,6 +17,7 @@ DEFAULTS = {
     'risk_factor_pct': 150,            # en riesgo: pasó 1,5 veces su ritmo
     'dormant_cycles': 3,               # dormido: pasó 3 veces su ritmo...
     'dormant_min_days': 90,            # ...o al menos 90 días
+    'inactive_days': 365,              # sin comprar hace más de un año: pasa a Inactivo (hay que volver a ganarlo)
     'daily_calls': 15,                 # contactos por día y por persona
     'daily_new': 5,                    # de esos, cuántos se reservan para empresas nuevas (prospectos y captación)
     'default_user_id': 18,             # responsable cuando la empresa no tiene vendedor
@@ -121,7 +122,7 @@ class CristalInstEngine(models.AbstractModel):
     @api.model
     def _family(self, categ):
         """Familia = los dos primeros niveles de la categoría (ej. 'Fabricación / Detergente')."""
-        parts = [p.strip() for p in (categ.complete_name or '').split('/') if p.strip()]
+        parts = [p.strip() for p in (categ.complete_name or '').split(' / ') if p.strip()]
         return ' / '.join(parts[:2]) if parts else ''
 
     @api.model
@@ -189,6 +190,26 @@ class CristalInstEngine(models.AbstractModel):
             stage = 'descartado'
             reason = partner.inst_discard_reason or 'Descartado'
             alert = False
+        elif count and days_since > params['inactive_days']:
+            # Compró alguna vez pero hace más de un año: no es un cliente atrasado,
+            # hay que volver a ganarlo. Tiene su propio camino, con kit.
+            stage = 'inactivo'
+            reason = 'Compró %s %s; la última, hace %s meses' % (
+                count, 'vez' if count == 1 else 'veces', days_since // 30)
+            kit_again = bool(kit_date and kit_date > dates[-1])
+            if kit_again:
+                step = 'Llamar: cómo les fue con el kit y pasar la propuesta para que vuelvan a comprar'
+                step_date = kit_date + timedelta(days=params['kit_followup_days'])
+                deadline = kit_date + timedelta(days=params['first_purchase_deadline_days'])
+            elif info['kit_order']:
+                step = 'Entregar el kit de prueba'
+                step_date = today
+            elif partner.inst_last_result == 'kit':
+                step = 'Cargar el kit de prueba y entregarlo'
+                step_date = today
+            else:
+                step = 'Reactivar: saber por qué dejó de comprar y ofrecerle el kit con la nueva formulación'
+                step_date = today
         elif count >= 2:
             stage = 'recurrente'
             expected = dates[-1] + timedelta(days=cycle)
@@ -248,7 +269,8 @@ class CristalInstEngine(models.AbstractModel):
 
         # Cola de llamadas: prospectos y captación sin un paso con fecha propia se reparten
         # de a pocos por día hábil. La fecha la pone _fill_queue.
-        pool = (stage in ('prospecto', 'captacion') and not info['kit_order']
+        kit_running = bool(stage == 'inactivo' and kit_date and dates and kit_date > dates[-1])
+        pool = (stage in ('prospecto', 'captacion', 'inactivo') and not info['kit_order'] and not kit_running
                 and partner.inst_last_result != 'kit')
         if pool:
             step_date = partner.inst_queue_date or False
@@ -257,7 +279,7 @@ class CristalInstEngine(models.AbstractModel):
 
         # Cadena de avisos: después del kit, después de la primera compra, o recurrente atrasado
         chain, anchor = False, False
-        if stage == 'primera_compra' and kit_date:
+        if kit_date and (stage == 'primera_compra' or kit_running):
             chain, anchor = 'kit', kit_date
         elif stage == 'pedido_formal' and dates:
             chain, anchor = 'reposicion', dates[-1]
@@ -356,7 +378,7 @@ class CristalInstEngine(models.AbstractModel):
             ('recurrente', 'riesgo'): 9, ('recurrente', 'dormido'): 6, ('recurrente', 'ok'): 2,
             ('primera_compra', 'vence'): 8, ('primera_compra', 'ok'): 7,
             ('pedido_formal', 'vence'): 8, ('pedido_formal', 'ok'): 7, ('pedido_formal', 'dormido'): 5,
-            ('captacion', 'ok'): 4, ('prospecto', 'ok'): 3,
+            ('captacion', 'ok'): 4, ('prospecto', 'ok'): 3, ('inactivo', 'ok'): 5, ('inactivo', 'vence'): 6,
         }
         weight = weights.get((stage, alert), 0)
         if stage == 'captacion' and info['kit_order']:
@@ -582,7 +604,82 @@ class CristalInstEngine(models.AbstractModel):
                 added += len(candidates)
         if added:
             _logger.info('Institucional: %s empresas nuevas entraron al flujo', added)
+        self._enrich()
         return added
+
+    # ------------------------------------------- completar solo lo que se puede
+    RUBRO_RULES = [
+        # (comienzos de palabra que delatan el rubro, texto para encontrar el rubro en Odoo)
+        (('gastronom', 'restaurant', 'resto', 'restobar', 'parrilla', 'pizz', 'panader', 'helader', 'cafe',
+          'rotiser', 'comedor', 'catering', 'cervecer', 'bar', 'bodegon', 'confiter', 'sandwich', 'empanad',
+          'pastas', 'hamburgues', 'lomiter', 'cantina', 'pasteler'), 'gastronom'),
+        (('colegio', 'instituto', 'escuela', 'jardin', 'universidad', 'educa', 'academia'), 'educaci'),
+        (('clinica', 'sanatorio', 'hospital', 'medic', 'consultorio', 'geriatr', 'salud', 'odontolog',
+          'laboratorio', 'farmacia', 'veterinar', 'rehabilita'), 'salud'),
+        (('hotel', 'apart', 'hosteria', 'hostel', 'cabanas'), 'hotel'),
+        (('club', 'complejo', 'gimnasio', 'gym', 'fitness', 'deport', 'autodromo'), 'club'),
+        (('estacion de servicio', 'ypf', 'shell', 'axion', 'gulf'), 'estaci'),
+        (('carnicer', 'frigorif', 'carnes', 'granja', 'poller', 'fiambr', 'chacinad'), 'carne'),
+        (('logistic', 'transporte', 'industria', 'fabrica', 'metalurg', 'agro', 'constru'), 'industria'),
+    ]
+
+    @api.model
+    def _plain(self, text):
+        import unicodedata
+        text = unicodedata.normalize('NFD', (text or '').lower())
+        return ''.join(ch for ch in text if unicodedata.category(ch) != 'Mn')
+
+    @api.model
+    def _enrich(self):
+        """Completa lo que se puede deducir: el rubro (por etiquetas y nombre) y un posible contacto
+        (por los contactos cargados en la empresa o el nombre anotado en oportunidades viejas).
+        Nunca pisa lo que una persona cargó."""
+        import re
+        Partner = self.env['res.partner'].sudo().with_context(inst_engine=True, tracking_disable=True)
+        Industry = self.env['res.partner.industry'].sudo()
+        industries = Industry.search([])
+        rules = []
+        for words, key in self.RUBRO_RULES:
+            industry = industries.filtered(lambda i, k=key: k in self._plain(i.name))[:1]
+            if industry:
+                # Las palabras cortas van enteras ("bar" no tiene que agarrar "barrio")
+                rules.append((re.compile(r'\b(%s)' % '|'.join(
+                    re.escape(w) + (r'\b' if len(w) <= 4 else '') for w in words)), industry.id))
+        if rules:
+            for partner in Partner.search([('inst_is', '=', True), ('industry_id', '=', False)]):
+                text = self._plain(' '.join(partner.category_id.mapped('name')) + ' ' + (partner.name or ''))
+                for pattern, industry_id in rules:
+                    if pattern.search(text):
+                        partner.write({'industry_id': industry_id, 'inst_rubro_auto': True})
+                        break
+
+        Lead = self.env['crm.lead'].sudo().with_context(active_test=False)
+        pending = Partner.search([('inst_is', '=', True), ('inst_decisor_id', '=', False)])
+        lead_names = {}
+        for lead in Lead.search([('inst_partner_id', 'in', pending.ids), ('contact_name', '!=', False)],
+                                order='id'):
+            lead_names[lead.inst_partner_id.id] = lead.contact_name
+        for partner in pending:
+            contacts = partner.child_ids.filtered(lambda c: c.type == 'contact' and c.active and c.name)
+            hint = False
+            if contacts:
+                parts = []
+                for contact in contacts[:2]:
+                    number = contact.mobile or contact.phone
+                    label = contact.name
+                    if contact.function:
+                        label += ' (%s)' % contact.function
+                    if number:
+                        label += ', %s' % number
+                    parts.append(label)
+                hint = ' · '.join(parts)
+            elif lead_names.get(partner.id):
+                hint = lead_names[partner.id]
+            if (partner.inst_contact_hint or False) != (hint or False):
+                partner.write({'inst_contact_hint': hint})
+        Partner.search([('inst_decisor_id', '!=', False), ('inst_contact_hint', '!=', False)]).write(
+            {'inst_contact_hint': False})
+        return True
 
     @api.model
     def _pull_more(self, count):
@@ -643,7 +740,8 @@ class CristalInstEngine(models.AbstractModel):
         ('primera_compra', '2 · Primera compra', 102),
         ('pedido_formal', '3 · Pedido formal', 103),
         ('recurrente', '4 · Recurrente', 104),
-        ('descartado', 'Descartado', 105),
+        ('inactivo', 'Inactivo', 105),
+        ('descartado', 'Descartado', 106),
     ]
 
     @api.model
@@ -666,6 +764,8 @@ class CristalInstEngine(models.AbstractModel):
                     'name': name, 'team_id': team.id, 'sequence': sequence,
                     'fold': key == 'descartado',
                 })
+            elif stage.sequence != sequence:
+                stage.write({'sequence': sequence})
             out[key] = stage
         return out
 
