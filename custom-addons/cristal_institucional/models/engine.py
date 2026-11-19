@@ -348,7 +348,7 @@ class CristalInstEngine(models.AbstractModel):
             if postponed > today:
                 step_date = postponed
                 pool = False
-                if partner.inst_last_result == 'whatsapp' and step and not chain:
+                if partner.inst_last_result == 'whatsapp' and step:
                     step = 'Esperando respuesta al WhatsApp. Si no contesta: %s%s' % (step[:1].lower(), step[1:])
                 if deadline and deadline < postponed:
                     deadline = postponed
@@ -627,10 +627,10 @@ class CristalInstEngine(models.AbstractModel):
         (('gastronom', 'restaurant', 'resto', 'restobar', 'parrilla', 'pizz', 'panader', 'helader', 'cafe',
           'rotiser', 'comedor', 'catering', 'cervecer', 'bar', 'bodegon', 'confiter', 'sandwich', 'empanad',
           'pastas', 'hamburgues', 'lomiter', 'cantina', 'pasteler'), 'gastronom'),
-        (('colegio', 'instituto', 'escuela', 'jardin', 'universidad', 'educa', 'academia'), 'educaci'),
+        (("hotel", "apart", "hosteria", "hostel", "cabanas"), "hotel"),
+        (("colegio", "instituto", "escuela", "jardin", "universidad", "educa", "academia"), "educaci"),
         (('clinica', 'sanatorio', 'hospital', 'medic', 'consultorio', 'geriatr', 'salud', 'odontolog',
           'laboratorio', 'farmacia', 'veterinar', 'rehabilita'), 'salud'),
-        (('hotel', 'apart', 'hosteria', 'hostel', 'cabanas'), 'hotel'),
         (('club', 'complejo', 'gimnasio', 'gym', 'fitness', 'deport', 'autodromo'), 'club'),
         (('estacion de servicio', 'ypf', 'shell', 'axion', 'gulf'), 'estaci'),
         (('carnicer', 'frigorif', 'carnes', 'granja', 'poller', 'fiambr', 'chacinad'), 'carne'),

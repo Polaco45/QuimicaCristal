@@ -161,9 +161,12 @@ class CristalInstCallWizard(models.TransientModel):
             vals['inst_postponed_until'] = self.next_date or _next_workday(today)
         else:
             vals['inst_attempts'] = 0
-            vals['inst_postponed_until'] = self.next_date or False
+            vals['inst_postponed_until'] = self.next_date or (
+                (today + timedelta(days=3)) if self.result == 'whatsapp' else False)
         # El paso de la cadena queda hecho y se pasa al siguiente
-        if partner.inst_chain_step_id and self.result in ('whatsapp', 'contacto', 'decisor', 'kit', 'posponer'):
+        step_done = self.result in ('contacto', 'decisor', 'kit', 'posponer') or (
+            self.result == 'whatsapp' and partner.inst_chain_step_id.channel == 'whatsapp')
+        if partner.inst_chain_step_id and step_done:
             vals['inst_chain_done'] = partner.inst_chain_step_id.sequence
         if self.result == 'no_califica':
             vals['inst_discarded'] = True
