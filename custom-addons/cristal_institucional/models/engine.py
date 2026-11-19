@@ -652,9 +652,16 @@ class CristalInstEngine(models.AbstractModel):
         Partner = self.env['res.partner'].sudo().with_context(inst_engine=True, tracking_disable=True)
         Industry = self.env['res.partner.industry'].sudo()
         industries = Industry.search([])
+        # El nombre del rubro se lee en todos los idiomas instalados: la tarea nocturna corre
+        # sin idioma y vería "Education" en vez de "Educación".
+        langs = [code for code, _name in self.env['res.lang'].sudo().get_installed()]
+        names = {
+            industry.id: ' '.join(self._plain(industry.with_context(lang=lang).name) for lang in langs)
+            for industry in industries
+        }
         rules = []
         for words, key in self.RUBRO_RULES:
-            industry = industries.filtered(lambda i, k=key: k in self._plain(i.name))[:1]
+            industry = industries.filtered(lambda i, k=key: k in names[i.id])[:1]
             if industry:
                 # Las palabras cortas van enteras ("bar" no tiene que agarrar "barrio")
                 rules.append((re.compile(r'\b(%s)' % '|'.join(
