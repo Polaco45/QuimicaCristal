@@ -63,6 +63,8 @@
                                    context="{'default_parent_id': inst_partner_id, 'default_type': 'contact'}"/>
                             <field name="inst_decisor_phone"/>
                             <field name="inst_contact_hint" invisible="not inst_contact_hint"/>
+                            <field name="inst_people" invisible="not inst_people"/>
+                            <field name="inst_dup_hint" invisible="not inst_dup_hint" class="text-warning"/>
                             <field name="inst_productos"/>
                             <field name="inst_proveedor"/>
                             <field name="inst_frecuencia"/>
@@ -197,6 +199,7 @@
                 <filter name="al_dormido" string="Dormido" domain="[('inst_alert', '=', 'dormido')]"/>
                 <filter name="al_vence" string="Fecha límite vencida" domain="[('inst_alert', '=', 'vence')]"/>
                 <separator/>
+                <filter name="dup" string="Posibles duplicados" domain="[('inst_dup_hint', '!=', False)]"/>
                 <filter name="no_phone" string="Falta teléfono" domain="[('inst_no_phone', '=', True)]"/>
                 <filter name="rv_review" string="Para revisar (las sumó el sistema)" domain="[('inst_review', '=', True)]"/>
                 <filter name="auto_ready" string="Con WhatsApp listo para salir solo" domain="[('inst_auto_step_id', '!=', False)]"/>

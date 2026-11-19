@@ -22,7 +22,9 @@ INST_ALERTS = [
 
 INST_FRECUENCIAS = [
     ('semanal', 'Semanal'),
+    ('semanal_quincenal', 'Semanal o quincenal'),
     ('quincenal', 'Quincenal'),
+    ('quincenal_mensual', 'Quincenal o mensual'),
     ('mensual', 'Mensual'),
     ('bimestral', 'Cada dos meses'),
     ('ocasional', 'Ocasional'),
@@ -118,6 +120,10 @@ class ResPartner(models.Model):
     inst_pinned_date = fields.Date('Agregada a mano para el día', copy=False, readonly=True)
     inst_skip_date = fields.Date('Sacada a mano del día', copy=False, readonly=True)
     inst_no_phone = fields.Boolean('Sin teléfono', copy=False, index=True, readonly=True)
+    inst_people = fields.Char('Contactos de la empresa', compute='_compute_inst_people')
+    inst_dup_hint = fields.Char(
+        'Posible duplicado', copy=False, readonly=True, index=True,
+        help='Otra ficha con el mismo nombre, CUIT o teléfono. Revisar si es la misma empresa y unirlas.')
     inst_rubro_auto = fields.Boolean(
         'Rubro puesto por el sistema', copy=False,
         help='El rubro lo dedujo el sistema por las etiquetas o el nombre. Si está mal, corregilo.')
@@ -200,8 +206,89 @@ class ResPartner(models.Model):
         help='Familias de fabricación propia que todavía no nos compra. Son las que más margen dejan.')
     inst_script = fields.Html('Guion para la llamada', compute='_compute_inst_script', sanitize=False)
 
+    # ------------------------------------------------ lo que ya sabemos de la cuenta
+    MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto',
+             'septiembre', 'octubre', 'noviembre', 'diciembre']
+
+    def _inst_open_quote(self):
+        """La cotización abierta más grande (sin contar el kit, que va a $0)."""
+        self.ensure_one()
+        if not self.id:
+            return self.env['sale.order']
+        return self.env['sale.order'].sudo().search([
+            ('partner_id', 'child_of', self.id), ('state', 'in', ('draft', 'sent')),
+            ('amount_untaxed', '>', 0),
+        ], order='amount_untaxed desc, id desc', limit=1)
+
+    def _inst_quote_products(self, order, count=3):
+        lines = order.order_line.filtered(lambda l: not l.display_type and l.product_id and l.price_subtotal > 0)
+        lines = lines.sorted(lambda l: -l.price_subtotal)[:count]
+        return ', '.join(l.product_id.product_tmpl_id.name for l in lines)
+
+    def _inst_last_visit(self):
+        """La última nota de visita que quedó en el historial (las de Alejandra y las de la ruta)."""
+        self.ensure_one()
+        if not self.id:
+            return False
+        import re
+        from odoo.tools import html2plaintext
+        leads = self.env['crm.lead'].sudo().with_context(active_test=False).search(
+            [('partner_id', 'child_of', self.id)])
+        domain = [('body', 'ilike', 'Visita realizada'), '|',
+                  '&', ('model', '=', 'res.partner'), ('res_id', '=', self.id),
+                  '&', ('model', '=', 'crm.lead'), ('res_id', 'in', leads.ids or [0])]
+        msg = self.env['mail.message'].sudo().search(domain, order='date desc, id desc', limit=1)
+        if not msg:
+            return False
+        text = html2plaintext(msg.body or '')
+        text = re.sub(r'<br\s*/?>', ' — ', text)
+        text = re.sub(r'<[^>]+>', '', text)
+        text = re.sub(r'[🚗\s]+Visita realizada\s*—\s*\d{4}-\d{2}-\d{2}\s*·\s*', '', text).strip(' —·\n')
+        return '%s: %s' % (msg.date.strftime('%d/%m'), re.sub(r'\s+', ' ', text)[:220])
+
+    def _inst_facts(self):
+        """Lista corta de lo que ya sabemos, para tenerla a mano antes de hablar."""
+        self.ensure_one()
+        facts = []
+        if self.inst_order_count:
+            facts.append('Compró %s %s; la última el %s.%s' % (
+                self.inst_order_count, 'vez' if self.inst_order_count == 1 else 'veces',
+                self.inst_last_order.strftime('%d/%m/%Y') if self.inst_last_order else '-',
+                (' Compra sobre todo: %s.' % self.inst_buys) if self.inst_buys else ''))
+        quote = self._inst_open_quote()
+        if quote:
+            facts.append('Cotización %s del %s por $ %s: %s.' % (
+                quote.name, quote.date_order.strftime('%d/%m/%Y'),
+                '{:,.0f}'.format(quote.amount_untaxed).replace(',', '.'), self._inst_quote_products(quote)))
+        if self.inst_proveedor:
+            facts.append('Hoy le compran a: %s.' % self.inst_proveedor)
+        if self.inst_productos:
+            facts.append('Usan: %s' % self.inst_productos[:200])
+        visit = self._inst_last_visit()
+        if visit:
+            facts.append('Última visita (%s' % visit.replace(': ', '): ', 1))
+        people = self.child_ids.filtered(lambda c: c.type == 'contact' and c.active and c.name)
+        if people:
+            facts.append('Contactos: %s.' % self.inst_people)
+        return facts
+
+    @api.depends('child_ids', 'child_ids.name', 'child_ids.function', 'child_ids.phone', 'child_ids.mobile')
+    def _compute_inst_people(self):
+        for partner in self:
+            people = partner.child_ids.filtered(lambda c: c.type == 'contact' and c.active and c.name)
+            parts = []
+            for person in people[:5]:
+                label = person.name
+                if person.function:
+                    label += ' (%s)' % person.function
+                number = person.mobile or person.phone
+                if number:
+                    label += ', %s' % number
+                parts.append(label)
+            partner.inst_people = ' · '.join(parts) or False
+
     @api.depends('inst_stage', 'inst_alert', 'inst_decisor_id', 'inst_ficha_falta', 'inst_gaps',
-                 'inst_last_order', 'inst_kit_date', 'name')
+                 'inst_last_order', 'inst_kit_date', 'name', 'inst_proveedor', 'inst_productos')
     def _compute_inst_script(self):
         from markupsafe import Markup
         intro = 'Soy Joaquín, de Cristal Limpieza Profesional, somos fábrica acá en Río Cuarto.'
@@ -211,16 +298,24 @@ class ResPartner(models.Model):
             hello = ('Hola %s, ¿cómo estás?' % who) if who else 'Hola, buen día.'
             lines = []
             stage = partner.inst_stage
+            quote = partner._inst_open_quote() if stage in ('prospecto', 'captacion', 'inactivo') else False
+            quote_hook = ''
+            if quote:
+                quote_hook = ' En %s les pasamos una cotización (%s); antes de que decidan, quiero que prueben el producto.' % (
+                    self.MESES[quote.date_order.month - 1], partner._inst_quote_products(quote, 2).lower())
             if stage == 'prospecto' or (stage == 'captacion' and not who):
                 lines = [
-                    '%s %s Seleccionamos a %s entre algunos locales para mandarles sin cargo un kit de productos '
-                    'y que prueben la nueva formulación de nuestro desengrasante.' % (hello, intro, name),
+                    '%s %s%s Seleccionamos a %s entre algunos locales para mandarles sin cargo un kit de productos '
+                    'y que prueben la nueva formulación de nuestro desengrasante.' % (hello, intro, quote_hook, name),
                     '¿Quién se encarga de los pedidos de limpieza? ¿Me pasás su nombre y su WhatsApp?',
                 ]
+                if partner.inst_proveedor:
+                    lines.append('Si dicen que ya tienen proveedor (%s): no les pido que cambien, '
+                                 'solo que lo prueben.' % partner.inst_proveedor)
             elif stage == 'captacion':
                 lines = [
-                    '%s %s Les queremos mandar sin cargo un kit con el desengrasante de formulación nueva '
-                    'para que lo prueben.' % (hello, intro),
+                    '%s %s%s Les queremos mandar sin cargo un kit con el desengrasante de formulación nueva '
+                    'para que lo prueben.' % (hello, intro, quote_hook),
                     '¿Qué detergente y qué lavandina están usando hoy, y cuánto llevan cada vez?',
                     'En papel, ¿usan bobina, toallas o servilletas? ¿Cuánto por semana?',
                     '¿Cada cuánto reponen? ¿A qué dirección y en qué horario les llevo el kit?',
@@ -259,11 +354,15 @@ class ResPartner(models.Model):
                     if partner.inst_gaps:
                         lines.append('Todavía no nos llevan: %s. Ofrecer uno para probar en este pedido.'
                                      % partner.inst_gaps)
+            html = Markup('')
+            facts = partner._inst_facts() if partner.id else []
+            if facts:
+                html += Markup('<p class="mb-1"><strong>Lo que ya sabemos</strong></p><ul>%s</ul>') % Markup('').join(
+                    Markup('<li>%s</li>') % fact for fact in facts)
             if lines:
-                html = Markup('<ol>%s</ol>') % Markup('').join(Markup('<li>%s</li>') % line for line in lines)
-            else:
-                html = False
-            partner.inst_script = html
+                html += Markup('<p class="mb-1"><strong>Qué decir</strong></p><ol>%s</ol>') % Markup('').join(
+                    Markup('<li>%s</li>') % line for line in lines)
+            partner.inst_script = html or False
 
     @api.depends('phone', 'mobile', 'inst_decisor_id', 'inst_decisor_id.phone', 'inst_decisor_id.mobile',
                  'inst_call_ids')
@@ -283,7 +382,8 @@ class ResPartner(models.Model):
             if last:
                 partner.inst_last_note = '%s: %s' % (last.date.strftime('%d/%m'), (last.notes or '')[:220])
             else:
-                partner.inst_last_note = False
+                visit = partner._inst_last_visit() if partner.id else False
+                partner.inst_last_note = ('Visita %s' % visit) if visit else False
 
     @api.depends('inst_chain_step_id', 'inst_decisor_id', 'name')
     def _compute_inst_chain_message(self):

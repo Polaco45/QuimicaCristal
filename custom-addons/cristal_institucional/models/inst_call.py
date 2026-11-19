@@ -62,6 +62,11 @@ class CristalInstCallWizard(models.TransientModel):
     decisor_name = fields.Char('Nombre de quien decide')
     decisor_phone = fields.Char('WhatsApp de quien decide')
     decisor_function = fields.Char('Puesto')
+    # Otra persona de la empresa (sin reemplazar a quien decide)
+    extra_name = fields.Char('Otro contacto')
+    extra_phone = fields.Char('Su teléfono o WhatsApp')
+    extra_function = fields.Char('Su puesto')
+    people = fields.Char('Contactos cargados', related='partner_id.inst_people')
     # Ficha
     productos = fields.Text('Qué productos usan y cuánto')
     proveedor = fields.Char('A quién le compran hoy')
@@ -142,6 +147,21 @@ class CristalInstCallWizard(models.TransientModel):
             vals['inst_contactado'] = today
 
         decisor = self._get_or_create_decisor(partner)
+        extra = (self.extra_name or '').strip()
+        if extra:
+            Partner = self.env['res.partner']
+            person = Partner.search([('parent_id', '=', partner.id), ('name', '=ilike', extra)], limit=1)
+            pvals = {}
+            if self.extra_phone:
+                pvals['mobile'] = self.extra_phone.strip()
+            if self.extra_function:
+                pvals['function'] = self.extra_function.strip()
+            if person:
+                if pvals:
+                    person.write(pvals)
+            else:
+                pvals.update({'name': extra, 'parent_id': partner.id, 'type': 'contact', 'is_company': False})
+                Partner.create(pvals)
         if decisor and decisor != partner.inst_decisor_id:
             vals['inst_decisor_id'] = decisor.id
         ficha = {

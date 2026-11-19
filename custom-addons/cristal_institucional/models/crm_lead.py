@@ -26,6 +26,8 @@ class CrmLead(models.Model):
     inst_phone = fields.Char(related='inst_partner_id.inst_phone', string='Teléfono para llamar')
     inst_last_note = fields.Char(related='inst_partner_id.inst_last_note', string='Última nota')
     inst_contact_hint = fields.Char(related='inst_partner_id.inst_contact_hint', string='Posible contacto')
+    inst_people = fields.Char(related='inst_partner_id.inst_people', string='Contactos de la empresa')
+    inst_dup_hint = fields.Char(related='inst_partner_id.inst_dup_hint', store=True, string='Posible duplicado')
     inst_auto_step_id = fields.Many2one(
         related='inst_partner_id.inst_auto_step_id', store=True, string='WhatsApp listo para salir solo')
     inst_chain_channel = fields.Selection(

@@ -700,6 +700,57 @@ class CristalInstEngine(models.AbstractModel):
                 partner.write({'inst_contact_hint': hint})
         Partner.search([('inst_decisor_id', '!=', False), ('inst_contact_hint', '!=', False)]).write(
             {'inst_contact_hint': False})
+        self._mark_duplicates()
+        return True
+
+    @api.model
+    def _mark_duplicates(self):
+        """Marca fichas que parecen la misma empresa: mismo nombre limpio, mismo CUIT o mismo teléfono.
+        No une nada: solo deja el aviso para que una persona lo revise."""
+        import re
+        Partner = self.env['res.partner'].sudo().with_context(inst_engine=True, tracking_disable=True)
+        partners = Partner.search([('inst_is', '=', True)])
+        noise = re.compile(r'\b(s ?a ?s|s ?r ?l|s ?a|s ?h|sociedad|anonima|responsabilidad|limitada|y hno|hnos?)\b')
+
+        def name_key(partner):
+            text = self._plain((partner.name or '').split(',')[0])
+            text = re.sub(r'[^a-z0-9 ]', ' ', text)
+            text = noise.sub(' ', text)
+            text = re.sub(r'\s+', ' ', text).strip()
+            return text if len(text) >= 4 else False
+
+        def phone_keys(partner):
+            keys = set()
+            for number in (partner.phone, partner.mobile):
+                digits = re.sub(r'\D', '', number or '')
+                if len(digits) >= 7:
+                    keys.add(digits[-7:])
+            return keys
+
+        groups = {}
+        for partner in partners:
+            keys = set()
+            key = name_key(partner)
+            if key:
+                keys.add(('n', key))
+            vat = re.sub(r'\D', '', partner.vat or '')
+            if len(vat) == 11:
+                keys.add(('v', vat))
+            keys |= {('t', k) for k in phone_keys(partner)}
+            for key in keys:
+                groups.setdefault(key, []).append(partner)
+        hints = {}
+        for key, members in groups.items():
+            if len(members) < 2 or len(members) > 6:      # más de 6 = número genérico o nombre común
+                continue
+            for partner in members:
+                others = [m for m in members if m.id != partner.id]
+                hints.setdefault(partner.id, {}).update({m.id: m.name for m in others})
+        for partner in partners:
+            others = hints.get(partner.id)
+            hint = ('Puede ser la misma empresa que: %s' % ', '.join(sorted(others.values())))[:250] if others else False
+            if (partner.inst_dup_hint or False) != hint:
+                partner.write({'inst_dup_hint': hint})
         return True
 
     @api.model
