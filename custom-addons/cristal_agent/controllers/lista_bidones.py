@@ -23,12 +23,17 @@ class CristalListaBidones(http.Controller):
 
         def item(r):
             price = ('desde ' if r.get('from') else '') + _money(r['price'])
+            # v1.80.4 — Joaco (foto del ticket): "usá mejor los márgenes y que se vean bien los
+            # precios". Precio grande y en negrita a la derecha; el por litro abajo, también en negrita.
             if r['kind'] == 'bidon':
-                detail = f"Bidón 20 L {price} · {_money(r['price_l'])}/L"
+                left, sub = "Bidón 20 L", f"{_money(r['price_l'])} por litro"
             else:
-                detail = f"x unidad {price}"
-            frag = "<div class='f'>Fragancia según disponibilidad</div>" if r.get('fragrance') else ''
-            return f"<div class='it'><div class='n'>{escape(r['name'])}</div><div class='p'>{detail}</div>{frag}</div>"
+                left, sub = "Por unidad", ''
+            frag = "Fragancia según disponibilidad" if r.get('fragrance') else ''
+            extra = ' · '.join(x for x in (sub, frag) if x)
+            extra = f"<div class='x'>{extra}</div>" if extra else ''
+            return (f"<div class='it'><div class='n'>{escape(r['name'])}</div>"
+                    f"<div class='p'><span>{left}</span><b>{price}</b></div>{extra}</div>")
 
         bidones = ''.join(item(r) for r in rows if r['kind'] == 'bidon')
         bases = ''.join(item(r) for r in rows if r['kind'] == 'base')
@@ -44,17 +49,20 @@ class CristalListaBidones(http.Controller):
 <style>
  @page {{ size: 80mm auto; margin: 0; }}
  * {{ box-sizing: border-box; }}
- body {{ width: 72mm; margin: 0 auto; padding: 2mm 0; font-family: Arial, Helvetica, sans-serif;
-        font-size: 12px; color: #000; }}
- .t {{ text-align: center; font-weight: bold; font-size: 15px; }}
- .s {{ text-align: center; font-size: 11px; margin: 2px 0 6px; }}
- .h {{ font-weight: bold; font-size: 13px; border-top: 2px solid #000; border-bottom: 1px solid #000;
-       padding: 2px 0; margin-top: 6px; }}
- .it {{ padding: 4px 0; border-bottom: 1px dashed #000; }}
- .n {{ font-weight: bold; font-size: 13px; }}
- .p {{ font-size: 12px; }}
- .f {{ font-size: 10px; font-style: italic; }}
- .pie {{ margin-top: 8px; text-align: center; font-size: 12px; border-top: 2px solid #000; padding-top: 4px; }}
+ html, body {{ margin: 0; padding: 0; }}
+ body {{ width: 100%; padding: 1mm 1mm 3mm; font-family: Arial, Helvetica, sans-serif;
+        font-size: 14px; font-weight: bold; color: #000; -webkit-print-color-adjust: exact; }}
+ .t {{ text-align: center; font-weight: 900; font-size: 20px; }}
+ .s {{ text-align: center; font-size: 13px; margin: 2px 0 6px; }}
+ .h {{ font-weight: 900; font-size: 16px; border-top: 3px solid #000; border-bottom: 2px solid #000;
+       padding: 3px 0; margin-top: 6px; }}
+ .it {{ padding: 5px 0; border-bottom: 2px dashed #000; }}
+ .n {{ font-weight: 900; font-size: 16px; line-height: 1.15; }}
+ .p {{ display: flex; justify-content: space-between; align-items: baseline; font-size: 14px; }}
+ .p b {{ font-size: 22px; font-weight: 900; white-space: nowrap; }}
+ .x {{ font-size: 13px; }}
+ .pie {{ margin-top: 8px; text-align: center; font-size: 15px; border-top: 3px solid #000; padding-top: 5px; }}
+ .pie .w {{ font-size: 22px; font-weight: 900; }}
  @media print {{ .noprint {{ display: none; }} }}
 </style></head><body>
 <div class="noprint" style="margin-bottom:6px"><button onclick="window.print()">Imprimir</button></div>
@@ -62,7 +70,7 @@ class CristalListaBidones(http.Controller):
 <div class="s">Lista mayorista · {hoy}<br/>Solo productos con stock · bidón con recambio
 (vacío con tapa, o nuevo con cargo)</div>
 {body}
-<div class="pie"><b>Hacé tu pedido por WhatsApp</b><br/><b>358 609 1684</b><br/>Te lo preparamos en el
+<div class="pie"><b>Hacé tu pedido por WhatsApp</b><br/><span class="w">358 609 1684</span><br/>Te lo preparamos en el
 día y te avisamos cuando está listo para retirar.</div>
 <script>window.addEventListener('load', function () {{ setTimeout(function () {{ window.print(); }}, 300); }});</script>
 </body></html>"""
