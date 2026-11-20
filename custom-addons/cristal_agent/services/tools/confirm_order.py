@@ -93,7 +93,8 @@ class ConfirmOrder(AgentTool):
             lambda l: not l.display_type and l.product_id and not getattr(l, 'is_delivery', False))
         if not lines:
             problems.append("la cotización no tiene productos")
-        granel = lines.filtered(lambda l: is_granel(l.product_id))
+        from .search_products import is_bidon20
+        granel = lines.filtered(lambda l: is_granel(l.product_id) or is_bidon20(l.product_id))
         if granel and not order.cristal_bidones_answered:
             problems.append("falta confirmar los bidones de recambio (create_sale_order con bidones_nuevos)")
         for line in lines:

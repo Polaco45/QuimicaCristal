@@ -422,6 +422,8 @@ class GeneratePricelistPdf(AgentTool):
         def _unit_of(variant):
             name = (variant.name or '').lower()
             uom = (variant.uom_id.name or '').strip().lower()
+            if re.search(r"\bx\s*20\s*(?:l|lt|lts|litros?)\b", name):
+                return 'x bidón 20 L'
             if 'granel' in name or uom in ('l', 'lt', 'litro', 'litros') or 'lit' in uom:
                 return 'x litro'
             return 'x unidad'
@@ -586,7 +588,7 @@ class GeneratePricelistPdf(AgentTool):
         ))
         elements.append(Paragraph(
             '<b>Compra mínima mayorista:</b> $50.000 &nbsp;·&nbsp; '
-            '<b>Mínimo de producto a granel:</b> 20 litros',
+            '<b>Líquidos:</b> por bidón de 20 L (precio por litro = precio del bidón ÷ 20)',
             footer_style
         ))
 

@@ -259,7 +259,9 @@ class CristalAgentPauta(models.AbstractModel):
         bidones de 20 L limpios + tarjeta con la lista (las fotos de las variantes son del bidón
         de 5 L y confunden). Si no, fotos (bytes) de los productos de la oferta o de los más
         vendidos, rotando según `seed`."""
-        is_granel = lambda p: 'granel' in (p.name or '').lower()  # noqa: E731
+        # v1.79: desde el 20/11/2026 los líquidos se venden en bidones "x 20 lts".
+        from ..services.tools.search_products import is_bidon20
+        is_granel = lambda p: 'granel' in (p.name or '').lower() or is_bidon20(p)  # noqa: E731
         if offer and offer.product_ids:
             products = list(offer.product_ids)
             if any(is_granel(p) for p in products):
@@ -303,7 +305,9 @@ class CristalAgentPauta(models.AbstractModel):
         for key, label in self._GRANEL_LABELS:
             if key in name:
                 return label
-        return ' '.join((product.name or '').replace('a granel', '').split()[:2])
+        import re
+        base = re.sub(r'\ba granel\b|\bx\s*20\s*lts?\b', ' ', product.name or '', flags=re.I)
+        return ' '.join(base.split()[:2])
 
     @api.model
     def _scene_for(self, angle, seed=0):

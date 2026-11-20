@@ -7,6 +7,17 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.79.0] — 2026-11-20
+
+### Changed — Ya no se vende a granel: bidones de 20 L
+"Desde hoy no se vende más producto a granel … se venden los productos 'x 20 lts' … el precio por
+litro sale de dividir el precio del bidón por 20". `search_products` devuelve el precio del bidón y
+`precio_por_litro`; `create_sale_order` toma la qty como bidones (pasa litros a bidones y cambia un
+granel por su "x 20 lts" con `bidon20_equivalent`); el recambio de bidones cuenta cada bidón; combos
+de entrada, control de precios por litro, lista de precios y placas usan los bidones. Migración:
+catálogo mayorista pasa a los "x 20 lts", Combo Revendedor, reglas viejas de granel apagadas y aviso
+en el prompt.
+
 ## [18.0.1.78.0] — 2026-11-20
 
 ### Added — Compras en modo consulta, completo
