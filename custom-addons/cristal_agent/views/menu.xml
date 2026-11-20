@@ -227,6 +227,25 @@
               sequence="100"
               groups="base.group_system"/>
 
+    <!-- v1.77 — Compras en modo consulta -->
+    <menuitem id="menu_compras_root"
+              name="🛒 Compras"
+              parent="menu_cristal_agent_root"
+              sequence="90"
+              groups="base.group_system"/>
+
+    <menuitem id="menu_compras_drafts"
+              name="Consultas de proveedores"
+              parent="menu_compras_root"
+              sequence="10"
+              action="action_cristal_agent_supplier_draft"/>
+
+    <menuitem id="menu_compras_selftest"
+              name="🧪 Autotest"
+              parent="menu_compras_root"
+              sequence="20"
+              action="action_cristal_agent_supplier_selftest"/>
+
     <menuitem id="menu_sistema_config"
               name="⚙️ Configuración general"
               parent="menu_sistema_root"

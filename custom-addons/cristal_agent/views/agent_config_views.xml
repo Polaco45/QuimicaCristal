@@ -265,6 +265,23 @@
                                 Si tiene cuentas seleccionadas, el bot <b>solo procesa mensajes</b>
                                 de esas cuentas. Recomendado: solo Crilimp.
                             </div>
+
+                            <group string="🛒 Compras en modo consulta">
+                                <field name="purchase_consult_enabled"/>
+                                <field name="purchase_wa_account_id"
+                                       options="{'no_create': True}"/>
+                                <field name="purchase_owner_user_id"
+                                       options="{'no_create': True}"/>
+                                <field name="purchase_owner_whatsapp_number"/>
+                                <field name="purchase_correction_direct"/>
+                            </group>
+                            <div class="alert alert-info">
+                                Cuando un proveedor escribe a esa cuenta, se arma un <b>borrador</b>
+                                y se le consulta al responsable por WhatsApp. Sale solo si contesta
+                                <b>dale</b>; con <b>no</b> se descarta y cualquier otra cosa es una
+                                corrección. Esa cuenta <b>no</b> tiene que estar entre las cuentas
+                                donde actúa el bot de ventas.
+                            </div>
                         </page>
 
                         <page string="🧭 Ciclo de vida" name="lifecycle">

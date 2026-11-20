@@ -1,4 +1,5 @@
 import logging
+import re
 from datetime import datetime, timedelta
 from odoo import models, fields, api
 
@@ -125,6 +126,14 @@ class MCPPendingMessage(models.Model):
             return 30
 
     @api.model
+    def _excluded_wa_account_ids(self):
+        """IDs de whatsapp.account fuera de la cola: parámetro
+        sistemas.wa_cuentas_fuera_de_clientes (ej. "10" o "10,12")."""
+        raw = self.env['ir.config_parameter'].sudo().get_param(
+            'sistemas.wa_cuentas_fuera_de_clientes') or ''
+        return [int(x) for x in re.findall(r'\d+', raw)]
+
+    @api.model
     def _refresh_queue(self):
         """Refrescar la cola de mensajes pendientes.
 
@@ -141,9 +150,20 @@ class MCPPendingMessage(models.Model):
         days = self._get_lookback_window()
         since = fields.Datetime.now() - timedelta(days=days)
 
+        # Cuentas que no son de clientes (Compras): sus chats no entran a esta cola, así
+        # nadie de ventas los recibe como pendientes ni se le avisan a Joaco.
+        excluded = self._excluded_wa_account_ids()
+        if excluded:
+            self.search([('wa_account_id', 'in', excluded),
+                         ('state', 'in', ('pending', 'in_progress'))]).write({
+                'state': 'ignored',
+                'processed_at': fields.Datetime.now(),
+            })
+
         inbound_msgs = WhatsappMessage.search([
             ('message_type', '=', 'inbound'),
             ('create_date', '>=', since),
+            ('wa_account_id', 'not in', excluded),
         ], order='create_date desc')
 
         # Agrupar por canal (vía mail_message_id.res_id si el modelo es discuss.channel)

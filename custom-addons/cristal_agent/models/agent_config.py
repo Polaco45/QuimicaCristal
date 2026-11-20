@@ -568,6 +568,25 @@ class CristalAgentConfig(models.Model):
              "Y Compras (institucional, id=5). Info (id=3) queda fuera."
     )
 
+    # ─────────── v1.77 — Compras en modo consulta (pedido de Sergio) ───────────
+    purchase_consult_enabled = fields.Boolean(
+        "Compras: modo consulta", default=False,
+        help="Prendido: cuando un proveedor escribe al WhatsApp de Compras, se arma un "
+             "borrador de respuesta y se le consulta al responsable. No sale nada sin su OK.")
+    purchase_wa_account_id = fields.Many2one(
+        'whatsapp.account', "Cuenta de WhatsApp de Compras", ondelete='set null')
+    purchase_owner_user_id = fields.Many2one(
+        'res.users', "Responsable de Compras", ondelete='set null',
+        help="Quién aprueba los borradores (Sergio).")
+    purchase_owner_whatsapp_number = fields.Char(
+        "WhatsApp del responsable",
+        help="Celular personal desde el que aprueba. Vacío = el celular de su contacto.")
+    purchase_correction_direct = fields.Boolean(
+        "Compras: la corrección sale sin segundo OK", default=False,
+        help="Apagado (recomendado): cuando el responsable manda una corrección, se le "
+             "muestra el borrador corregido y sale recién con su «dale». Prendido: el "
+             "borrador corregido sale directo.")
+
     # ═════════════════ RANGOS DE NIVELES (en LITROS mensuales) ═════════════════
     # Los niveles se miden internamente en monto pero al cliente se le habla en litros.
     level_bronce_max_liters = fields.Integer(

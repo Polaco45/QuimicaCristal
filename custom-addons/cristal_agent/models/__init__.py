@@ -23,3 +23,4 @@ from . import agent_pauta
 from . import agent_monthly_review
 from . import discuss_channel_member
 from . import mail_activity
+from . import agent_supplier_draft

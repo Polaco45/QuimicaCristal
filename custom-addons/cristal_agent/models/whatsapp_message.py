@@ -119,6 +119,17 @@ class WhatsAppMessage(models.Model):
 
         # 3) Está habilitado el agente?
         config = self.env['cristal.agent.config'].sudo().get_active()
+
+        # 2.9) v1.77 — Cuenta de Compras en modo consulta: nada de lo que entra por ese
+        # número pasa por el agente de ventas. Se arma un borrador y decide Sergio.
+        from ..services import purchase_consult as pc
+        if pc.is_purchase_message(config, wa_message):
+            try:
+                self._purchase_consult_inbound(config, wa_message, plain_body, phone_raw)
+            except Exception as e:  # noqa: BLE001
+                _logger.exception("Compras consulta: falló el mensaje %s: %s", wa_message.id, e)
+            return
+
         if not config.enabled:
             _logger.info("⏸️  Agente deshabilitado (config). Ignorando mensaje %s.", wa_message.id)
             return
@@ -357,6 +368,29 @@ class WhatsAppMessage(models.Model):
                      partner.name, debounce, plain_body[:80])
         memory.enqueue_pending(plain_body, wa_message=wa_message)
         self._schedule_debounce_cron(config)
+
+    def _purchase_consult_inbound(self, config, wa_message, plain_body, phone_raw):
+        """v1.77 — Entrante en la cuenta de Compras: de Sergio (respuesta a un borrador) o
+        de un proveedor (se suma a la consulta en curso)."""
+        from ..services import purchase_consult as pc
+        if pc.same_number(phone_raw, pc.owner_number(config)):
+            pc.handle_owner_message(self.env, config, wa_message, plain_body)
+            return
+        text = plain_body
+        if not text and wa_message.mail_message_id:
+            mimes = [(a.mimetype or '').lower()
+                     for a in wa_message.mail_message_id.attachment_ids]
+            if any(m.startswith('audio/') for m in mimes):
+                text = "[mandó una nota de voz]"
+            elif any(m == 'application/pdf' for m in mimes):
+                text = "[mandó un PDF]"
+            elif any(m.startswith('image/') for m in mimes):
+                text = "[mandó una foto]"
+            elif mimes:
+                text = "[mandó un archivo]"
+        if not text:
+            return
+        self.env['cristal.agent.supplier.draft'].sudo().enqueue_inbound(config, wa_message, text)
 
     def _schedule_debounce_cron(self, config):
         """Programa el cron one-shot del debounce apenas pase la ventana de
