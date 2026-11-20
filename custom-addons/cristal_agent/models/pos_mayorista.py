@@ -48,14 +48,18 @@ class ProductProduct(models.Model):
     _inherit = 'product.product'
 
     @api.model
-    def cristal_top_bidones(self, limit=20):
-        """[{name, price, price_l, sold}] de los bidones de 20 L a la venta, los más vendidos
-        primero (ventas de los últimos 120 días, contando el granel como su bidón)."""
+    def cristal_top_bidones(self, limit=0):
+        """Lista para la caja (ticket): SOLO lo que tiene stock. [{name, price, price_l, sold,
+        fragrance, kind}]. Bidones de 20 L más vendidos primero (ventas de 120 días, el granel
+        cuenta como su bidón) y después las bases. Las fragancias van en UNA línea (Joaco,
+        20/11/2026: "los desodorantes no los pongas por fragancia… las bases 1 unidad sin
+        fragancia, eso queda sujeto a disponibilidad")."""
         from ..services.tools.search_products import is_bidon20, bidon20_equivalent, is_granel
         Product = self.sudo()
         pricelist = self.env['product.pricelist'].sudo().search(
             [('name', '=', 'Lista Mayorista')], limit=1)
         bidones = Product.search([('sale_ok', '=', True), ('name', '=ilike', '% x 20 lts%')])
+        bases = Product.search([('sale_ok', '=', True), ('product_tmpl_id.name', '=ilike', 'base %')])
         sold = {p.id: 0.0 for p in bidones}
         since = fields.Datetime.now() - timedelta(days=SALES_DAYS)
         lines = self.env['sale.order.line'].sudo().read_group(
@@ -76,14 +80,38 @@ class ProductProduct(models.Model):
                 continue
             if target and target.id in sold:
                 sold[target.id] += n
+
+        groups = {}
+        for kind, prods in (('bidon', bidones), ('base', bases)):
+            for p in prods:
+                ptavs = p.product_template_attribute_value_ids
+                frag = ptavs.filtered(lambda v: 'fragan' in (v.attribute_id.name or '').lower())
+                other = ptavs - frag
+                if any((v.name or '').lower() == 'granel' for v in other):
+                    continue
+                key = (kind, p.product_tmpl_id.id, tuple(other.ids))
+                g = groups.setdefault(key, {'kind': kind, 'tmpl': p.product_tmpl_id,
+                                            'extra': ' '.join(other.mapped('name')),
+                                            'fragrance': bool(frag), 'stock': 0.0,
+                                            'prices': [], 'sold': 0.0})
+                g['stock'] += max(p.free_qty, 0.0) if p.is_storable else 1.0
+                price = pricelist._get_product_price(p, 1.0) if pricelist else p.list_price
+                if price > 1.0 and (p.free_qty > 0 or not p.is_storable):
+                    g['prices'].append(price)
+                g['sold'] += sold.get(p.id, 0.0)
         out = []
-        for p in bidones:
-            price = pricelist._get_product_price(p, 1.0) if pricelist else p.list_price
-            if price <= 1.0:
+        for g in groups.values():
+            if g['stock'] <= 0 or not g['prices']:
                 continue
-            out.append({'name': p.display_name.replace(' x 20 lts', '').strip(),
-                        'price': price, 'price_l': price / 20.0, 'sold': sold.get(p.id, 0.0)})
-        out.sort(key=lambda r: (-r['sold'], r['name']))
+            name = g['tmpl'].name.replace(' x 20 lts', '').strip()
+            if g['extra']:
+                name = f"{name} {g['extra']}"
+            price = min(g['prices'])
+            out.append({'name': name, 'price': price,
+                        'price_l': price / 20.0 if g['kind'] == 'bidon' else 0.0,
+                        'sold': g['sold'], 'kind': g['kind'], 'fragrance': g['fragrance'],
+                        'from': len(set(g['prices'])) > 1})
+        out.sort(key=lambda r: (r['kind'] != 'bidon', -r['sold'], r['name']))
         return out[:limit] if limit else out
 
 
