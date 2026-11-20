@@ -174,7 +174,10 @@ def bidon20_equivalent(env, product):
         # Un bidón de una sola palabra ("Cloro", "Jabon B/E") solo vale para granel de dos
         # palabras como mucho ("Cloro Concentrado", "Jabon B/E Skip"): así "Jabon P/Manos X"
         # sin bidón propio no cae en el jabón para ropa.
-        if len(toks) == 1 and len(gran) > 2:
+        # Además el resto del nombre tiene que ser un apodo conocido del mismo producto
+        # ("Jabon B/E Skip" = "Jabon B/E"; "Cloro Concentrado" = "Cloro"): sin bidón
+        # propio, "Jabon B/E Ariel" no se cambia por el Skip.
+        if len(toks) == 1 and (len(gran) > 2 or (gran - toks) - {'skip', 'concentrado'}):
             continue
         if toks and toks <= gran and len(toks) > best_n:
             best, best_n = cand, len(toks)

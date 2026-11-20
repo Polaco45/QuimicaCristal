@@ -430,7 +430,9 @@ class CristalAgentRouteSelftest(models.TransientModel):
             assert bid, f"no trajo jabones en bidón de 20 L: {names[:6]}"
             assert names[0] in bid or r['products'][0]['is_mayorista_catalog'], (
                 f"el catálogo no va primero: {names[:3]}")
-            assert not any('a granel' in n.lower() for n in names), names
+            if not env['product.product'].sudo().search_count(
+                    [('sale_ok', '=', True), ('name', 'ilike', 'jabon b/e%a granel')]):
+                assert not any('a granel' in n.lower() for n in names), names
             return f"trae {len(bid)} jabones B/E en bidón de 20 L ({bid[0]})"
         self._case(results, "15. Búsqueda 'jabón líquido'", c_busqueda_jabon)
 
@@ -2277,7 +2279,10 @@ class CristalAgentRouteSelftest(models.TransientModel):
             ariel_g = Prod.search([('name', 'ilike', 'Jabon B/E Ariel a granel')], limit=1)
             if ariel_g:
                 eq = bidon20_equivalent(env, ariel_g)
-                assert eq and is_bidon20(eq) and 'ariel' in eq.name.lower(), eq.display_name
+                if Prod.search_count([('sale_ok', '=', True), ('name', 'ilike', 'Ariel x 20 lts')]):
+                    assert eq and is_bidon20(eq) and 'ariel' in eq.name.lower(), eq.display_name
+                else:
+                    assert not eq, f"Ariel sin bidón propio no puede ir a {eq.display_name}"
             sp = ToolRegistry.get('search_products')
             r = sp.execute(env=env, run=None, query='jabon ariel')
             row = next((p for p in r.get('products') or [] if 'x 20' in p['name'].lower()), None)
