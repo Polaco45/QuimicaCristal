@@ -40,7 +40,10 @@ PRICELIST = 'Lista Mayorista'
 
 
 def resolve_combo(env, code):
-    """[(product, litros)] del combo, buscando por id y si no por código."""
+    """[(product, cantidad)] del combo, buscando por id y si no por código.
+    v1.79 — desde el 20/11/2026 no se vende a granel: cada producto a granel se cambia por
+    su "x 20 lts" y los litros pasan a bidones (20 L = 1 bidón)."""
+    from .search_products import is_bidon20, bidon20_equivalent, BIDON_L
     name, price, items, who = ENTRY_COMBOS[code]
     Product = env['product.product'].sudo()
     out = []
@@ -48,9 +51,21 @@ def resolve_combo(env, code):
         p = Product.browse(pid).exists()
         if not p and dcode:
             p = Product.search([('default_code', '=', dcode)], limit=1)
+        if p and not is_bidon20(p):
+            eq = bidon20_equivalent(env, p)
+            if eq:
+                p, qty = eq, -(-float(qty) // BIDON_L)
         if p:
             out.append((p, float(qty)))
     return out
+
+
+def _qty_label(product, qty):
+    from .search_products import is_bidon20
+    if is_bidon20(product):
+        n = "1 bidón" if qty == 1 else f"{qty:g} bidones"
+        return f"{n} de 20 L de {product.display_name.replace(' x 20 lts', '')}"
+    return f"{qty:g} L {product.name}"
 
 
 def combo_catalog_text(env):
@@ -66,7 +81,7 @@ def combo_catalog_text(env):
                 loose += pl._get_product_price(p, qty) * qty if pl else 0.0
             except Exception:  # noqa: BLE001
                 pass
-            parts.append(f"{qty:g} L {p.name}")
+            parts.append(_qty_label(p, qty))
         ahorro = f" (suelto ${loose:,.0f})".replace(',', '.') if loose > price else ""
         rows.append(f"- **{name}** `{code}` — ${price:,.0f}".replace(',', '.') + ahorro +
                     f": {', '.join(parts)}. Para quien {who}.")
@@ -126,7 +141,7 @@ class QuoteEntryCombo(AgentTool):
         first = (not prev) and (status == 'allowed' or pickup)
         target = price * (0.8 if first else 1.0)
         factor = target / total_loose
-        order_lines = [{'product_id': p.id, 'qty': qty,
+        order_lines = [{'product_id': p.id, 'qty': qty, 'unidad': 'bidones',
                         'price_unit': round(loose[p.id] * factor, 2)} for p, qty in lines]
         cso = ToolRegistry.get('create_sale_order')
         res = cso.execute(env=env, run=run, partner_id=partner.id, lines=order_lines,
@@ -138,7 +153,7 @@ class QuoteEntryCombo(AgentTool):
                 'nombre': name, 'precio_combo': price, 'precio_suelto': round(total_loose),
                 'ahorro_vs_suelto': round(ahorro), 'primera_compra_20': first,
                 'precio_final_productos': round(target),
-                'trae': [f"{qty:g} L {p.name}" for p, qty in lines]}
+                'trae': [_qty_label(p, qty) for p, qty in lines]}
             res['combo_note'] = (
                 f"Cotizado el {name}: ${price:,.0f}".replace(',', '.') +
                 (f" − 20 % de primera compra = ${target:,.0f}".replace(',', '.') if first else "") +

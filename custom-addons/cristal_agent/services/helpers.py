@@ -464,7 +464,7 @@ def ensure_bidones_notice(env, channel_id, body_html):
     price = config.bidon_price if config else 3500.0
     price_txt = '${:,.0f}'.format(price).replace(',', '.')
     return body_html + (
-        f"<p>Importante: el granel va en bidones de 20 L con recambio: por cada bidón "
+        f"<p>Importante: los bidones de 20 L van con recambio: por cada bidón "
         f"lleno se entrega uno vacío de 20 L con tapa (si se lo enviamos, al recibir el "
         f"pedido; si retira, en la planta). Si no tiene vacíos para canjear, cada bidón "
         f"nuevo sale {price_txt}.</p>")
@@ -570,7 +570,9 @@ def verify_prices(env, run, body_html):
             if not mention:
                 continue  # no nombra un producto: no se puede controlar
             candidates = [p for toks, p in known if toks & mention]
-            ok = any(abs(price - p * f) <= 1.0 for p in candidates for f in factors)
+            # v1.79: los bidones de 20 L se cotizan por bidón; el precio por litro es / 20.
+            ok = any(abs(price - q * f) <= 1.0 for p in candidates for q in (p, p / 20.0)
+                     for f in factors)
             if not ok:
                 if offers is None:
                     offers = _offer_prices(env)

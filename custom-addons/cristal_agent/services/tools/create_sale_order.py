@@ -54,15 +54,17 @@ class CreateSaleOrder(AgentTool):
         "(NUNCA crees varios presupuestos para el mismo cliente: mandá TODOS los "
         "productos en una sola llamada o se van sumando al mismo borrador). "
         "Pasale partner_id y lines: {product_id|product_name, qty}. "
-        "Reglas que la tool valida sola: mínimo 20 L por producto a granel (sin "
-        "excepción), y con ENVÍO el piso de compra $39.990 (Río Cuarto) o el mínimo de "
+        "LÍQUIDOS (desde el 20/11/2026): ya NO se vende a granel; se vende el producto "
+        "'x 20 lts' y la qty es la CANTIDAD DE BIDONES (60 L = qty 3). Si pasás un "
+        "producto a granel, la tool lo cambia por su bidón. "
+        "Reglas que la tool valida sola: con ENVÍO el piso de compra $39.990 (Río Cuarto) o el mínimo de "
         "la ruta. Si el cliente RETIRA en la planta pasá delivery_mode='retiro': NO hay "
-        "compra mínima ni flete (solo bidones de 20 L en el granel). "
+        "compra mínima ni flete. "
         "Pasá discount_percent=20 para el 20% OFF de primera compra. "
         "PROMOS CON PRECIO CERRADO (ej: campaña 'Ariel y Skip a $600 el litro'): pasá "
-        "price_unit en la línea (el precio por unidad final de la promo) y NO pases "
+        "price_unit en la línea (el precio final por unidad; en los x 20 lts es por BIDÓN = precio por litro × 20) y NO pases "
         "discount_percent — esos precios NO se acumulan con el 20% de primera compra. "
-        "BIDONES: el granel va en bidones de 20 L con recambio (se canjean por vacíos con "
+        "BIDONES: los bidones de 20 L van con recambio (se canjean por vacíos con "
         "tapa: al recibir el envío o al retirar); si el cliente no tiene vacíos para el "
         "recambio, pasá bidones_nuevos=<cuántos le faltan> y la tool cobra el bidón "
         "correcto (NUNCA agregues bidones como línea de producto). Leé SIEMPRE "
@@ -85,6 +87,10 @@ class CreateSaleOrder(AgentTool):
                         "product_id": {"type": "integer"},
                         "product_name": {"type": "string"},
                         "qty": {"type": "number"},
+                        "unidad": {
+                            "type": "string", "enum": ["bidones", "litros"],
+                            "description": "Solo productos x 20 lts: 'bidones' (default) o "
+                                           "'litros' si la qty que pasás son litros."},
                         "choices": {
                             "type": "string",
                             "description": "(Solo combos para la casa) Aromas/colores que eligió el "
@@ -390,10 +396,16 @@ class CreateSaleOrder(AgentTool):
     def _bidones_info(self, env, config, order):
         """Cuántos bidones de 20 L lleva el pedido y el texto OBLIGATORIO para el
         cliente. Se incluye en client_summary, así sale en todas las cotizaciones."""
+        from .search_products import is_bidon20
         product = self._bidon_product(env, config)
         granel_l = sum(l.product_uom_qty for l in order.order_line
-                       if l.product_id != product and self._es_granel(l.product_id))
-        needed = int(round(granel_l / self.GRANEL_MIN_L)) if granel_l else 0
+                       if l.product_id != product and self._es_granel(l.product_id)
+                       and not is_bidon20(l.product_id))
+        # v1.79 — los "x 20 lts" van por bidón: cada unidad es un bidón con recambio.
+        bidones_20 = sum(l.product_uom_qty for l in order.order_line
+                         if l.product_id != product and is_bidon20(l.product_id))
+        needed = (int(round(granel_l / self.GRANEL_MIN_L)) if granel_l else 0) \
+            + int(round(bidones_20))
         if not needed:
             return None
         price = config.bidon_price if config else 3500.0
@@ -805,10 +817,45 @@ class CreateSaleOrder(AgentTool):
                     f"Línea {i+1}: no encontré el producto "
                     f"(id={ln.get('product_id')}, name={ln.get('product_name')})")
                 continue
+            # v1.79 — Desde el 20/11/2026 no se vende a granel: un producto a granel (por
+            # litro) se cambia por su "x 20 lts" y los litros pasan a bidones (hacia
+            # arriba). Si no tiene equivalente, la línea no se carga.
+            from .search_products import is_bidon20, bidon20_equivalent, is_granel, BIDON_L
+            unidad = (ln.get('unidad') or '').strip().lower()
+            eq = bidon20_equivalent(env, product) \
+                if is_granel(product) and not is_bidon20(product) else None
+            if eq is not None and (eq or not product.sale_ok):
+                if not eq:
+                    problems.append(
+                        f"Línea {i+1}: {product.display_name} ya NO se vende a granel y no "
+                        f"tiene presentación en bidón de 20 L. NO la cargué: ofrecé otro "
+                        f"producto (search_products) o decí que no lo tenemos en bidón.")
+                    continue
+                n = int(-(-qty // BIDON_L))
+                bidon_adjustments.append(
+                    f"{product.display_name}: {qty:g} L → {n} bidón(es) de {eq.display_name} "
+                    f"(ya no se vende a granel)")
+                product, qty = eq, float(n)
+            elif is_bidon20(product):
+                # qty = cantidad de BIDONES. Si viene en litros (unidad='litros', o un
+                # múltiplo de 20 sin aclarar: "20 L de Ariel"), se pasa a bidones.
+                if unidad == 'litros' or (unidad != 'bidones' and qty >= BIDON_L
+                                          and qty % BIDON_L == 0):
+                    n = int(-(-qty // BIDON_L))
+                    bidon_adjustments.append(
+                        f"{product.display_name}: {qty:g} → {n} bidón(es) de 20 L (tomé la "
+                        f"cantidad como litros; si de verdad son {qty:g} bidones, volvé a "
+                        f"llamar con unidad='bidones')")
+                    qty = float(n)
+                elif qty != int(qty):
+                    n = int(-(-qty // 1))
+                    bidon_adjustments.append(
+                        f"{product.display_name}: {qty:g} → {n} bidón(es) (no hay medio bidón)")
+                    qty = float(n)
             # Granel: se vende en BIDONES de 20 L → la cantidad DEBE ser múltiplo
             # de 20 (no existe medio bidón: nada de 10, 30, 50). Si no lo es (o es
             # < 20), la redondeamos HACIA ARRIBA al próximo múltiplo de 20 y avisamos.
-            if self._es_granel(product):
+            if self._es_granel(product) and not is_bidon20(product):
                 mult = self.GRANEL_MIN_L
                 adj = int(-(-qty // mult)) * mult  # ceil(qty/mult) * mult
                 if adj != qty:
@@ -837,6 +884,13 @@ class CreateSaleOrder(AgentTool):
                 fixed_price = float(fp) if fp not in (None, '', 0, 0.0) else None
             except (TypeError, ValueError):
                 fixed_price = None
+            if fixed_price is not None and is_bidon20(product) \
+                    and fixed_price * 5 < (pricelist._get_product_price(product, 1.0) or 0.0):
+                # v1.79: un precio de promo "por litro" en un bidón de 20 L.
+                bidon_adjustments.append(
+                    f"{product.display_name}: precio de promo ${fixed_price:,.0f} tomado como "
+                    f"por litro → ${fixed_price * BIDON_L:,.0f} el bidón")
+                fixed_price *= BIDON_L
             if fixed_price is not None:
                 fixed_price_pids.add(product.id)
             # v1.60 — Combo para la casa: se elige un producto por cada parte del combo
@@ -1212,8 +1266,8 @@ class CreateSaleOrder(AgentTool):
             ),
             "bidon_adjustments": bidon_adjustments or None,
             "bidon_note": (
-                "Ajusté cantidades de granel al múltiplo de 20 L (se vende en bidones "
-                "de 20 L, no hay fracciones): " + "; ".join(bidon_adjustments)
+                "Ajusté cantidades (los líquidos se venden por bidón de 20 L, no hay "
+                "fracciones ni granel): " + "; ".join(bidon_adjustments)
                 + ". Avisale al cliente el ajuste."
             ) if bidon_adjustments else None,
             "problems": problems if problems else None,

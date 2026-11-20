@@ -138,6 +138,49 @@ def is_granel(product):
     return ('granel' in name) or uom in ('l', 'lt', 'litro', 'litros', 'l.')
 
 
+# ─────────── v1.79 — Bidones de 20 L (Joaco/Sergio, 20/11/2026) ───────────
+# "Desde hoy no se vende más producto a granel: el granel es solo lo que está en el tanque.
+# De ahora en más se venden los productos 'x 20 lts', que ya tienen stock propio y precio.
+# El precio por litro sale de dividir el precio del bidón por 20."
+BIDON_L = 20
+_RE_BIDON20 = re.compile(r'\bx\s*20\s*(?:l|lt|lts|litros?)\b', re.I)
+_RE_GRANEL_WORD = re.compile(r'\[[^\]]*\]|\ba\s+granel\b|\bgranel\b|\bx\s*20\s*(?:l|lt|lts|litros?)\b',
+                             re.I)
+
+
+def is_bidon20(product):
+    """True si es un producto 'x 20 lts' (se vende por bidón cerrado de 20 L)."""
+    return bool(_RE_BIDON20.search(product.name or '')) if product else False
+
+
+def _base_tokens(text):
+    txt = _RE_GRANEL_WORD.sub(' ', _strip_accents(text or '').lower())
+    return {w for w in re.split(r'[^a-z0-9%]+', txt) if len(w) > 1 or w.isdigit()}
+
+
+def bidon20_equivalent(env, product):
+    """El producto 'x 20 lts' que reemplaza a un producto a granel (o vacío).
+    Elige el bidón cuyo nombre (y aroma, si tiene variantes) está contenido en el nombre
+    del granel, con más palabras en común: 'Jabon B/E Premium Blanq Optico a granel' →
+    'Jabon B/E Premium x 20 lts'; 'Limpiador Desod. Lavanda a granel' → 'Limpiador
+    Desod. x 20 lts (Lavanda)'. Sin equivalente (Detergente Magistral Marina) → vacío."""
+    Product = env['product.product'].sudo()
+    if not product or is_bidon20(product):
+        return product or Product
+    gran = _base_tokens(product.display_name) | _base_tokens(product.name)
+    best, best_n = Product, 0
+    for cand in Product.search([('sale_ok', '=', True), ('name', '=ilike', '% x 20 lts%')]):
+        toks = _base_tokens(cand.name) | _base_tokens(variant_label(cand))
+        # Un bidón de una sola palabra ("Cloro", "Jabon B/E") solo vale para granel de dos
+        # palabras como mucho ("Cloro Concentrado", "Jabon B/E Skip"): así "Jabon P/Manos X"
+        # sin bidón propio no cae en el jabón para ropa.
+        if len(toks) == 1 and len(gran) > 2:
+            continue
+        if toks and toks <= gran and len(toks) > best_n:
+            best, best_n = cand, len(toks)
+    return best
+
+
 def variant_label(product):
     vals = product.product_template_variant_value_ids
     return ', '.join(vals.mapped('name')) if vals else ''
@@ -304,6 +347,11 @@ class SearchProducts(AgentTool):
                 'is_mayorista_catalog': bool(p.product_tmpl_id.is_mayorista_catalog),
                 'sin_precio': price <= 1.0,
             })
+            if is_bidon20(p):
+                results[-1].update({
+                    'presentacion': 'bidón cerrado de 20 L (el precio es por bidón)',
+                    'precio_por_litro': round(price / BIDON_L, 2) if price > 1.0 else None,
+                })
 
         msg = []
         if not results:
@@ -332,15 +380,19 @@ class SearchProducts(AgentTool):
             msg.append(
                 f"SIN PRECIO CARGADO (precio ≤ $1, no lo digas): {', '.join(sin_precio[:4])}. "
                 f"Para esos consultá a Joaco el precio; no inventes ni uses otro.")
-        if any('granel' in (r['name'] or '').lower() for r in results):
+        if any(r.get('presentacion') for r in results):
             config = env['cristal.agent.config'].sudo().get_active()
             price = config.bidon_price if config else 3500.0
             price_txt = '${:,.0f}'.format(price).replace(',', '.')
             msg.append(
-                "BIDONES: el granel va en bidones de 20 L con recambio: por cada bidón lleno "
-                "el cliente entrega uno vacío de 20 L con tapa (si se lo enviamos, al recibir "
-                "el pedido; si retira, en la planta). Si no tiene vacíos para canjear, cada "
-                f"bidón nuevo sale {price_txt}. Decíselo SIEMPRE cuando hables de granel.")
+                "BIDONES DE 20 L (desde el 20/11/2026 YA NO se vende a granel/suelto por litro): "
+                "los líquidos se venden por BIDÓN de 20 L. 'price' es el precio del BIDÓN; el "
+                "precio por litro es 'precio_por_litro' (= price / 20): podés decirlo para "
+                "comparar, pero se cotiza y se cobra por bidón. En create_sale_order la qty es "
+                "CANTIDAD DE BIDONES (60 L = 3 bidones). Recambio: por cada bidón el cliente "
+                "entrega uno vacío de 20 L con tapa (si se lo enviamos, al recibir el pedido; si "
+                f"retira, en la planta); si no tiene vacíos, cada bidón nuevo sale {price_txt}. "
+                "Decíselo SIEMPRE cuando hables de bidones.")
         if results:
             msg.append(
                 "PRECIOS: decí SOLO precios de productos que aparecen en ESTA lista, con ESTE "

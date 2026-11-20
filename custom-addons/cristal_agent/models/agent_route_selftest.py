@@ -420,16 +420,18 @@ class CristalAgentRouteSelftest(models.TransientModel):
         self._case(results, "14. Aviso de bidones al enviar", c_aviso_bidones)
 
         # ───────────────────── Precios (v1.34) ─────────────────────
-        # 15) "jabón líquido" trae los jabones a granel del catálogo mayorista
+        # 15) "jabón líquido" trae los jabones en bidón de 20 L del catálogo mayorista
+        #     (v1.79: desde el 20/11/2026 ya no se vende a granel).
         def c_busqueda_jabon():
             sp = ToolRegistry.get('search_products')
             r = sp.execute(env=env, run=None, query='jabón líquido')
             names = [p['name'] for p in r.get('products') or []]
-            granel = [n for n in names if 'granel' in n.lower() and 'jabon b/e' in n.lower()]
-            assert granel, f"no trajo jabones a granel: {names[:6]}"
-            assert names[0] in granel or r['products'][0]['is_mayorista_catalog'], (
+            bid = [n for n in names if 'x 20' in n.lower() and 'jabon b/e' in n.lower()]
+            assert bid, f"no trajo jabones en bidón de 20 L: {names[:6]}"
+            assert names[0] in bid or r['products'][0]['is_mayorista_catalog'], (
                 f"el catálogo no va primero: {names[:3]}")
-            return f"trae {len(granel)} jabones B/E a granel primero ({granel[0]})"
+            assert not any('a granel' in n.lower() for n in names), names
+            return f"trae {len(bid)} jabones B/E en bidón de 20 L ({bid[0]})"
         self._case(results, "15. Búsqueda 'jabón líquido'", c_busqueda_jabon)
 
         # 16) Control de precios al enviar (mensaje real del 02/10)
@@ -2263,6 +2265,45 @@ class CristalAgentRouteSelftest(models.TransientModel):
             assert o2.cristal_send_ok_reminder()[o2.name] == 'sin chat de WhatsApp'
             return 'sin tope · escalar pedido → no llega a Joaco · confirm_order guía al cliente · recordatorio con lo que falta'
         self._case(results, "76. Claudio autónomo: Joaco no confirma pedidos", c_autonomo)
+
+        # 77) v1.79: ya no se vende a granel — bidones de 20 L
+        def c_bidones20():
+            from ..services.tools.search_products import (is_bidon20, bidon20_equivalent,
+                                                          BIDON_L)
+            Prod = env['product.product'].sudo()
+            bid = Prod.search([('sale_ok', '=', True), ('name', '=ilike', '% x 20 lts%')])
+            if not bid:
+                return 'sin productos x 20 lts en esta base (nada que probar)'
+            ariel_g = Prod.search([('name', 'ilike', 'Jabon B/E Ariel a granel')], limit=1)
+            if ariel_g:
+                eq = bidon20_equivalent(env, ariel_g)
+                assert eq and is_bidon20(eq) and 'ariel' in eq.name.lower(), eq.display_name
+            sp = ToolRegistry.get('search_products')
+            r = sp.execute(env=env, run=None, query='jabon ariel')
+            row = next((p for p in r.get('products') or [] if 'x 20' in p['name'].lower()), None)
+            assert row, r.get('products')
+            if row['price'] > 1:
+                assert abs(row['precio_por_litro'] - row['price'] / BIDON_L) < 0.02, row
+            assert 'BIDONES DE 20 L' in (r.get('message_for_bot') or ''), r.get('message_for_bot')
+            p = mk_lc('ZZ Bidones 20', 'Rio Cuarto', mobile='+5493589990079')
+            p.street = 'Calle 1'
+            target = Prod.browse(row['id'])
+            res = cso.execute(env=env, run=None, partner_id=p.id,
+                              lines=[{'product_id': target.id, 'qty': 60}])
+            assert res.get('ok'), res
+            o = SaleOrder.browse(res['order_id'])
+            ln = o.order_line.filtered(lambda l: l.product_id == target)
+            assert ln and ln.product_uom_qty == 3, (ln.product_uom_qty, res.get('bidon_adjustments'))
+            if ariel_g:
+                res2 = cso.execute(env=env, run=None, partner_id=p.id,
+                                   lines=[{'product_id': ariel_g.id, 'qty': 40}])
+                assert res2.get('ok'), res2
+                assert not o.order_line.filtered(lambda l: l.product_id == ariel_g), 'quedó granel'
+            info = cso._bidones_info(env, cfg, o)
+            assert info and info['needed'] >= 3, info
+            return (f"{target.display_name}: 60 → 3 bidones · precio por litro = bidón/20 · "
+                    f"granel → su bidón · recambio {info['needed']} bidones")
+        self._case(results, "77. Bidones de 20 L (sin granel)", c_bidones20)
 
         # 71) v1.68: combos de entrada (precio de combo repartido y 20 % de primera compra)
         def c_entry_combos():
