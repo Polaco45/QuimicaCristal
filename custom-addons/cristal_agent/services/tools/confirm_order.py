@@ -170,8 +170,10 @@ class ConfirmOrder(AgentTool):
                 f"TOTAL A PAGAR y la forma de pago): es lo que se le va a cobrar al entregar. "
                 f"PROHIBIDO resumirlo, redondear, cambiar un monto o dar otro total"
                 + ("; pasale además los datos para transferir TEXTUALES de la KB" if payment == 'transferencia' else '')
-                + ". " + ("Retira en San Martín 2350 en el horario oficial (día + fecha) con sus "
-                           "bidones vacíos con tapa." if pickup else
+                + ". " + ("Retiro: decile que lo preparamos y le avisamos por WhatsApp cuando "
+                           "esté listo para retirar en San Martín 2350 (no se arma en el "
+                           "momento: que no pase antes del aviso) y que traiga sus bidones "
+                           "vacíos con tapa." if pickup else
                            "Envío: el reparto en Río Cuarto es por la mañana y nunca los miércoles; "
                            "decile que le avisamos el día de entrega (no prometas día ni hora).")
                 + " NO escales a Joaco por este pedido: ya está confirmado y avisado."),
