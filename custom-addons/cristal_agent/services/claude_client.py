@@ -213,7 +213,10 @@ def dispatch_agent_for_message(env, wa_message, partner, memory, plain_text):
 
         # Ejecutar el loop
         client = ClaudeClient(env, run=run, client_type=client_type,
-                              route_hints={'text': plain_text, 'has_media': bool(media)})
+                              route_hints={'text': plain_text,
+                                           # v1.81 — un sticker (webp) solo no pasa al modelo caro.
+                                           'has_media': any((a.mimetype or '').lower() != 'image/webp'
+                                                            for a in media)})
         result = client.run_conversation(
             stable_system=stable_system,
             dynamic_system=dynamic_system,

@@ -15,6 +15,7 @@
                        invisible="not route_departure_id"/>
                 <field name="route_free_shipping_granted"
                        groups="sales_team.group_sale_salesman"/>
+                <field name="cristal_pickup_eta" invisible="not cristal_pickup_eta"/>
                 <field name="cristal_pickup_ready_at" invisible="not cristal_pickup_ready_at"/>
             </xpath>
             <!-- v1.80: el mayorista retira con pedido previo; quien lo arma avisa que está listo. -->

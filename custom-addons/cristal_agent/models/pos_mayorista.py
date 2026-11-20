@@ -197,6 +197,24 @@ class SaleOrder(models.Model):
 
     cristal_pickup_ready_at = fields.Datetime(
         string="Aviso de listo para retirar", copy=False, readonly=True)
+    # v1.81 — el depósito dice a qué hora queda listo (services/pickup_staff.py).
+    cristal_pickup_staff_asked_at = fields.Datetime(
+        string="Se le pidió la hora al depósito", copy=False, readonly=True)
+    cristal_pickup_eta = fields.Char(string="Listo para retirar (hora estimada)", copy=False,
+                                     readonly=True)
+    cristal_pickup_reminded = fields.Boolean(copy=False, readonly=True)
+    cristal_pickup_escalated = fields.Boolean(copy=False, readonly=True)
+
+    @api.model
+    def cron_pickup_staff(self):
+        from ..services.pickup_staff import cron_pickup_staff
+        cron_pickup_staff(self.env)
+
+    @api.model
+    def cristal_pickup_parse_eta(self, text):
+        """Para probar: cómo se entiende una respuesta del depósito."""
+        from ..services.pickup_staff import parse_eta
+        return parse_eta(self.env, text)
 
     def action_cristal_pickup_ready(self):
         """Botón para quien arma el pedido: avisa al cliente que ya puede pasar a retirar."""

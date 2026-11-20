@@ -1079,11 +1079,11 @@ class CreateSaleOrder(AgentTool):
                         lambda l: l.product_id == self._freight_product(env, config)).unlink()
                     # v1.56: tampoco envío a domicilio (borrador reutilizado que pasó a retiro).
                     order.order_line.filtered(lambda l: getattr(l, 'is_delivery', False)).unlink()
-                    if not is_cf and 'carrier_id' in order._fields and order.carrier_id:
-                        order.carrier_id = False
                     order.write({'cristal_delivery_mode': 'retiro',
                                  'route_departure_id': False, 'commitment_date': False})
-                    if is_cf and 'carrier_id' in order._fields:
+                    # v1.81 — Joaco (20/11/2026): el método de envío del pedido tiene que decir
+                    # "Retirar en el Local" también en los mayoristas (antes se borraba).
+                    if 'carrier_id' in order._fields:
                         # La regla #73 no cobra envío con el método "Retirar en el Local".
                         pickup_carrier = env['delivery.carrier'].sudo().search(
                             [('name', 'ilike', 'retirar')], limit=1)
@@ -1341,7 +1341,7 @@ class CreateSaleOrder(AgentTool):
             result['route_note'] = (
                 "RETIRO EN EL LOCAL (San Martín 2350, Río Cuarto): sin compra mínima y sin "
                 "flete. Se retira SOLO con pedido hecho por acá: no se arma en el momento. "
-                "Cuando lo confirmes decile que lo preparamos EN EL DÍA y le avisamos por WhatsApp "
+                "Cuando lo confirmes decile que lo preparamos EN EL DÍA, que el depósito le confirma por acá la hora y le avisamos "
                 "cuando esté listo para retirar (que no pase antes del aviso), y que traiga "
                 "sus bidones vacíos con tapa para el recambio.")
         elif is_route:

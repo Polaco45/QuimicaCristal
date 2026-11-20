@@ -170,7 +170,7 @@ class ConfirmOrder(AgentTool):
                 f"TOTAL A PAGAR y la forma de pago): es lo que se le va a cobrar al entregar. "
                 f"PROHIBIDO resumirlo, redondear, cambiar un monto o dar otro total"
                 + ("; pasale además los datos para transferir TEXTUALES de la KB" if payment == 'transferencia' else '')
-                + ". " + ("Retiro: decile que lo preparamos y le avisamos por WhatsApp cuando "
+                + ". " + ("Retiro: decile que lo preparamos en el día, que el depósito le confirma por acá la hora en que queda listo y le avisamos cuando "
                            "esté listo para retirar en San Martín 2350 (no se arma en el "
                            "momento: que no pase antes del aviso; se prepara en el día) y que traiga sus bidones "
                            "vacíos con tapa." if pickup else
