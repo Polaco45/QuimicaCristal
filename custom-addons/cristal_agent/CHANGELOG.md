@@ -7,6 +7,18 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.77.0] — 2026-11-20
+
+### Added — Compras en modo consulta (pedido de Sergio, 18/11)
+Cuando un proveedor escribe al WhatsApp de Compras, se arma un borrador de respuesta con contexto
+de compras (ficha, órdenes abiertas, lo que se le debe) y se le consulta a Sergio por WhatsApp:
+"dale" lo manda tal cual, "no" lo descarta y cualquier otro texto es una corrección. Sin su OK no
+sale nada. Una sola llamada a Claude, sin herramientas; no pasa por el agente de ventas ni por
+`cristal.agent.memory`. Modelo `cristal.agent.supplier.draft`, servicio
+`services/purchase_consult.py`, menú Cristal Agent → 🛒 Compras (con autotest). Nace APAGADO
+(`purchase_consult_enabled`). `mcp_server` 1.3.1 deja fuera de la cola de pendientes las cuentas
+de `sistemas.wa_cuentas_fuera_de_clientes`.
+
 ## [18.0.1.76.0] — 2026-11-18
 
 ### Changed — Claudio confirma solo: Joaco ya no interviene en pedidos

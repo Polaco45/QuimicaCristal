@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ───────────── Compras en modo consulta (v1.77) ───────────── -->
+    <record id="view_cristal_agent_supplier_draft_list" model="ir.ui.view">
+        <field name="name">cristal.agent.supplier.draft.list</field>
+        <field name="model">cristal.agent.supplier.draft</field>
+        <field name="arch" type="xml">
+            <list string="Consultas de proveedores" create="0"
+                  decoration-warning="state == 'pending'"
+                  decoration-muted="state in ('discarded', 'superseded', 'no_reply', 'handled')"
+                  decoration-danger="state == 'error'">
+                <field name="name"/>
+                <field name="create_date" string="Fecha"/>
+                <field name="supplier_name"/>
+                <field name="incoming_text"/>
+                <field name="draft_text"/>
+                <field name="state" widget="badge"/>
+                <field name="resolution" optional="show"/>
+                <field name="notify_via" optional="hide"/>
+                <field name="cost_usd" sum="Total" optional="hide"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_cristal_agent_supplier_draft_form" model="ir.ui.view">
+        <field name="name">cristal.agent.supplier.draft.form</field>
+        <field name="model">cristal.agent.supplier.draft</field>
+        <field name="arch" type="xml">
+            <form string="Consulta de proveedor" create="0">
+                <header>
+                    <button name="action_send" type="object" string="Enviar al proveedor"
+                            class="btn-primary" invisible="state != 'pending'"
+                            confirm="Se manda el borrador tal como está al proveedor. ¿Seguimos?"/>
+                    <button name="action_discard" type="object" string="Descartar"
+                            invisible="state not in ('pending', 'collecting', 'correcting')"/>
+                    <field name="state" widget="statusbar"
+                           statusbar_visible="collecting,pending,sent"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1><field name="name"/> · <field name="supplier_name"/></h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="supplier_id"/>
+                            <field name="partner_id"/>
+                            <field name="mobile_number"/>
+                            <field name="wa_account_id"/>
+                            <field name="channel_id" readonly="1"/>
+                        </group>
+                        <group>
+                            <field name="last_inbound_at"/>
+                            <field name="asked_at"/>
+                            <field name="notify_via"/>
+                            <field name="resolved_at"/>
+                            <field name="resolution"/>
+                            <field name="cost_usd"/>
+                        </group>
+                    </group>
+                    <group string="Qué escribió el proveedor">
+                        <field name="incoming_text" nolabel="1" colspan="2" readonly="1"/>
+                    </group>
+                    <group string="Nota" invisible="not note">
+                        <field name="note" nolabel="1" colspan="2" readonly="1"/>
+                    </group>
+                    <group string="Borrador (se puede editar antes de enviar)">
+                        <field name="draft_text" nolabel="1" colspan="2"
+                               readonly="state != 'pending'"/>
+                    </group>
+                    <group string="Lo que salió" invisible="not sent_text">
+                        <field name="sent_text" nolabel="1" colspan="2" readonly="1"/>
+                    </group>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_cristal_agent_supplier_draft_search" model="ir.ui.view">
+        <field name="name">cristal.agent.supplier.draft.search</field>
+        <field name="model">cristal.agent.supplier.draft</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="supplier_name"/>
+                <field name="incoming_text"/>
+                <filter name="pending" string="Esperando el OK" domain="[('state', '=', 'pending')]"/>
+                <filter name="sent" string="Enviados" domain="[('state', '=', 'sent')]"/>
+                <filter name="error" string="No se pudo" domain="[('state', '=', 'error')]"/>
+                <group expand="0" string="Agrupar por">
+                    <filter name="by_state" string="Estado" context="{'group_by': 'state'}"/>
+                    <filter name="by_supplier" string="Proveedor" context="{'group_by': 'supplier_id'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_cristal_agent_supplier_draft" model="ir.actions.act_window">
+        <field name="name">Consultas de proveedores</field>
+        <field name="res_model">cristal.agent.supplier.draft</field>
+        <field name="view_mode">list,form</field>
+        <field name="context">{'search_default_pending': 1}</field>
+    </record>
+
+    <record id="action_cristal_agent_supplier_selftest" model="ir.actions.server">
+        <field name="name">Autotest Compras (modo consulta)</field>
+        <field name="model_id" ref="model_cristal_agent_supplier_draft"/>
+        <field name="state">code</field>
+        <field name="code">action = model.action_selftest()</field>
+    </record>
+
+    <!-- Hace falta el cron por _trigger; el de cada 5 min es la red por si el trigger falla. -->
+    <record id="cron_purchase_consult" model="ir.cron">
+        <field name="name">Cristal Agent: Compras en modo consulta (borradores)</field>
+        <field name="model_id" ref="model_cristal_agent_supplier_draft"/>
+        <field name="state">code</field>
+        <field name="code">model.cron_process()</field>
+        <field name="interval_number">5</field>
+        <field name="interval_type">minutes</field>
+        <field name="active" eval="True"/>
+    </record>
+
+</odoo>
