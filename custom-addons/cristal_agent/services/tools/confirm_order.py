@@ -172,7 +172,7 @@ class ConfirmOrder(AgentTool):
                 + ("; pasale además los datos para transferir TEXTUALES de la KB" if payment == 'transferencia' else '')
                 + ". " + ("Retiro: decile que lo preparamos y le avisamos por WhatsApp cuando "
                            "esté listo para retirar en San Martín 2350 (no se arma en el "
-                           "momento: que no pase antes del aviso) y que traiga sus bidones "
+                           "momento: que no pase antes del aviso; se prepara en el día) y que traiga sus bidones "
                            "vacíos con tapa." if pickup else
                            "Envío: el reparto en Río Cuarto es por la mañana y nunca los miércoles; "
                            "decile que le avisamos el día de entrega (no prometas día ni hora).")

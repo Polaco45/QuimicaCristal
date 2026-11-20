@@ -364,7 +364,7 @@ class SaleOrder(models.Model):
             circ = f" (circuito {dep.circuit_id.name})" if dep.circuit_id else ""
             parts.append(f"Va en el camión del {fmt_day(dep.date)}{circ}.")
         elif self.cristal_delivery_mode == 'retiro':
-            parts.append("Te avisamos cuando esté listo para retirar.")
+            parts.append("Lo preparamos en el día y te avisamos cuando esté listo para retirar.")
         elif self.commitment_date:
             parts.append(f"Te lo llevamos el {fmt_day(to_ar(self.env, self.commitment_date).date())}.")
         else:

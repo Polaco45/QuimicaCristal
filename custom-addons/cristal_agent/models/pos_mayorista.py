@@ -125,7 +125,7 @@ class ResPartner(models.Model):
         base = self.env['ir.config_parameter'].sudo().get_param('web.base.url') or ''
         link = f"{base}/web/content/{att.id}/{att.name}"
         text = (f"Te paso la lista de precios mayorista de Química Cristal: {link} — Elegí "
-                f"tranquilo y mandanos tu pedido por acá: lo preparamos y te avisamos cuando "
+                f"tranquilo y mandanos tu pedido por acá: lo preparamos en el día y te avisamos cuando "
                 f"esté listo para retirar en {PICKUP_ADDRESS} (no se arma en el momento).")
 
         account = self.env['whatsapp.account'].sudo().search(
