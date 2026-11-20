@@ -8,7 +8,7 @@ import logging
 from datetime import timedelta
 
 from odoo import api, fields, models, _
-from odoo.exceptions import UserError
+from odoo.exceptions import AccessError, UserError
 
 _logger = logging.getLogger(__name__)
 
@@ -217,6 +217,7 @@ class CristalAgentSupplierDraft(models.Model):
         from ..services import purchase_consult as pc
         self.ensure_one()
         config = self.env['cristal.agent.config'].sudo().get_active()
+        self._check_admin(also=config.purchase_owner_user_id)
         if self.state != 'pending':
             raise UserError(_("%s ya no está esperando el OK.") % self.name)
         text = (self.draft_text or '').strip()
@@ -260,6 +261,44 @@ class CristalAgentSupplierDraft(models.Model):
             rec.activity_ids.action_done()
         return True
 
+    def _check_admin(self, also=None):
+        """Mandar, probar o previsualizar: solo el sistema, un administrador o el responsable."""
+        user = self.env.user
+        if not (self.env.su or user.has_group('base.group_system') or (also and user == also)):
+            raise AccessError(_("Solo el responsable de Compras o un administrador puede hacer esto."))
+
+    @api.model
+    def preview_draft(self, mobile_number, text):
+        """Borrador REAL (llama a Claude) para lo que escribiría ese número, con su contexto
+        de Odoo. No guarda ni manda nada: sirve para revisar la calidad antes de prender."""
+        from ..services import purchase_consult as pc
+        self._check_admin()
+        env = self.env(su=True)
+        config = env['cristal.agent.config'].get_active()
+        account = config.purchase_wa_account_id
+        out = {}
+        try:
+            with env.cr.savepoint():
+                channel = pc._channel_for(env, account, mobile_number)
+                partner = channel.whatsapp_partner_id
+                if not partner:
+                    tail = pc.digits(mobile_number)[-10:]
+                    partner = env['res.partner'].search(
+                        ['|', ('mobile', 'like', tail[-8:]), ('phone', 'like', tail[-8:])],
+                        limit=1) if len(tail) == 10 else partner
+                draft = env[self._name].create({
+                    'channel_id': channel.id or False, 'wa_account_id': account.id,
+                    'partner_id': partner.id or False, 'mobile_number': mobile_number,
+                    'incoming_text': text, 'last_inbound_at': fields.Datetime.now()})
+                out = dict(pc.build_draft(env, config, draft) or {})
+                out['contexto'] = pc.supplier_context(env, draft)
+                out['historial'] = pc.conversation(env, channel)
+                out['costo_usd'] = draft.cost_usd
+                raise _SelftestRollback()
+        except _SelftestRollback:
+            pass
+        return out
+
     # ───────────────────────── autotest ─────────────────────────
     @api.model
     def action_selftest(self):
@@ -279,6 +318,7 @@ class CristalAgentSupplierDraft(models.Model):
         """Recorre el circuito completo sin llamar a Claude ni mandar WhatsApp, dentro de
         un savepoint que se revierte: no deja datos."""
         from ..services import purchase_consult as pc
+        self._check_admin()
         results = []
 
         def check(name, cond, detail=''):
