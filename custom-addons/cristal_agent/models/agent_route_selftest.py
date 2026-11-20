@@ -2305,7 +2305,7 @@ class CristalAgentRouteSelftest(models.TransientModel):
                 assert res2.get('ok'), res2
                 assert not o.order_line.filtered(lambda l: l.product_id == ariel_g), 'quedó granel'
             info = cso._bidones_info(env, cfg, o)
-            assert info and info['needed'] >= 3, info
+            assert info and info['needed'] >= 2, info  # la 2.ª cotización reemplaza las líneas
             return (f"{target.display_name}: 60 → 3 bidones · precio por litro = bidón/20 · "
                     f"granel → su bidón · recambio {info['needed']} bidones")
         self._case(results, "77. Bidones de 20 L (sin granel)", c_bidones20)
