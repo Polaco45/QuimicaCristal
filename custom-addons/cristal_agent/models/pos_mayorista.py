@@ -59,7 +59,8 @@ class ProductProduct(models.Model):
         pricelist = self.env['product.pricelist'].sudo().search(
             [('name', '=', 'Lista Mayorista')], limit=1)
         bidones = Product.search([('sale_ok', '=', True), ('name', '=ilike', '% x 20 lts%')])
-        bases = Product.search([('sale_ok', '=', True), ('product_tmpl_id.name', '=ilike', 'base %')])
+        bases = Product.search([('sale_ok', '=', True), ('product_tmpl_id.name', '=ilike', 'base %'),
+                                ('product_tmpl_id.name', 'ilike', '1+80')])  # Joaco: solo las 1+80
         sold = {p.id: 0.0 for p in bidones}
         since = fields.Datetime.now() - timedelta(days=SALES_DAYS)
         lines = self.env['sale.order.line'].sudo().read_group(
