@@ -15,6 +15,14 @@
                        invisible="not route_departure_id"/>
                 <field name="route_free_shipping_granted"
                        groups="sales_team.group_sale_salesman"/>
+                <field name="cristal_pickup_ready_at" invisible="not cristal_pickup_ready_at"/>
+            </xpath>
+            <!-- v1.80: el mayorista retira con pedido previo; quien lo arma avisa que está listo. -->
+            <xpath expr="//header" position="inside">
+                <button name="action_cristal_pickup_ready" type="object"
+                        string="Avisar que está listo para retirar" class="btn-primary"
+                        invisible="state not in ('sale', 'done') or cristal_delivery_mode != 'retiro'"
+                        confirm="Se le manda un WhatsApp al cliente avisando que ya puede pasar a retirar. ¿Seguimos?"/>
             </xpath>
         </field>
     </record>

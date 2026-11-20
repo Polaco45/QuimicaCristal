@@ -25,3 +25,4 @@ from . import discuss_channel_member
 from . import mail_activity
 from . import agent_supplier_draft
 from . import whatsapp_account
+from . import pos_mayorista

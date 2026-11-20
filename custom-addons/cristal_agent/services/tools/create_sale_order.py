@@ -1336,11 +1336,14 @@ class CreateSaleOrder(AgentTool):
                 "en este orden: el combo que incluye lo que lleva → el tamaño más grande → un "
                 "complemento.")
         if is_pickup:
+            # v1.80 — Joaco (20/11/2026): el mayorista retira SOLO con pedido previo; el
+            # pedido se prepara con demora y se le avisa cuando está listo.
             result['route_note'] = (
-                "RETIRO EN PLANTA (San Martín 2350, Río Cuarto): sin compra mínima y sin "
-                "flete. Decile día + fecha + horario oficial de retiro y que traiga sus "
-                "bidones vacíos con tapa para el recambio (si es granel). Queda pendiente "
-                "de confirmación de Joaquín.")
+                "RETIRO EN EL LOCAL (San Martín 2350, Río Cuarto): sin compra mínima y sin "
+                "flete. Se retira SOLO con pedido hecho por acá: no se arma en el momento. "
+                "Cuando lo confirmes decile que lo preparamos y le avisamos por WhatsApp "
+                "cuando esté listo para retirar (que no pase antes del aviso), y que traiga "
+                "sus bidones vacíos con tapa para el recambio.")
         elif is_route:
             result.update(self._route_result_fields(route_block))
             self._escalate_route_order(env, run, partner, order, route_ctx, route_block)

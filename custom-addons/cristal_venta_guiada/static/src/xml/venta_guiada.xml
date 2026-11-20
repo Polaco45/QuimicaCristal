@@ -39,6 +39,7 @@
     <t t-name="cristal_venta_guiada.ProductScreen" t-inherit="point_of_sale.ProductScreen" t-inherit-mode="extension">
         <xpath expr="//OrderSummary" position="after">
             <VentaGuiadaCard/>
+            <CristalMayoristaBar/>
         </xpath>
     </t>
 
@@ -49,5 +50,14 @@
         <xpath expr="//div[hasclass('payment-screen')]/t[@t-call='point_of_sale.PaymentScreenDue']" position="after">
             <VentaGuiadaCard/>
         </xpath>
+    </t>
+    <t t-name="cristal_venta_guiada.MayoristaBar">
+        <div class="cristal-mayorista-bar d-flex align-items-center gap-2 border-top p-2 small">
+            <span class="fw-bold text-nowrap">Mayorista sin pedido:</span>
+            <button class="btn btn-outline-secondary btn-sm" t-on-click="printList">Imprimir lista bidones 20 L</button>
+            <button class="btn btn-outline-success btn-sm" t-att-disabled="state.sending" t-on-click="sendList">
+                <t t-if="state.sending">Enviando…</t><t t-else="">Lista completa por WhatsApp</t>
+            </button>
+        </div>
     </t>
 </templates>

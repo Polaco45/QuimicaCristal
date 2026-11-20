@@ -1,6 +1,7 @@
 /** @odoo-module */
 
-import { Component } from "@odoo/owl";
+import { Component, useState } from "@odoo/owl";
+import { useService } from "@web/core/utils/hooks";
 import { _t } from "@web/core/l10n/translation";
 import { patch } from "@web/core/utils/patch";
 import { PosStore } from "@point_of_sale/app/store/pos_store";
@@ -542,4 +543,46 @@ patch(ProductScreen, {
 
 patch(PaymentScreen, {
     components: { ...PaymentScreen.components, VentaGuiadaCard },
+});
+
+// v1.11 — Mayoristas en el local (Joaco, 20/11/2026): que lleguen con el pedido hecho. Desde la
+// caja Guillermo imprime la lista de bidones de 20 L más vendidos o le manda al mayorista la
+// lista completa por WhatsApp (la cuenta de Claudio), sin ponerse a atenderlo en el mostrador.
+export class CristalMayoristaBar extends Component {
+    static template = "cristal_venta_guiada.MayoristaBar";
+    static props = {};
+
+    setup() {
+        this.pos = usePos();
+        this.orm = useService("orm");
+        this.notification = useService("notification");
+        this.state = useState({ sending: false });
+    }
+
+    printList() {
+        window.open("/cristal/lista-bidones", "_blank");
+    }
+
+    async sendList() {
+        const partner = this.pos.get_order()?.get_partner?.();
+        const suggested = partner?.mobile || partner?.phone || "";
+        const phone = window.prompt(_t("WhatsApp del mayorista (con característica, ej. 358 4123456):"), suggested);
+        if (!phone) {
+            return;
+        }
+        const name = partner ? partner.name : window.prompt(_t("Nombre del negocio o de la persona (opcional):"), "") || "";
+        this.state.sending = true;
+        try {
+            const res = await this.orm.call("res.partner", "cristal_pos_send_pricelist", [phone, name]);
+            this.notification.add(res.message, { type: res.ok ? "success" : "danger", sticky: !res.ok });
+        } catch (e) {
+            this.notification.add(_t("No se pudo mandar la lista. Avisale a Joaco."), { type: "danger" });
+        } finally {
+            this.state.sending = false;
+        }
+    }
+}
+
+patch(ProductScreen, {
+    components: { ...ProductScreen.components, CristalMayoristaBar },
 });

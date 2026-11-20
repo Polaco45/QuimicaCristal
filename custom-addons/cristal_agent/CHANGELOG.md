@@ -7,6 +7,16 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.80.0] — 2026-11-20
+
+### Added — Mayoristas en el local: retiro solo con pedido previo
+Joaco (20/11): "los pedidos para retirar en el local deben hacerse anticipadamente … tenemos que
+rumbear a que vayan con el pedido listo". Claudio avisa que el retiro es con pedido previo y que se
+prepara con demora (prompt, KB, `create_sale_order` y `confirm_order`). Botón "Avisar que está listo
+para retirar" en el pedido (`action_cristal_pickup_ready`). Desde la caja (cristal_venta_guiada 1.11):
+hoja imprimible de bidones de 20 L más vendidos (`/cristal/lista-bidones`) y envío de la lista
+mayorista completa por WhatsApp (`res.partner.cristal_pos_send_pricelist`).
+
 ## [18.0.1.79.0] — 2026-11-20
 
 ### Changed — Ya no se vende a granel: bidones de 20 L
