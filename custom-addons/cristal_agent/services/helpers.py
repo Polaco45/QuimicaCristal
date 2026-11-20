@@ -553,8 +553,11 @@ def verify_prices(env, run, body_html):
     vocab = set()
     for toks, _p in known:
         vocab |= toks
+    # v1.79: también los nombres de los granel (ya no a la venta): "Skip", "Magistral"
+    # siguen siendo nombres de producto aunque el bidón se llame distinto.
     catalog = env['product.product'].sudo().search(
-        [('sale_ok', '=', True), ('product_tmpl_id.is_mayorista_catalog', '=', True)])
+        ['|', '&', ('sale_ok', '=', True), ('product_tmpl_id.is_mayorista_catalog', '=', True),
+         ('name', 'ilike', 'a granel')])
     for prod in catalog:
         vocab |= _tokens(prod.name)
     offers = None

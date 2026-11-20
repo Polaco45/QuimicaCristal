@@ -2294,14 +2294,14 @@ class CristalAgentRouteSelftest(models.TransientModel):
             p.street = 'Calle 1'
             target = Prod.browse(row['id'])
             res = cso.execute(env=env, run=None, partner_id=p.id,
-                              lines=[{'product_id': target.id, 'qty': 60}])
+                              delivery_mode='retiro', lines=[{'product_id': target.id, 'qty': 60}])
             assert res.get('ok'), res
             o = SaleOrder.browse(res['order_id'])
             ln = o.order_line.filtered(lambda l: l.product_id == target)
             assert ln and ln.product_uom_qty == 3, (ln.product_uom_qty, res.get('bidon_adjustments'))
             if ariel_g:
                 res2 = cso.execute(env=env, run=None, partner_id=p.id,
-                                   lines=[{'product_id': ariel_g.id, 'qty': 40}])
+                                   delivery_mode='retiro', lines=[{'product_id': ariel_g.id, 'qty': 40}])
                 assert res2.get('ok'), res2
                 assert not o.order_line.filtered(lambda l: l.product_id == ariel_g), 'quedó granel'
             info = cso._bidones_info(env, cfg, o)
