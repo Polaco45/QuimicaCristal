@@ -50,6 +50,27 @@ class WhatsAppMessage(models.Model):
         help="Respuesta libre de Joaco por WhatsApp sobre un pedido, esperando que Claudio "
              "la atienda (cron).")
 
+    cristal_staff_pending = fields.Boolean(
+        "Respuesta del depósito pendiente", default=False, index=True, copy=False,
+        help="v1.81 — Guillermo contestó por WhatsApp sobre un pedido para retirar; lo "
+             "procesa el cron (hora en que queda listo / listo).")
+
+    @api.model
+    def cron_pickup_staff_replies(self):
+        """v1.81 — Respuestas del depósito sobre pedidos para retirar (una por vez,
+        desmarcando antes para no repetir si algo falla)."""
+        from ..services.pickup_staff import handle_staff_reply
+        for msg in self.sudo().search([('cristal_staff_pending', '=', True)], order='id', limit=10):
+            msg.cristal_staff_pending = False
+            self.env.cr.commit()
+            try:
+                done = handle_staff_reply(self.env, _clean_html(msg.body or ""))
+                _logger.info("📦 Respuesta del depósito (wa.msg %s): %s", msg.id, done)
+                self.env.cr.commit()
+            except Exception as e:  # noqa: BLE001
+                self.env.cr.rollback()
+                _logger.exception("Respuesta del depósito (wa.msg %s) falló: %s", msg.id, e)
+
     @api.model
     def cron_owner_instructions(self):
         """v1.72.3 — Atiende las indicaciones de Joaco por WhatsApp sobre pedidos que se le
@@ -129,6 +150,24 @@ class WhatsAppMessage(models.Model):
             except Exception as e:  # noqa: BLE001
                 _logger.exception("Compras consulta: falló el mensaje %s: %s", wa_message.id, e)
             return
+
+        # 2.95) v1.81 — ¿Es el DEPÓSITO (Guillermo) contestando a qué hora queda listo un
+        # pedido para retirar? No es un cliente: nunca pasa por el agente de ventas.
+        try:
+            from ..services import pickup_staff as ps
+            if ps.is_staff_number(self.env, phone_raw):
+                acc = ps._account(self.env)
+                if not acc or wa_message.wa_account_id == acc:
+                    if plain_body:
+                        wa_message.sudo().write({'cristal_staff_pending': True})
+                        cron = self.env.ref('cristal_agent.cron_pickup_staff_replies',
+                                            raise_if_not_found=False)
+                        if cron:
+                            cron.sudo()._trigger()
+                    _logger.info("📦 Mensaje del depósito por WhatsApp: en cola (retiros).")
+                    return
+        except Exception as e:  # noqa: BLE001
+            _logger.exception("Mensaje del depósito por WhatsApp falló: %s", e)
 
         if not config.enabled:
             _logger.info("⏸️  Agente deshabilitado (config). Ignorando mensaje %s.", wa_message.id)

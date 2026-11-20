@@ -7,6 +7,25 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.81.0] — 2026-11-20
+
+### Added — Retiros: el depósito dice a qué hora queda listo
+- Al confirmarse un pedido con retiro, en horario de la planta, Guillermo recibe por WhatsApp
+  (cuenta Cristal Mayorista) el pedido y "¿a qué hora lo tenés listo?". Contesta "a las 18",
+  "S07220 a las 11", "en media hora" o "listo S07220": al cliente le llega la hora estimada o
+  el aviso de listo. Recordatorio a los 40 min y actividad si no contesta
+  (`services/pickup_staff.py`, crons `cron_pickup_staff` y `cron_pickup_staff_replies`).
+- Los mensajes del depósito por esa cuenta nunca pasan por el agente de ventas.
+- Campo "Listo para retirar (hora estimada)" en el pedido.
+
+### Changed
+- Los pedidos con retiro quedan con el método "Retirar en el Local" también en mayoristas.
+- Reglas de atención al principio del prompt (caso Pablo Montero): retiro por terceros sin
+  autorización de Joaco, prohibido "lo consulto con Joaquín y te confirmo hoy", comprobante no
+  frena el pedido, respetar presupuesto y bidones del cliente, no insistir si dio fecha, sumar
+  a la misma cotización, no nombrar salidas vencidas, siempre "vos".
+- Un sticker solo no pasa al modelo avanzado.
+
 ## [18.0.1.80.0] — 2026-11-20
 
 ### Added — Mayoristas en el local: retiro solo con pedido previo
