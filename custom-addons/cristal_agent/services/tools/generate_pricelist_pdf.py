@@ -423,7 +423,7 @@ class GeneratePricelistPdf(AgentTool):
             name = (variant.name or '').lower()
             uom = (variant.uom_id.name or '').strip().lower()
             if re.search(r"\bx\s*20\s*(?:l|lt|lts|litros?)\b", name):
-                return 'x bidón 20 L'
+                return 'x litro (bidón 20 L)'
             if 'granel' in name or uom in ('l', 'lt', 'litro', 'litros') or 'lit' in uom:
                 return 'x litro'
             return 'x unidad'
@@ -431,6 +431,10 @@ class GeneratePricelistPdf(AgentTool):
         def _price_strings(variant):
             """Devuelve la lista de strings de precio: 1 en modo single, 3 en modo full."""
             base = _get_pricelist_price(pricelist, variant)
+            # v1.79: los líquidos se venden por bidón de 20 L, pero la lista muestra el
+            # precio por litro (bidón / 20), como siempre.
+            if base and re.search(r"\bx\s*20\s*(?:l|lt|lts|litros?)\b", (variant.name or '').lower()):
+                base = base / 20.0
             if not base or base <= 0:
                 return ['a consultar'] + ([] if single else ['', ''])
             if single:
@@ -588,7 +592,7 @@ class GeneratePricelistPdf(AgentTool):
         ))
         elements.append(Paragraph(
             '<b>Compra mínima mayorista:</b> $50.000 &nbsp;·&nbsp; '
-            '<b>Líquidos:</b> por bidón de 20 L (precio por litro = precio del bidón ÷ 20)',
+            '<b>Líquidos:</b> precio por litro; se venden en bidones de 20 L',
             footer_style
         ))
 
