@@ -587,6 +587,10 @@ class CristalAgentConfig(models.Model):
              "muestra el borrador corregido y sale recién con su «dale». Prendido: el "
              "borrador corregido sale directo.")
 
+    purchase_selftest_log = fields.Text(
+        "Compras: último autotest", readonly=True,
+        help="Resultado del autotest que corre solo en cada actualización del módulo.")
+
     # ═════════════════ RANGOS DE NIVELES (en LITROS mensuales) ═════════════════
     # Los niveles se miden internamente en monto pero al cliente se le habla en litros.
     level_bronce_max_liters = fields.Integer(

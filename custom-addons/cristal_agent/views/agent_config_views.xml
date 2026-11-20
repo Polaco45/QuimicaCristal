@@ -274,6 +274,7 @@
                                        options="{'no_create': True}"/>
                                 <field name="purchase_owner_whatsapp_number"/>
                                 <field name="purchase_correction_direct"/>
+                                <field name="purchase_selftest_log"/>
                             </group>
                             <div class="alert alert-info">
                                 Cuando un proveedor escribe a esa cuenta, se arma un <b>borrador</b>

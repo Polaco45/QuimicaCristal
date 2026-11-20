@@ -120,4 +120,15 @@
         <field name="active" eval="True"/>
     </record>
 
+    <!-- Manda a aprobar a Meta la plantilla de aviso (solo producción) y corre el autotest pedido. -->
+    <record id="cron_purchase_template_submit" model="ir.cron">
+        <field name="name">Cristal Agent: Compras — mantenimiento (plantilla y autotest)</field>
+        <field name="model_id" ref="model_cristal_agent_supplier_draft"/>
+        <field name="state">code</field>
+        <field name="code">model.cron_maintenance()</field>
+        <field name="interval_number">30</field>
+        <field name="interval_type">minutes</field>
+        <field name="active" eval="True"/>
+    </record>
+
 </odoo>

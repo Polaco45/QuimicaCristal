@@ -7,6 +7,17 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.78.0] — 2026-11-20
+
+### Added — Compras en modo consulta, completo
+Lo que Sergio contesta desde el celular (convivencia) ahora queda en Odoo: se procesa el webhook
+`smb_message_echoes`, que Odoo descarta (`controllers/wa_echo.py`, `whatsapp.account._cristal_process_echoes`);
+con eso el borrador ve la conversación entera y el agente se corre cuando Sergio ya respondió.
+Aviso a Sergio con la ventana de 24 h cerrada por la plantilla de utilidad `compras_consulta_proveedor`
+(una por hora como mucho; el cron de mantenimiento la manda a aprobar a Meta en producción). Las notas
+de voz de proveedores se transcriben. El autotest corre solo tras cada actualización y deja el resultado
+en `purchase_selftest_log`.
+
 ## [18.0.1.77.0] — 2026-11-20
 
 ### Added — Compras en modo consulta (pedido de Sergio, 18/11)
