@@ -47,8 +47,12 @@ class CristalAgentSupplierDraft(models.Model):
     note = fields.Char("Nota para Sergio")
     correction_text = fields.Text("Corrección pedida")
     asked_at = fields.Datetime("Consultado a Sergio")
-    notify_via = fields.Selection([('whatsapp', 'WhatsApp'), ('odoo', 'Actividad en Odoo')],
-                                  "Aviso por")
+    notify_via = fields.Selection([('whatsapp', 'WhatsApp'),
+                                   ('template', 'WhatsApp (plantilla)'),
+                                   ('odoo', 'Actividad en Odoo')], "Aviso por")
+    audio_attachment_ids = fields.Many2many(
+        'ir.attachment', 'cristal_supplier_draft_audio_rel', 'draft_id', 'attachment_id',
+        string="Notas de voz por transcribir")
     notify_mail_message_id = fields.Many2one('mail.message', "Mensaje de consulta",
                                              ondelete='set null', index=True)
     resolved_at = fields.Datetime("Resuelto")
@@ -74,7 +78,7 @@ class CristalAgentSupplierDraft(models.Model):
 
     # ───────────────────────── entrada ─────────────────────────
     @api.model
-    def enqueue_inbound(self, config, wa_message, text):
+    def enqueue_inbound(self, config, wa_message, text, audio=None):
         """Suma un mensaje de proveedor a la consulta en curso de ese chat (o abre una)."""
         mm = wa_message.mail_message_id
         channel = self.env['discuss.channel'].sudo().browse(
@@ -96,8 +100,79 @@ class CristalAgentSupplierDraft(models.Model):
                 'mobile_number': wa_message.mobile_number,
                 'incoming_text': text, 'last_inbound_at': now,
             })
+        if audio:
+            draft.audio_attachment_ids = [(4, audio.id)]
         draft._trigger_cron(seconds=(config.debounce_seconds or 0) + 1)
         return draft
+
+    @api.model
+    def mark_handled_by_phone(self, channel):
+        """Sergio contestó desde el celular en ese chat: lo que esperaba ya no hace falta."""
+        drafts = self.sudo().search([('channel_id', '=', channel.id),
+                                     ('state', 'in', ('collecting', 'pending', 'correcting'))])
+        if drafts:
+            drafts.write({'state': 'handled', 'resolved_at': fields.Datetime.now(),
+                          'resolution': "Se contestó desde el celular."})
+            drafts.activity_ids.action_done()
+        return drafts
+
+    def _transcribe_audios(self, config):
+        """Suma al texto las notas de voz del proveedor (OpenAI, fuera del webhook)."""
+        self.ensure_one()
+        audios, lines = self.audio_attachment_ids, []
+        if not audios:
+            return
+        key = self.env['cristal.agent.config'].sudo().get_openai_key()
+        for att in audios:
+            text = None
+            if config.enable_audio_transcription and key:
+                try:
+                    from ..services.transcription import transcribe_audio_attachment
+                    text = transcribe_audio_attachment(
+                        att, key, model=config.transcription_model or 'gpt-4o-transcribe',
+                        language=config.transcription_language or 'es')
+                except Exception:  # noqa: BLE001
+                    _logger.exception("Compras consulta: no pude transcribir el audio %s", att.id)
+            lines.append("[nota de voz] " + text if text else
+                         "[mandó una nota de voz que no se pudo transcribir: escuchala]")
+        self.write({'incoming_text': '\n'.join(t for t in [self.incoming_text] + lines if t),
+                    'audio_attachment_ids': [(5, 0, 0)]})
+
+    @api.model
+    def cron_maintenance(self):
+        """Cada 30 min: plantilla a Meta (si falta) y autotest pedido por una actualización."""
+        self.cron_submit_template()
+        config = self.env['cristal.agent.config'].sudo().get_active()
+        if (config.purchase_selftest_log or '').startswith('pendiente'):
+            try:
+                results = self.sudo().run_selftest()
+                ok = sum(1 for r in results if r[1])
+                lines = [f"{fields.Datetime.now():%Y-%m-%d %H:%M} UTC — {ok}/{len(results)} bien"]
+                lines += [f"FALLA: {name} — {detail}" for name, good, detail in results if not good]
+                log = '\n'.join(lines)
+            except Exception as e:  # noqa: BLE001
+                log = f"{fields.Datetime.now():%Y-%m-%d %H:%M} UTC — el autotest no corrió: {e}"
+            config.write({'purchase_selftest_log': log})
+
+    @api.model
+    def cron_submit_template(self):
+        """Manda a aprobar a Meta la plantilla de aviso a Sergio. Solo en producción y solo
+        mientras esté en borrador (una vez enviada, no hace nada)."""
+        from ..services import purchase_consult as pc
+        config = self.env['cristal.agent.config'].sudo().get_active()
+        base_url = self.env['ir.config_parameter'].sudo().get_param('web.base.url') or ''
+        if not config.purchase_wa_account_id or '.dev.odoo.com' in base_url:
+            return False
+        template = pc.ensure_purchase_template(self.env, config.purchase_wa_account_id)
+        if not template or template.status != 'draft' or template.wa_template_uid:
+            return False
+        try:
+            template.button_submit_template()
+            _logger.info("Plantilla %s enviada a Meta: %s", template.template_name, template.status)
+        except Exception as e:  # noqa: BLE001
+            _logger.warning("No pude mandar a Meta la plantilla de Compras: %s", e)
+            return False
+        return True
 
     def _trigger_cron(self, seconds=1):
         cron = self.env.ref('cristal_agent.cron_purchase_consult', raise_if_not_found=False)
@@ -173,6 +248,7 @@ class CristalAgentSupplierDraft(models.Model):
                 t for t in (older.sorted('id').mapped('incoming_text') + [self.incoming_text]) if t)
             older.write({'state': 'superseded', 'resolved_at': now,
                          'resolution': f"Reemplazado por {self.name}."})
+        self._transcribe_audios(config)
         verdict = pc.build_draft(self.env, config, self)
         text = (verdict.get('borrador') or '').strip()
         self.note = (verdict.get('nota') or '')[:250] or False
@@ -186,7 +262,8 @@ class CristalAgentSupplierDraft(models.Model):
     def _ask_owner(self, config, corrected=False):
         from ..services import purchase_consult as pc
         self.ensure_one()
-        via, mail_id = pc.tell_owner(self.env, config, pc.owner_text(self, corrected), draft=self)
+        via, mail_id = pc.tell_owner(self.env, config, pc.owner_text(self, corrected), draft=self,
+                                     template_text=pc.owner_template_text(self))
         self.write({'state': 'pending', 'asked_at': fields.Datetime.now(),
                     'notify_via': via or False, 'notify_mail_message_id': mail_id or False,
                     'correction_text': False})
@@ -469,6 +546,30 @@ class CristalAgentSupplierDraft(models.Model):
                 last = Draft.search([('channel_id', '=', oth_ch.id)], limit=1)
                 check("un gracias no genera consulta",
                       last.state == 'no_reply' and not box['sent'], f"{last.state} {box['sent']}")
+
+                # 8b) Sergio contesta desde el celular → queda en el chat, no se reenvía, y
+                # lo que esperaba su OK se da por atendido; lo que siga no arma borrador.
+                box['responder'] = True
+                inbound(oth_ch, other, '+5493580000003', '¿Cuándo pasan a retirar?')
+                Draft.cron_process()
+                waiting = Draft.search([('channel_id', '=', oth_ch.id), ('state', '=', 'pending')])
+                box['sent'].clear()
+                echo = account._cristal_post_echo(oth_ch, 'wamid.AUTOTEST1', 'Pasamos el lunes')
+                again = account._cristal_post_echo(oth_ch, 'wamid.AUTOTEST1', 'Pasamos el lunes')
+                check("lo que Sergio manda desde el celular queda en el chat sin reenviarse",
+                      len(echo) == 1 and echo.state == 'sent' and echo.message_type == 'outbound'
+                      and not again and not box['sent'],
+                      f"{echo.mapped('state')} / repetido {len(again)} / {box['sent']}")
+                check("si contestó desde el celular, el borrador se da por atendido",
+                      len(waiting) == 1 and waiting.state == 'handled', waiting.mapped('state'))
+                inbound(oth_ch, other, '+5493580000003', 'Perfecto, los espero')
+                Draft.cron_process()
+                last = Draft.search([('channel_id', '=', oth_ch.id)], limit=1)
+                check("después de contestar desde el celular no arma borrador",
+                      last.state == 'handled' and not box['sent'], f"{last.state} {box['sent']}")
+                check("contestar desde el celular en Compras no toca al agente de ventas",
+                      not env['cristal.agent.memory'].search([('partner_id', '=', other.id)]),
+                      "se creó una memoria de ventas")
 
                 # 9) Apagado → la cuenta de Compras queda como hoy (nadie la toca).
                 config.purchase_consult_enabled = False

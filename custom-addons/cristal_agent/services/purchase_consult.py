@@ -136,10 +136,74 @@ def _escape(text):
     return _html.escape(text or '', quote=False)
 
 
-def tell_owner(env, config, text, draft=None):
-    """Mensaje a Sergio: por WhatsApp si su ventana está abierta; si no, actividad en Odoo
-    sobre el borrador (o nada, si no hay borrador al que colgarla). Devuelve
-    (vía, mail_message_id)."""
+TEMPLATE_NAME = 'compras_consulta_proveedor'
+TEMPLATE_BODY = ("Hola Sergio. Tenés una consulta de Compras esperando tu OK: {{1}} "
+                 "Respondé dale para mandar el borrador, no para descartarlo, o escribí "
+                 "la corrección.")
+TEMPLATE_DEMO = ("C12 · Proveedor Ejemplo escribió: «Mañana despachamos el pedido» "
+                 "Borrador: «Perfecto, muchas gracias por avisar»")
+
+
+def purchase_template(env, account, approved=True):
+    domain = [('template_name', '=', TEMPLATE_NAME), ('wa_account_id', '=', account.id)]
+    if approved:
+        domain.append(('status', '=', 'approved'))
+    return env['whatsapp.template'].sudo().search(domain, limit=1)
+
+
+def ensure_purchase_template(env, account):
+    """Crea (en borrador) la plantilla de utilidad con la que se le avisa a Sergio cuando
+    su ventana de 24 h está cerrada. No la manda a Meta: eso lo hace el cron en producción."""
+    if not account:
+        return env['whatsapp.template']
+    template = purchase_template(env, account, approved=False)
+    if template:
+        return template
+    template = env['whatsapp.template'].sudo().create({
+        'name': TEMPLATE_NAME, 'template_name': TEMPLATE_NAME, 'body': TEMPLATE_BODY,
+        'lang_code': 'es_AR', 'template_type': 'utility', 'wa_account_id': account.id,
+        'model_id': env['ir.model']._get_id('res.partner'), 'phone_field': 'mobile',
+    })
+    template.variable_ids.filtered(lambda v: v.line_type == 'body').write(
+        {'field_type': 'free_text', 'demo_value': TEMPLATE_DEMO})
+    return template
+
+
+def _tell_owner_template(env, config, text):
+    """Ventana cerrada: el aviso sale por la plantilla aprobada. (ok, mail_message_id)."""
+    account, user = config.purchase_wa_account_id, config.purchase_owner_user_id
+    template = purchase_template(env, account)
+    if not (template and user and config.enable_send_whatsapp_templates):
+        return False, False
+    from .tool_registry import ToolRegistry
+    from . import tools  # noqa: F401 — registra las herramientas
+    tool = ToolRegistry.get('send_whatsapp_template')
+    if not tool:
+        return False, False
+    # Una plantilla por hora como mucho: si no contestó la anterior, lo que siga queda
+    # como actividad en Odoo (cuando conteste, la ventana se abre y vuelve el texto libre).
+    if env['whatsapp.message'].sudo().search_count([
+            ('wa_template_id', '=', template.id),
+            ('create_date', '>=', fields.Datetime.now() - timedelta(hours=1))]):
+        return False, False
+    one_line = re.sub(r'\s+', ' ', text or '').strip()[:950]
+    res = tool.execute(
+        env=env(context=dict(env.context, from_cristal_agent=True, wa_policy_bypass=True,
+                             allow_opt_out=True)),
+        run=None, partner_id=user.partner_id.id, template_name=TEMPLATE_NAME,
+        variables=[one_line], wa_account_id=account.id) or {}
+    if not res.get('ok'):
+        _logger.warning("Compras consulta: la plantilla a Sergio no salió: %s",
+                        res.get('error') or res.get('message'))
+        return False, False
+    wa_msg = env['whatsapp.message'].sudo().browse(res.get('wa_message_id') or 0).exists()
+    return True, wa_msg.mail_message_id.id if wa_msg else False
+
+
+def tell_owner(env, config, text, draft=None, template_text=None):
+    """Mensaje a Sergio: por WhatsApp si su ventana está abierta; con la ventana cerrada,
+    por la plantilla aprobada; y si tampoco, actividad en Odoo sobre el borrador (o nada,
+    si no hay borrador al que colgarla). Devuelve (vía, mail_message_id)."""
     account, number = config.purchase_wa_account_id, owner_number(config)
     if number and (_test(env) is not None or _window_open(env, account, number)):
         res = wa_send(env, _channel_for(env, account, number), account, number, text)
@@ -147,6 +211,13 @@ def tell_owner(env, config, text, draft=None):
             return 'whatsapp', res.get('mail_message_id')
         _logger.warning("Compras consulta: aviso a Sergio por WhatsApp falló: %s",
                         res.get('error'))
+    if draft and _test(env) is None:
+        try:
+            ok, mail_id = _tell_owner_template(env, config, template_text or text)
+            if ok:
+                return 'template', mail_id
+        except Exception:  # noqa: BLE001
+            _logger.exception("Compras consulta: falló el aviso por plantilla")
     if draft and config.purchase_owner_user_id:
         try:
             draft.activity_schedule(
@@ -329,6 +400,12 @@ def owner_text(draft, corrected=False):
     note = f"\n\nNota: {draft.note}" if (draft.note and not corrected) else ''
     return (f"{head}{note}\n\nBorrador:\n«{draft.draft_text}»\n\n"
             f"Respondé *dale* para mandarlo, *no* para descartarlo, o escribime la corrección.")
+
+
+def owner_template_text(draft):
+    """Lo mismo en una línea, para la variable de la plantilla (que ya trae las opciones)."""
+    return (f"{draft.name} · {draft.supplier_name} escribió: "
+            f"«{(draft.incoming_text or '')[:350]}» Borrador: «{(draft.draft_text or '')[:450]}»")
 
 
 # ───────────────────────── respuesta de Sergio ─────────────────────────

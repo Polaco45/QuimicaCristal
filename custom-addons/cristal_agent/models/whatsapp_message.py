@@ -377,12 +377,16 @@ class WhatsAppMessage(models.Model):
             pc.handle_owner_message(self.env, config, wa_message, plain_body)
             return
         text = plain_body
+        audio = self._get_audio_attachment(wa_message) if not text else False
+        if audio:
+            # Se transcribe en el cron, nunca dentro del webhook.
+            self.env['cristal.agent.supplier.draft'].sudo().enqueue_inbound(
+                config, wa_message, '', audio=audio)
+            return
         if not text and wa_message.mail_message_id:
             mimes = [(a.mimetype or '').lower()
                      for a in wa_message.mail_message_id.attachment_ids]
-            if any(m.startswith('audio/') for m in mimes):
-                text = "[mandó una nota de voz]"
-            elif any(m == 'application/pdf' for m in mimes):
+            if any(m == 'application/pdf' for m in mimes):
                 text = "[mandó un PDF]"
             elif any(m.startswith('image/') for m in mimes):
                 text = "[mandó una foto]"
