@@ -218,25 +218,19 @@ class SaleOrder(models.Model):
 
     def action_cristal_pickup_ready(self):
         """Botón para quien arma el pedido: avisa al cliente que ya puede pasar a retirar."""
-        from ..services.tool_registry import ToolRegistry
-        tool = ToolRegistry.get('send_whatsapp')
+        # v1.81 — por la cuenta Mayorista: chat si hay (o la plantilla de novedad de pedido si
+        # la ventana está cerrada) y, si no hay chat, directo por esa plantilla.
+        from ..services.pickup_staff import _send
         for order in self:
             if order.state not in ('sale', 'done'):
                 raise UserError("Primero confirmá el pedido.")
             partner = order.partner_id
-            channel = self.env['discuss.channel'].sudo().search(
-                [('channel_type', '=', 'whatsapp'), ('channel_partner_ids', 'in', partner.ids)],
-                order='write_date desc', limit=1)
-            if not tool or not channel or not channel.wa_account_id or not channel.whatsapp_number:
-                raise UserError(f"{partner.name} no tiene chat de WhatsApp: avisale por teléfono.")
+            if not (partner.mobile or partner.phone):
+                raise UserError(f"{partner.name} no tiene celular cargado: avisale por teléfono.")
             text = (f"Tu pedido {order.name} ya está listo para retirar en {PICKUP_ADDRESS} "
                     f"(lunes a viernes de 8 a 13 y de 17 a 20, sábados de 9 a 13). Traé los "
                     f"bidones vacíos con tapa para el recambio. ¡Te esperamos!")
-            env2 = self.env(context=dict(self.env.context, from_cristal_agent=True,
-                                         wa_transactional=True))
-            res = tool.execute(env=env2, run=None, channel_id=channel.id, body=f"<p>{text}</p>",
-                               wa_account_id=channel.wa_account_id.id,
-                               mobile_number=channel.whatsapp_number) or {}
+            res = _send(self.env, partner, text)
             if not res.get('ok'):
                 raise UserError("No se pudo mandar el aviso: "
                                 + str(res.get('error') or res.get('message') or '')[:200])

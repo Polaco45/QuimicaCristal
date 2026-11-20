@@ -244,7 +244,9 @@ def parse_eta(env, text):
         mnt = int((g[1] if g[0] else g[3] if g[2] else 0) or 0)
         if 7 <= h <= 21 and mnt < 60:
             hhmm = f"{h}" if not mnt else f"{h}:{mnt:02d}"
-            day = 'mañana' if _RE_TOMORROW.search(t) else 'hoy'
+            # Una hora que ya pasó hoy es de mañana ("a las 11" contestado a las 19).
+            past = (h, mnt) <= (now.hour, now.minute)
+            day = 'mañana' if (_RE_TOMORROW.search(t) or past) else 'hoy'
             return f"{day} a las {hhmm} hs"
     return ''
 
