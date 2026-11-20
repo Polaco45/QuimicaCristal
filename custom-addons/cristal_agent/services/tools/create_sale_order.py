@@ -1341,7 +1341,7 @@ class CreateSaleOrder(AgentTool):
             result['route_note'] = (
                 "RETIRO EN EL LOCAL (San Martín 2350, Río Cuarto): sin compra mínima y sin "
                 "flete. Se retira SOLO con pedido hecho por acá: no se arma en el momento. "
-                "Cuando lo confirmes decile que lo preparamos y le avisamos por WhatsApp "
+                "Cuando lo confirmes decile que lo preparamos EN EL DÍA y le avisamos por WhatsApp "
                 "cuando esté listo para retirar (que no pase antes del aviso), y que traiga "
                 "sus bidones vacíos con tapa para el recambio.")
         elif is_route:

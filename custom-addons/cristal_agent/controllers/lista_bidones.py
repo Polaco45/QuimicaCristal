@@ -38,7 +38,7 @@ class CristalListaBidones(http.Controller):
 <table><thead><tr><th>Producto (bidón de 20 L)</th><th class="n">Precio bidón</th>
 <th class="n">Precio por litro</th></tr></thead><tbody>{body}</tbody></table>
 <div class="pie"><b>¿Querés la lista completa o hacer tu pedido?</b> Escribinos por WhatsApp al
-<b>358 609 1684</b>. Te preparamos el pedido y te avisamos cuando está listo para retirar
+<b>358 609 1684</b>. Te preparamos el pedido en el día y te avisamos cuando está listo para retirar
 (no se arma en el momento).</div>
 <script>window.addEventListener('load', function () {{ setTimeout(function () {{ window.print(); }}, 300); }});</script>
 </body></html>"""
