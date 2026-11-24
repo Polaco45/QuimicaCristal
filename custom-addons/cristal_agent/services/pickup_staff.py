@@ -299,7 +299,7 @@ def _staff_news(env, staff, order, text):
         summary=f"Novedad del depósito sobre {order.name}",
         note=(f"El depósito (Guillermo) avisa sobre el pedido {order.name}: «{text}». "
               f"Avisale a {customer.name} por WhatsApp (tratalo de vos, corto), ofrecé la "
-              f"alternativa que propone el depósito y, si acepta, actualizá el pedido. No "
+              f"alternativa que propone el depósito. Cuando conteste: si acepta, swap_order_product(order_id={order.id}, producto viejo, producto nuevo); si no lo quiere, swap_order_product sin new_product_id (lo saca). Esa tool le avisa sola al depósito. No "
               f"escales a Joaco. Después cerrá esta actividad con mark_activity_done."))
     lead = env['crm.lead'].sudo().search([('partner_id', '=', customer.id)],
                                          order='id desc', limit=1)

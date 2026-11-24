@@ -46,6 +46,7 @@ from . import mark_activity_done
 from . import confirm_sample_sent
 from . import create_sale_order
 from . import remove_quote_product
+from . import swap_order_product
 # from . import add_free_samples  # v1.34.1: Joaco sacó la promo de muestras gratis +$60.000
 
 # Ruta del camión mayorista (v1.32)
