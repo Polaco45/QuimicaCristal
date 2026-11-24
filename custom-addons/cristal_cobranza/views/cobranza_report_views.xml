@@ -7,6 +7,7 @@
         <field name="model">cristal.cobranza.report</field>
         <field name="arch" type="xml">
             <list string="Deuda por cliente" create="false" delete="false"
+                  action="action_open_partner" type="object"
                   default_order="total_vencido desc"
                   decoration-danger="gravedad == 'critica'"
                   decoration-warning="gravedad == 'alta'"
@@ -29,6 +30,8 @@
                        optional="hide"/>
                 <field name="cobranza_last_stage" optional="show"/>
                 <field name="cobranza_exclude" optional="hide"/>
+                <button name="action_open_facturas" type="object"
+                        string="Facturas" icon="fa-file-text-o"/>
             </list>
         </field>
     </record>
