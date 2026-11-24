@@ -211,6 +211,47 @@ class SaleOrder(models.Model):
         cron_pickup_staff(self.env)
 
     @api.model
+    def cristal_convert_granel_drafts(self, dry_run=False):
+        """v1.81.1 — Cotizaciones abiertas (borrador/enviada) con productos a granel → bidón
+        de 20 L (Joaco 24/11: "cambialas"). Se respeta el precio por litro cotizado: el
+        bidón queda a precio por litro × 20; los litros se pasan a bidones redondeando para
+        arriba. Devuelve {pedido: [cambios]}."""
+        import math
+        from ..services.tools.search_products import is_granel, is_bidon20, bidon20_equivalent
+        out, cache = {}, {}
+        lines = self.env['sale.order.line'].sudo().search([
+            ('order_id.state', 'in', ('draft', 'sent')), ('display_type', '=', False),
+            ('product_id.name', 'ilike', 'granel')])
+        for line in lines:
+            prod = line.product_id
+            if not is_granel(prod) or is_bidon20(prod):
+                continue
+            if prod.id not in cache:
+                cache[prod.id] = bidon20_equivalent(self.env, prod)
+            bidon = cache[prod.id]
+            key = line.order_id.name
+            if not bidon:
+                out.setdefault(key, []).append(f"SIN BIDÓN: {prod.display_name}")
+                continue
+            litres = line.product_uom_qty or 0.0
+            n = max(1, math.ceil(litres / 20.0 - 1e-9))
+            per_litre = line.price_unit or 0.0
+            out.setdefault(key, []).append(
+                f"{litres:g} L {prod.display_name} → {n} {bidon.display_name} a ${per_litre * 20:,.0f}")
+            if dry_run:
+                continue
+            line.write({'product_id': bidon.id, 'product_uom_qty': n})
+            line.write({'price_unit': per_litre * 20})
+        if not dry_run:
+            for name, changes in out.items():
+                order = self.sudo().search([('name', '=', name)], limit=1)
+                if order:
+                    order.message_post(body="🔁 Granel pasado a bidones de 20 L (mismo precio por "
+                                            "litro): " + '; '.join(changes),
+                                       subtype_xmlid='mail.mt_note')
+        return out
+
+    @api.model
     def cristal_pickup_parse_eta(self, text):
         """Para probar: cómo se entiende una respuesta del depósito."""
         from ..services.pickup_staff import parse_eta

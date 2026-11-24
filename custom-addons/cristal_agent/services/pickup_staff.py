@@ -102,7 +102,8 @@ def _send(env, partner, text, account=None):
     from .tool_registry import ToolRegistry
     from .helpers import order_update_template, order_update_ref
     account = account or _account(env)
-    env2 = env(context=dict(env.context, from_cristal_agent=True, wa_transactional=True))
+    env2 = env(context=dict(env.context, from_cristal_agent=True, wa_transactional=True,
+                            allow_opt_out=True))  # Guillermo está en No contactar (no es cliente)
     channel = env['discuss.channel'].sudo().search(
         [('channel_type', '=', 'whatsapp'), ('channel_partner_ids', 'in', partner.ids)]
         + ([('wa_account_id', '=', account.id)] if account else []),

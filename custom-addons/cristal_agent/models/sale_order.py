@@ -494,25 +494,25 @@ class SaleOrder(models.Model):
         out = []
         for p in confirm_blockers(self.env, self):
             if p.startswith('falta la dirección'):
-                out.append("la dirección exacta de entrega (o si lo retira en el local)")
+                out.append("la dirección exacta de entrega (o si lo retirás en el local)")
             elif p.startswith('falta confirmar los bidones'):
-                out.append("cuántos bidones vacíos de 20 L con tapa tiene para el recambio")
+                out.append("cuántos bidones vacíos de 20 L con tapa tenés para el recambio")
             elif p.startswith('envío fuera de'):
-                out.append("si lo retira en nuestro local o lo manda a buscar con un "
-                           "comisionista (a su localidad no llega nuestro reparto)")
+                out.append("si lo retirás en nuestro local o lo mandás a buscar con un "
+                           "comisionista (a tu localidad no llega nuestro reparto)")
             elif p.startswith('no hay stock suficiente de'):
                 m = re.match(r'no hay stock suficiente de (.+?)(?: \(pide|$)', p)
                 name = re.sub(r'^\[[^\]]+\]\s*', '', m.group(1)) if m else 'un producto'
-                out.append(f"si lo confirmamos con lo que tenemos hoy de {name} o prefiere "
+                out.append(f"si lo confirmamos con lo que tenemos hoy de {name} o preferís "
                            f"esperar la reposición")
             elif p.startswith('tiene facturas vencidas'):
-                out.append("regularizar el saldo pendiente de su cuenta (le paso el detalle "
-                           "si lo necesita)")
+                out.append("regularizar el saldo pendiente de tu cuenta (te paso el detalle "
+                           "si lo necesitás)")
             elif p.startswith('la salida del camión'):
-                out.append("si lo retira en el local o lo dejamos para la próxima salida "
+                out.append("si lo retirás en el local o lo dejamos para la próxima salida "
                            "del camión")
         if not self.cristal_payment:
-            out.append("si paga en efectivo o por transferencia")
+            out.append("si pagás en efectivo o por transferencia")
         return out
 
     def _cristal_ok_reminder_text(self):
@@ -522,18 +522,18 @@ class SaleOrder(models.Model):
         total = f"${self.amount_total:,.0f}".replace(',', '.')
         dep = self.route_departure_id
         if self.cristal_delivery_mode == 'retiro':
-            entrega = "Lo retira en nuestro local (San Martín 2350, Río Cuarto)."
+            entrega = "Lo retirás en nuestro local (San Martín 2350, Río Cuarto)."
         elif dep and dep.date and dep.state in ('preventa', 'rescate') \
                 and not dep.circuit_id.paused:
             entrega = f"Va en el camión del {fmt_day(dep.date)}."
         elif self.partner_id.agent_zone in ('rio_cuarto', 'las_higueras'):
-            entrega = "Se lo llevamos por la mañana; le avisamos el día."
+            entrega = "Te lo llevamos por la mañana; te avisamos el día."
         else:
             entrega = ""
         missing = self._cristal_ok_missing()
-        ask = ("Para dejarlo confirmado necesito que me diga: " + "; ".join(missing) + "."
-               if missing else "Con su OK lo dejo confirmado.")
-        return (f"Le escribo por su cotización {self.name}: el total es {total}. "
+        ask = ("Para dejarlo confirmado necesito que me digas: " + "; ".join(missing) + "."
+               if missing else "Con tu OK lo dejo confirmado.")
+        return (f"Te escribo por tu cotización {self.name}: el total es {total}. "
                 + (entrega + " " if entrega else "")
                 + "¿La confirmamos? " + ask)
 
