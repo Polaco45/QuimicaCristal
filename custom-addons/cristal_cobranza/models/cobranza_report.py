@@ -52,6 +52,38 @@ class CristalCobranzaReport(models.Model):
     cobranza_last_stage = fields.Selection(
         STAGE_SELECTION, string="Último nivel enviado", readonly=True)
 
+    def action_open_partner(self):
+        """Clic en la fila del reporte: abre la ficha del cliente."""
+        self.ensure_one()
+        return {
+            'type': 'ir.actions.act_window',
+            'name': self.partner_id.display_name,
+            'res_model': 'res.partner',
+            'res_id': self.partner_id.id,
+            'view_mode': 'form',
+            'views': [(False, 'form')],
+            'target': 'current',
+        }
+
+    def action_open_facturas(self):
+        """Botón de la fila: facturas con saldo del cliente (vencidas primero)."""
+        self.ensure_one()
+        return {
+            'type': 'ir.actions.act_window',
+            'name': "Facturas con saldo — %s" % self.partner_id.display_name,
+            'res_model': 'account.move',
+            'view_mode': 'list,form',
+            'views': [(False, 'list'), (False, 'form')],
+            'domain': [
+                ('commercial_partner_id', '=', self.partner_id.id),
+                ('move_type', 'in', ('out_invoice', 'out_refund')),
+                ('state', '=', 'posted'),
+                ('payment_state', 'in', ('not_paid', 'partial')),
+            ],
+            'context': {'default_move_type': 'out_invoice', 'create': False},
+            'target': 'current',
+        }
+
     def init(self):
         tools.drop_view_if_exists(self.env.cr, self._table)
         self.env.cr.execute("""
