@@ -252,6 +252,59 @@ class SaleOrder(models.Model):
         return out
 
     @api.model
+    def cristal_convert_granel_confirmed(self, dry_run=True, exclude=None):
+        """v1.81.1 — Pedidos CONFIRMADOS sin entregar con granel → bidón de 20 L (Joaco 24/11:
+        "lo confirmado sin entregar que esté a granel hay que pasarlo por 20"). El renglón
+        a granel queda en 0 (se ajusta el remito) y se agrega el bidón con el mismo precio
+        por litro × 20. Solo renglones sin nada entregado y en múltiplos de 20 L (si no, el
+        total cambiaría: se informa y no se toca). Devuelve {pedido: [cambios]}."""
+        from ..services.tools.search_products import is_granel, is_bidon20, bidon20_equivalent
+        exclude = set(exclude or [])
+        out, cache = {}, {}
+        Line = self.env['sale.order.line'].sudo()
+        lines = Line.search([
+            ('order_id.state', '=', 'sale'), ('display_type', '=', False),
+            ('product_id.name', 'ilike', 'granel'), ('product_uom_qty', '>', 0),
+            ('qty_delivered', '=', 0)])
+        for line in lines:
+            order = line.order_id
+            if order.name in exclude:
+                continue
+            prod = line.product_id
+            if not is_granel(prod) or is_bidon20(prod):
+                continue
+            if prod.id not in cache:
+                cache[prod.id] = bidon20_equivalent(self.env, prod)
+            bidon = cache[prod.id]
+            litres = line.product_uom_qty
+            if not bidon:
+                out.setdefault(order.name, []).append(f"SIN BIDÓN: {prod.display_name}")
+                continue
+            if abs(litres / 20.0 - round(litres / 20.0)) > 1e-6:
+                out.setdefault(order.name, []).append(
+                    f"NO MÚLTIPLO DE 20: {litres:g} L {prod.display_name} (queda igual)")
+                continue
+            n = int(round(litres / 20.0))
+            price = (line.price_unit or 0.0) * 20
+            out.setdefault(order.name, []).append(
+                f"{litres:g} L {prod.display_name} → {n} {bidon.display_name} a ${price:,.0f}")
+            if dry_run:
+                continue
+            Line.create({'order_id': order.id, 'product_id': bidon.id, 'product_uom_qty': n,
+                         'price_unit': price, 'discount': line.discount,
+                         'sequence': line.sequence})
+            line.write({'product_uom_qty': 0})
+        if not dry_run:
+            for name, changes in out.items():
+                order = self.sudo().search([('name', '=', name)], limit=1)
+                if order:
+                    order.message_post(body="🔁 Pedido confirmado: granel pasado a bidones de 20 L "
+                                            "(mismo precio por litro, el remito se ajustó): "
+                                            + '; '.join(changes),
+                                       subtype_xmlid='mail.mt_note')
+        return out
+
+    @api.model
     def cristal_pickup_parse_eta(self, text):
         """Para probar: cómo se entiende una respuesta del depósito."""
         from ..services.pickup_staff import parse_eta
