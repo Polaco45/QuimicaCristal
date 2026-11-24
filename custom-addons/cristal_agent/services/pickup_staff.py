@@ -104,10 +104,30 @@ def _send(env, partner, text, account=None):
     account = account or _account(env)
     env2 = env(context=dict(env.context, from_cristal_agent=True, wa_transactional=True,
                             allow_opt_out=True))  # Guillermo está en No contactar (no es cliente)
-    channel = env['discuss.channel'].sudo().search(
-        [('channel_type', '=', 'whatsapp'), ('channel_partner_ids', 'in', partner.ids)]
-        + ([('wa_account_id', '=', account.id)] if account else []),
-        order='write_date desc', limit=1)
+    # v1.81.2 — el chat se busca por NÚMERO (el de Guillermo tiene como miembro a su
+    # usuario, no al contacto "Guille": por partner no aparecía y salía todo por plantilla).
+    Channel = env['discuss.channel'].sudo()
+    acc_dom = [('wa_account_id', '=', account.id)] if account else []
+    digits = re.sub(r'\D', '', partner.mobile or partner.phone or '')[-10:]
+    channel = Channel.browse()
+    if len(digits) == 10:
+        channel = Channel.search([('channel_type', '=', 'whatsapp'),
+                                  ('whatsapp_number', 'ilike', digits)] + acc_dom,
+                                 order='write_date desc', limit=1)
+    if not channel:
+        channel = Channel.search(
+            [('channel_type', '=', 'whatsapp'), ('channel_partner_ids', 'in', partner.ids)]
+            + acc_dom, order='write_date desc', limit=1)
+    if channel and channel.wa_account_id and channel.whatsapp_number and len(digits) == 10:
+        # Ventana abierta (nos escribió por esa cuenta en las últimas 23 h): texto libre
+        # directo en el chat, sin pasar por la plantilla.
+        since = fields.Datetime.now() - timedelta(hours=23)
+        if env['whatsapp.message'].sudo().search_count([
+                ('mobile_number', 'ilike', digits[-8:]), ('message_type', '=', 'inbound'),
+                ('wa_account_id', '=', channel.wa_account_id.id), ('create_date', '>=', since)]):
+            msg = channel.with_context(from_cristal_agent=True, wa_transactional=True).message_post(
+                body=text, message_type='whatsapp_message', subtype_xmlid='mail.mt_comment')
+            return {'ok': True, 'mail_message_id': msg.id}
     if channel and channel.wa_account_id and channel.whatsapp_number:
         tool = ToolRegistry.get('send_whatsapp')
         return tool.execute(env=env2, run=None, channel_id=channel.id, body=f"<p>{text}</p>",
@@ -267,6 +287,36 @@ def _pick_order(env, text, want):
     return env['sale.order'], pending
 
 
+def _staff_news(env, staff, order, text):
+    """El depósito avisa algo del pedido (falta un producto, un cambio): queda en el pedido y
+    Claudio se lo cuenta al cliente con la alternativa, sin escalar a Joaco."""
+    from .claude_client import dispatch_agent_for_activity
+    customer = order.partner_id
+    _note(order, f"📦 El depósito (Guillermo) avisa: «{text}»")
+    bot_user = env.ref('base.user_root', raise_if_not_found=False) or env.user
+    activity = order.sudo().activity_schedule(
+        'mail.mail_activity_data_todo', user_id=bot_user.id,
+        summary=f"Novedad del depósito sobre {order.name}",
+        note=(f"El depósito (Guillermo) avisa sobre el pedido {order.name}: «{text}». "
+              f"Avisale a {customer.name} por WhatsApp (tratalo de vos, corto), ofrecé la "
+              f"alternativa que propone el depósito y, si acepta, actualizá el pedido. No "
+              f"escales a Joaco. Después cerrá esta actividad con mark_activity_done."))
+    lead = env['crm.lead'].sudo().search([('partner_id', '=', customer.id)],
+                                         order='id desc', limit=1)
+    env.cr.commit()
+    try:
+        dispatch_agent_for_activity(env, customer, lead, activity)
+    except Exception as e:  # noqa: BLE001
+        _logger.exception("Novedad del depósito %s: Claudio no pudo avisar: %s", order.name, e)
+        _send(env, staff, f"Anotado en {order.name}, pero no pude avisarle a {customer.name}: "
+                          f"avisale por teléfono, por favor.")
+        return 'novedad falló'
+    ask = "" if order.cristal_pickup_eta else (
+        f" Mientras, ¿a qué hora tenés listo el resto? (ej: \"{order.name} a las 18\")")
+    _send(env, staff, f"👍 Anotado en {order.name}: ya se lo aviso a {customer.name}.{ask}")
+    return 'novedad'
+
+
 def handle_staff_reply(env, text):
     """Procesa un mensaje de Guillermo. Devuelve un texto con lo que se hizo (para log)."""
     from ..models.pos_mayorista import PICKUP_ADDRESS
@@ -298,9 +348,13 @@ def handle_staff_reply(env, text):
                           f"retirar.")
         return 'listo'
     if not eta:
-        _send(env, staff, f"No te entendí 🙂 Para {order.name} respondé con la hora "
-                          f"(ej: \"{order.name} a las 18\") o \"listo {order.name}\" cuando esté.")
-        return 'no entendí'
+        if len(_RE_ORDER.sub(' ', text).split()) <= 3:
+            # "ok", "dale", "👍": no hay nada que hacer ni que contestar.
+            return 'sin acción'
+        # v1.81.2 — caso Tefi S07488 (24/11): "Jabón para manos frutilla no tenemos.
+        # Podemos fabricar jabón para manos blanco". Es una NOVEDAD del pedido: Claudio se la
+        # cuenta al cliente y le ofrece la alternativa (antes se contestaba "No te entendí").
+        return _staff_news(env, staff, order, text)
     res = _send(env, customer, f"Tu pedido {order.name} va a estar listo {eta} para retirar en "
                                f"{PICKUP_ADDRESS}. Te aviso cuando esté.")
     if not res.get('ok'):
