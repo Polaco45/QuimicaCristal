@@ -303,6 +303,14 @@ def _wa_template_policy(env, mobile, text, template):
                     "Ese mismo mensaje ya se le mandó en las últimas 24 h."}
         return None
 
+    # v1.81.1 — Joaco (24/11): el feriado salieron plantillas de reactivación y nadie podía
+    # atender las respuestas. Nada comercial por iniciativa propia en día cerrado.
+    closed = closed_day_reason(env, now_ar(env).date())
+    if closed:
+        return {'code': 'CLOSED_DAY', 'message': (
+            f"Hoy no se trabaja ({closed}): las plantillas comerciales salen el próximo día "
+            f"hábil. Agendá el seguimiento para ese día.")}
+
     # La ventana es por cuenta de WhatsApp. Si el envío ya viene de send_whatsapp
     # (que eligió plantilla porque vio la ventana cerrada), no se vuelve a evaluar.
     window = number + [('message_type', '=', 'inbound'),
