@@ -16,6 +16,9 @@ El cron nace DESACTIVADO y arranca en modo prueba (un solo cliente).
 import base64
 import logging
 import re
+from datetime import datetime
+
+import pytz
 
 from odoo import models, fields, api
 
@@ -42,6 +45,13 @@ class CristalAgentRun(models.Model):
         config = self.env['cristal.agent.config'].sudo().get_active()
         if not config or not config.cobranza_enabled:
             _logger.info("💤 Cobranza desactivada (cobranza_enabled=False). Nada que hacer.")
+            return
+
+        # v1.4.2 (Joaco 25/11/2026): "no mandar mensajes de cobranza los finde semana".
+        # Sábado y domingo (hora de Argentina) no corre; lo pendiente sale el lunes.
+        now_ar = datetime.now(pytz.timezone('America/Argentina/Buenos_Aires'))
+        if now_ar.weekday() >= 5:
+            _logger.info("💤 Cobranza: es fin de semana (%s), no se manda nada.", now_ar.date())
             return
 
         try:
