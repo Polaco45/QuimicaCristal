@@ -571,6 +571,51 @@ class CristalAgentSupplierDraft(models.Model):
                       not env['cristal.agent.memory'].search([('partner_id', '=', other.id)]),
                       "se creó una memoria de ventas")
 
+                # 8c) v1.82.6 — Un contacto que solo PARTICIPA en un chat de Compras (Sergio
+                # está en todos) no tiene ahí "su" chat: los seguimientos a clientes no
+                # salen nunca por Compras ni a un número que no es el del cliente.
+                from ..services import helpers as hp, tools as _tools  # noqa: F401
+                from ..services.tool_registry import ToolRegistry
+                if owner.partner_id not in sup_ch.channel_partner_ids:
+                    env['discuss.channel.member'].create({
+                        'channel_id': sup_ch.id, 'partner_id': owner.partner_id.id})
+                found = hp.customer_wa_channel(env, owner.partner_id)
+                check("participar en un chat de Compras no lo vuelve el chat del contacto",
+                      owner.partner_id in sup_ch.channel_partner_ids
+                      and found not in (sup_ch | oth_ch | own_ch)
+                      and found.wa_account_id != account,
+                      f"devolvió el chat {found.id} de la cuenta {found.wa_account_id.name}")
+                check("la cuenta de Compras no es cuenta de ventas",
+                      account not in hp.sales_wa_accounts(env)
+                      and account.id in hp.nonclient_wa_account_ids(env), "figura como de ventas")
+                send_tool = ToolRegistry.get('send_whatsapp')
+                blocked = send_tool.execute(
+                    env=env, run=None, channel_id=sup_ch.id, body='Seguimiento de prueba',
+                    wa_account_id=account.id, mobile_number='+5493580000002') or {}
+                check("un mensaje a clientes no sale por la cuenta de Compras",
+                      blocked.get('not_sent') and blocked.get('error') == 'CUENTA_NO_ES_DE_CLIENTES',
+                      str(blocked)[:200])
+                sales = hp.sales_wa_accounts(env)[:1]
+                if sales:
+                    client = env['res.partner'].create({
+                        'name': 'Cliente Autotest', 'mobile': '+5493580000004'})
+                    cli_ch = env['discuss.channel'].create({
+                        'name': client.name, 'channel_type': 'whatsapp',
+                        'whatsapp_number': '5493580000004',
+                        'whatsapp_partner_id': client.id, 'wa_account_id': sales.id})
+                    env['discuss.channel.member'].create({
+                        'channel_id': cli_ch.id, 'partner_id': owner.partner_id.id})
+                    check("el chat del cliente es el de su número, en una cuenta de ventas",
+                          hp.customer_wa_channel(env, client) == cli_ch
+                          and hp.customer_wa_channel(env, owner.partner_id) != cli_ch,
+                          "no encontró el chat del cliente o lo tomó como del participante")
+                    wrong = send_tool.execute(
+                        env=env, run=None, channel_id=cli_ch.id, body='Seguimiento de prueba',
+                        wa_account_id=sales.id, mobile_number='+5493580000002') or {}
+                    check("no se manda a un número que no es el del chat",
+                          wrong.get('not_sent') and wrong.get('error') == 'NUMERO_NO_ES_DEL_CHAT',
+                          str(wrong)[:200])
+
                 # 9) Apagado → la cuenta de Compras queda como hoy (nadie la toca).
                 config.purchase_consult_enabled = False
                 before = Draft.search_count([])

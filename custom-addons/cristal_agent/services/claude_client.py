@@ -88,10 +88,8 @@ MEDIA_MAX_FILES = 4
 
 
 def _partner_wa_channel_id(env, partner):
-    ch = env['discuss.channel'].sudo().search([
-        ('channel_type', '=', 'whatsapp'), ('channel_partner_ids', 'in', [partner.id])],
-        order='write_date desc', limit=1)
-    return ch.id or False
+    from .helpers import customer_wa_channel
+    return customer_wa_channel(env, partner).id or False
 
 
 def _recent_inbound_media(env, channel_id, partner):
@@ -331,10 +329,8 @@ def dispatch_agent_for_activity(env, partner, lead, activity):
         wa_account_id = None
         # Buscar canal WhatsApp del partner
         try:
-            wa_channel = Channel.search([
-                ('channel_type', '=', 'whatsapp'),
-                ('channel_partner_ids', 'in', [partner.id]),
-            ], limit=1, order='write_date desc')
+            from .helpers import customer_wa_channel
+            wa_channel = customer_wa_channel(env, partner)
             if wa_channel and hasattr(wa_channel, 'wa_account_id') and wa_channel.wa_account_id:
                 wa_account_id = wa_channel.wa_account_id.id
         except Exception:

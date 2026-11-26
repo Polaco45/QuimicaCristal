@@ -99,6 +99,30 @@ class SendWhatsApp(AgentTool):
         if not is_internal_channel and not (wa_account_id and mobile_number):
             return {"error": "Para enviar a un cliente WA externo, wa_account_id y mobile_number son obligatorios"}
 
+        # v1.82.6 — Freno de última línea (Sergio 26/11/2026: un seguimiento de cotización
+        # salió a un proveedor por el WhatsApp de Compras). Esta herramienta nunca escribe
+        # por una cuenta que no es de clientes, ni a un número que no es el del chat.
+        if not is_internal_channel:
+            import re as _re
+            from ..helpers import nonclient_wa_account_ids
+            if int(wa_account_id) in nonclient_wa_account_ids(env):
+                _logger.warning("⛔ send_whatsapp frenado: la cuenta %s no es de clientes "
+                                "(canal %s).", wa_account_id, channel_id)
+                return {"error": "CUENTA_NO_ES_DE_CLIENTES", "not_sent": True, "message": (
+                    "NO SE ENVIÓ NADA: esa cuenta de WhatsApp no es de clientes (Compras). "
+                    "A los clientes se les escribe solo por su chat en una cuenta de ventas. "
+                    "No anotes que le escribiste.")}
+            target = env['discuss.channel'].sudo().browse(int(channel_id)).exists()
+            chat_digits = _re.sub(r'\D', '', (target.whatsapp_number or '') if target else '')[-8:]
+            to_digits = _re.sub(r'\D', '', mobile_number or '')[-8:]
+            if len(chat_digits) == 8 and len(to_digits) == 8 and chat_digits != to_digits:
+                _logger.warning("⛔ send_whatsapp frenado: el número %s no es el del chat %s.",
+                                mobile_number, channel_id)
+                return {"error": "NUMERO_NO_ES_DEL_CHAT", "not_sent": True, "message": (
+                    "NO SE ENVIÓ NADA: ese chat es de otro número. Usá el channel_id y el "
+                    "mobile_number del chat del propio cliente (read_partner los devuelve). "
+                    "No anotes que le escribiste.")}
+
         # ═════════ CHECK VENTANA 24HS (solo para clientes externos) ═════════
         # Fix 1.10.5: si este run lo disparó un mensaje ENTRANTE del cliente
         # (trigger='whatsapp_message'), la ventana de 24hs está abierta POR

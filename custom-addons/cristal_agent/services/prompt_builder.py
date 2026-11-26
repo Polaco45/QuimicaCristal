@@ -487,9 +487,8 @@ def _recent_conversation_lines(env, partner, limit=10):
     """Últimos mensajes del chat de WhatsApp del cliente, del más viejo al más nuevo."""
     try:
         Channel = env['discuss.channel'].sudo()
-        channel = Channel.search([('channel_type', '=', 'whatsapp'),
-                                  ('channel_partner_ids', 'in', [partner.id])],
-                                 order='write_date desc', limit=1)
+        from .helpers import customer_wa_channel
+        channel = customer_wa_channel(env, partner)
         if not channel:
             return []
         msgs = env['mail.message'].sudo().search([
@@ -658,9 +657,8 @@ def build_user_message_for_whatsapp(env, wa_message, partner, plain_text):
     # Claudio no tenía por dónde responder y (con razón) no adivinaba.
     fb_account_id = None
     if not channel_id:
-        fb = env['discuss.channel'].sudo().search([
-            ('channel_type', '=', 'whatsapp'),
-            ('channel_partner_ids', 'in', [partner.id])], order='write_date desc', limit=1)
+        from .helpers import customer_wa_channel
+        fb = customer_wa_channel(env, partner)
         if fb:
             channel_id = fb.id
             fb_account_id = fb.wa_account_id.id if 'wa_account_id' in fb._fields else None

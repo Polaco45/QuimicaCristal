@@ -393,9 +393,8 @@ class SaleOrder(models.Model):
         if not self._cristal_is_mayorista():
             return 'skipped', 'No es mayorista'
         partner = self.partner_id.sudo()
-        channel = self.env['discuss.channel'].sudo().search([
-            ('channel_type', '=', 'whatsapp'), ('channel_partner_ids', 'in', partner.ids)],
-            order='write_date desc', limit=1)
+        from ..services.helpers import customer_wa_channel
+        channel = customer_wa_channel(self.env, partner)
         if not channel or not channel.wa_account_id or not channel.whatsapp_number:
             return 'skipped', 'Sin chat de WhatsApp'
         # v1.73 — antes no se mandaba si alguien del equipo ya le había escrito; ahora el
@@ -551,9 +550,8 @@ class SaleOrder(models.Model):
                 out[order.name] = 'ya se le pidió'
                 continue
             partner = order.partner_id
-            ch = self.env['discuss.channel'].sudo().search([
-                ('channel_type', '=', 'whatsapp'), ('channel_partner_ids', 'in', partner.ids)],
-                order='write_date desc', limit=1)
+            from ..services.helpers import customer_wa_channel
+            ch = customer_wa_channel(self.env, partner)
             if not tool or not ch or not ch.wa_account_id or not ch.whatsapp_number:
                 out[order.name] = 'sin chat de WhatsApp'
                 continue
@@ -606,9 +604,8 @@ class SaleOrder(models.Model):
             if sent >= limit:
                 break
             partner = order.partner_id
-            channel = self.env['discuss.channel'].sudo().search([
-                ('channel_type', '=', 'whatsapp'), ('channel_partner_ids', 'in', partner.ids)],
-                order='write_date desc', limit=1)
+            from ..services.helpers import customer_wa_channel
+            channel = customer_wa_channel(self.env, partner)
             if not channel:
                 continue
             msgs = self.env['mail.message'].sudo().search([
