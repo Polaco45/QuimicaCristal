@@ -117,6 +117,9 @@ class QuoteEntryCombo(AgentTool):
         partner = env['res.partner'].sudo().browse(int(partner_id or 0))
         if not partner.exists():
             return {"error": "partner_id no existe"}
+        block = env['cristal.agent.event.contact'].sudo().order_block(partner)  # v1.82.4
+        if block:
+            return block
         name, price, _items, _who = ENTRY_COMBOS[combo]
         lines = resolve_combo(env, combo)
         if not lines:

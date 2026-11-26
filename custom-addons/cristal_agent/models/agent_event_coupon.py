@@ -504,15 +504,45 @@ class CristalAgentEventContact(models.Model):
                 lines.append(
                     f"- 🎟️ Pidió el cupón {c.code} el {fields.Datetime.context_timestamp(c, c.entry_date):%d/%m}"
                     f" (ya se lo mandaste). Estado: {dict(STATES)[c.state]}. No se lo vuelvas a "
-                    f"mandar salvo que lo pida. Atendelo como consumidor final: ofrecele "
-                    f"productos y combos para la casa y que canjee el cupón en la web o en el "
-                    f"local (pedido por WhatsApp con envío → escalá a Joaco; nunca armes un "
-                    f"pedido con el 15%). Si pide la baja: mark_opt_out(kind=no_escribir) y "
-                    f"confirmale la baja en una línea.")
+                    f"mandar salvo que lo pida. Atendelo como CONSUMIDOR FINAL:\n"
+                    f"  · Si consulta, recomendale para la casa (de fabricación propia: jabón "
+                    f"líquido para ropa, suavizante, perfume para ropa, desodorante de pisos, "
+                    f"detergente; también lavandina, que es fraccionada, y los combos para la "
+                    f"casa). El cupón pide compra mínima de $20.000: armale una sugerencia que "
+                    f"llegue a ese monto (si lo que pide es menos, sugerile qué sumar).\n"
+                    f"  · Dónde comprar: en la web quimicacristal.com.ar (tiene envío a "
+                    f"domicilio; el cupón se ingresa al pagar) o en el local de San Martín 2350 "
+                    f"(mostrando el cupón). NO le cotices ni le armes el pedido vos (no uses "
+                    f"create_sale_order): si igual quiere pedir por WhatsApp, decile que la "
+                    f"forma más rápida es la web y, si insiste, escalá a Joaco con "
+                    f"escalate_to_joaco (qué quiere y dónde vive) y decile que Joaquín le "
+                    f"confirma el pedido. Nunca armes un pedido con el 15%.\n"
+                    f"  · Si pide la baja: mark_opt_out(kind=no_escribir) y confirmale la baja en "
+                    f"una línea.")
                 if generic_name(partner.name) and c.name_asked:
                     lines.append("  Si en este mensaje te dice su nombre, guardalo con "
                                  "update_partner(name=...).")
         return lines
+
+    @api.model
+    def order_block(self, partner):
+        """v1.82.4 — Quien vino por un cupón de evento (consumidor final) compra en la web o
+        en el local. Claudio no arma pedidos: si lo quiere por WhatsApp, escala a Joaco.
+        Devuelve el error para la tool, o None si se puede cotizar."""
+        if not partner:
+            return None
+        today = fields.Date.context_today(self)
+        c = self.sudo().search([('partner_id', 'in', (partner | partner.commercial_partner_id).ids),
+                                ('state', '=', 'active')], limit=1)
+        if not c or not c.event_id.is_open(today):
+            return None
+        return {"error": "CUPON_EVENTO_SIN_PEDIDO", "not_created": True, "message_for_bot": (
+            f"NO SE ARMÓ EL PEDIDO: este cliente vino por el cupón {c.code} (consumidor final). "
+            f"El cupón se usa comprando en la web quimicacristal.com.ar (tiene envío a "
+            f"domicilio) o en el local (San Martín 2350). Recomendale qué llevar (que llegue a "
+            f"$20.000 para usar el 15%) y mandalo a la web o al local. Si igual quiere hacer el "
+            f"pedido por WhatsApp, usá escalate_to_joaco con lo que quiere y decile que Joaquín "
+            f"le confirma el pedido. No le cotices ni armes el pedido vos.")}
 
     @api.model
     def guard(self, partner, plain):
@@ -1019,6 +1049,8 @@ class CristalAgentEventContact(models.Model):
             assert g2 and g2['guard'] == 'cupon_no_pedido', g2
             lines = Contact.prompt_lines(p)
             assert lines and 'ya se lo mandaste' in ' '.join(lines), lines
+            assert Contact.order_block(p), "a un contacto del cupón no se le arma pedido"
+            assert not Contact.order_block(q), "a otro cliente sí"
             return "sin el cupón no sale · a quien no lo pidió no sale · marca cupón y nombre"
         case("Cupón evento: controles al enviar", c_guard)
 
