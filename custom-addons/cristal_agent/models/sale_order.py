@@ -396,7 +396,24 @@ class SaleOrder(models.Model):
         from ..services.helpers import customer_wa_channel
         channel = customer_wa_channel(self.env, partner)
         if not channel or not channel.wa_account_id or not channel.whatsapp_number:
-            return 'skipped', 'Sin chat de WhatsApp'
+            # v1.82.6 — Sin chat propio en una cuenta de ventas (por ejemplo, solo habló
+            # por Administración): el aviso sale por la plantilla de la cuenta de ventas,
+            # a su número. Nunca por un chat de otra cuenta.
+            from ..services.helpers import sales_wa_accounts
+            from ..services.tool_registry import ToolRegistry
+            tool = ToolRegistry.get('send_whatsapp')
+            account = sales_wa_accounts(self.env)[:1]
+            if not tool or not account or not (partner.mobile or partner.phone):
+                return 'skipped', 'Sin chat de WhatsApp'
+            env = self.env(context=dict(self.env.context, from_cristal_agent=True))
+            body = self._cristal_confirm_notice_text(updated=updated)
+            res = tool._send_by_template(env, None, partner, f"<p>{body}</p>",
+                                         account.id, None) or {}
+            if res.get('ok'):
+                return 'sent', 'Enviado por plantilla'
+            if res.get('error') == 'TEMPLATE_PENDING':
+                return 'pending', 'Espera respuesta a una plantilla anterior'
+            return 'skipped', str(res.get('error') or res.get('message') or 'No salió')[:200]
         # v1.73 — antes no se mandaba si alguien del equipo ya le había escrito; ahora el
         # detalle de lo que abona sale SIEMPRE (Joaco 17/11/2026: los montos tienen que
         # quedar claros antes de la entrega).
