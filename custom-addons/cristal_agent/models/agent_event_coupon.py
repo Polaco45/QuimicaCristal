@@ -32,7 +32,7 @@ COUPON_MIN = 20000.0
 COUPON_PCT = 15.0
 
 STATES = [
-    ('active', 'Siguiendo (sin compra)'),
+    ('active', 'Sin compra'),
     ('purchased', 'Compró'),
     ('done', 'Terminó (post-compra)'),
     ('finished', 'Terminó sin comprar'),
@@ -84,6 +84,10 @@ class CristalAgentEvent(models.Model):
     code = fields.Char(string="Código del cupón", required=True,
                        help="El código que trae el mensaje del QR (ej. HISPANO15).")
     active = fields.Boolean(default=True)
+    code_aliases = fields.Char(
+        string="Variantes del código",
+        help="Separadas por coma. Se reconocen como el mismo cupón (ej. OULTON15). El código "
+             "que se canjea en la web y en el local es siempre el principal.")
     keywords = fields.Char(
         string="Palabras del evento",
         help="Separadas por coma. Si el mensaje no trae el código pero menciona alguna de "
@@ -102,7 +106,7 @@ class CristalAgentEvent(models.Model):
     # ─── Medición (calculada al abrir) ───
     kpi_leads = fields.Integer(string="Contactos entrantes (leads)", compute='_compute_kpis')
     kpi_registered = fields.Integer(string="En el circuito", compute='_compute_kpis')
-    kpi_active = fields.Integer(string="Siguiendo sin compra", compute='_compute_kpis')
+    kpi_active = fields.Integer(string="Sin compra", compute='_compute_kpis')
     kpi_wholesale = fields.Integer(string="Mayoristas", compute='_compute_kpis')
     kpi_opted_out = fields.Integer(string="Bajas", compute='_compute_kpis')
     kpi_uses = fields.Integer(string="Usos del cupón (todas las ventas)", compute='_compute_kpis')
@@ -137,6 +141,12 @@ class CristalAgentEvent(models.Model):
         return self.active and self.date_start <= day <= self.date_end
 
     # ─── Detección en el texto entrante ───
+    def all_codes(self):
+        """Código del cupón + variantes que también se reconocen (ej. OULTON15 por OUTLON15)."""
+        self.ensure_one()
+        codes = [self.code] + [c.strip() for c in (self.code_aliases or '').split(',')]
+        return [re.sub(r'[\s\-_.]', '', c).upper() for c in codes if c and c.strip()]
+
     @api.model
     def match_text(self, text):
         """Evento al que se refiere el texto (por código, o por palabra del evento + cupón)."""
@@ -145,8 +155,9 @@ class CristalAgentEvent(models.Model):
         flat = re.sub(r'[\s\-_.]', '', _norm(text)).upper()
         events = self.sudo().search([])
         for ev in events:
-            if ev.code and ev.code.upper() in flat:
-                return ev
+            for code in ev.all_codes():
+                if code in flat:
+                    return ev
         plain = _norm(text)
         if 'cupon' not in plain and '15%' not in plain:
             return self.browse()
@@ -226,7 +237,7 @@ class CristalAgentEvent(models.Model):
     def _summary_html(self):
         self.ensure_one()
         return (f"<p><b>🎟️ {self.code}</b> — {self.name}<br/>"
-                f"Contactos: <b>{self.kpi_leads}</b> (en seguimiento {self.kpi_active}, "
+                f"Contactos: <b>{self.kpi_leads}</b> (sin compra {self.kpi_active}, "
                 f"mayoristas {self.kpi_wholesale}, bajas {self.kpi_opted_out}) · "
                 f"Usos del cupón: <b>{self.kpi_uses}</b> (web {self.kpi_uses_web}, local "
                 f"{self.kpi_uses_pos}) · Facturación sin IVA: <b>{_money(self.kpi_revenue)}</b><br/>"
@@ -479,17 +490,21 @@ class CristalAgentEventContact(models.Model):
                         lines.append("  En el mismo mensaje, al final, pedile UNA sola vez el "
                                      "nombre: \"¿Me decís tu nombre así te agendamos?\". Cuando "
                                      "te lo diga, guardalo con update_partner(name=...).")
-                    lines.append("  Es consumidor final: nada de preguntas de calificación "
-                                 "mayorista. El registro (etiqueta, lead, lista) y los "
-                                 "recordatorios los hace el sistema: NO agendes seguimientos "
-                                 "ni actividades por el cupón.")
+                    lines.append("  Es CONSUMIDOR FINAL: atendelo como tal en esta misma charla, "
+                                 "sin preguntas de calificación mayorista. Ofrecele lo que le "
+                                 "sirve para la casa (combos para la casa, productos más "
+                                 "elegidos) para que use el cupón en la web o en el local. El "
+                                 "registro (etiqueta, oportunidad, lista) lo hace el sistema. "
+                                 "NO hay recordatorios ni campaña aparte: no agendes "
+                                 "seguimientos ni actividades por el cupón.")
             elif c.state in ('active', 'purchased', 'done', 'finished'):
                 lines.append(
                     f"- 🎟️ Pidió el cupón {c.code} el {fields.Datetime.context_timestamp(c, c.entry_date):%d/%m}"
                     f" (ya se lo mandaste). Estado: {dict(STATES)[c.state]}. No se lo vuelvas a "
-                    f"mandar salvo que lo pida. Si contesta un recordatorio, conversá normal "
-                    f"(web o local; pedido por WhatsApp con envío → escalá a Joaco; nunca armes "
-                    f"un pedido con el 15%). Si pide la baja: mark_opt_out(kind=no_escribir) y "
+                    f"mandar salvo que lo pida. Atendelo como consumidor final: ofrecele "
+                    f"productos y combos para la casa y que canjee el cupón en la web o en el "
+                    f"local (pedido por WhatsApp con envío → escalá a Joaco; nunca armes un "
+                    f"pedido con el 15%). Si pide la baja: mark_opt_out(kind=no_escribir) y "
                     f"confirmale la baja en una línea.")
                 if generic_name(partner.name) and c.name_asked:
                     lines.append("  Si en este mensaje te dice su nombre, guardalo con "
@@ -581,6 +596,11 @@ class CristalAgentEventContact(models.Model):
         self = self.sudo()
         self._detect_purchases()
         self._sync_wholesale()
+        # v1.82.1 — Joaco (26/11): "no campaña aparte". Sin recordatorios ni plantillas:
+        # el cron solo mide compras. Los pasos quedan en el código por si algún día se piden.
+        if self.env['ir.config_parameter'].sudo().get_param(
+                'cristal_agent.event_coupon_followups', '0') != '1':
+            return
         if not self._in_step_hours():
             _logger.info("🎟️ Cupones de eventos: fuera de horario (L-V 10-19); solo compras.")
             return
@@ -923,8 +943,8 @@ class CristalAgentEventContact(models.Model):
             try:
                 Cad = env['cristal.agent.cadence'].sudo()
                 tpl = env['whatsapp.template'].sudo().search([('status', '=', 'approved')], limit=1)
-                for cad in Cad.search([('step_code', 'in', ['A', 'B', 'C', 'D', 'E'])]):
-                    cad.whatsapp_template_id = tpl
+                for cad in Cad.with_context(active_test=False).search([('step_code', 'in', ['A', 'B', 'C', 'D', 'E'])]):
+                    cad.write({'whatsapp_template_id': tpl.id, 'active': True})
                 p = mk('Lucía Pérez')
                 c = Contact.register(p, ev)
                 c.entry_date = fields.Datetime.now() - timedelta(days=4)
@@ -998,6 +1018,32 @@ class CristalAgentEventContact(models.Model):
             assert lines and 'ya se lo mandaste' in ' '.join(lines), lines
             return "sin el cupón no sale · a quien no lo pidió no sale · marca cupón y nombre"
         case("Cupón evento: controles al enviar", c_guard)
+
+        def c_sin_campana():
+            out = []
+            ev2 = Event.search([('code', '=', 'OUTLON15')], limit=1)
+            if ev2:
+                ev2.write({'code_aliases': 'OULTON15'})
+                c2 = Contact.capture_inbound(mk(), "Hola! Código OULTON15")
+                assert c2 and c2.event_id == ev2, "OULTON15 no se reconoce como OUTLON15"
+                out.append("OULTON15 → OUTLON15")
+            from ..services.tool_registry import ToolRegistry
+            from ..services import tools  # noqa: F401
+            tool = ToolRegistry.get('send_whatsapp_template')
+            sent = []
+            tool.execute = lambda env=None, run=None, **kw: sent.append(kw) or {'ok': True}
+            try:
+                env['ir.config_parameter'].sudo().set_param('cristal_agent.event_coupon_followups', '0')
+                p = mk('Sin Campaña')
+                c = Contact.register(p, ev)
+                c.write({'entry_date': fields.Datetime.now() - timedelta(days=4)})
+                Contact.cron_event_coupons()
+                assert not sent and not c.a_sent_at, "con la campaña apagada no sale nada"
+            finally:
+                del tool.execute
+            out.append("cron sin envíos (solo mide compras)")
+            return " · ".join(out)
+        case("Cupón evento: sin campaña aparte", c_sin_campana)
 
         def c_medicion():
             ev.invalidate_recordset()

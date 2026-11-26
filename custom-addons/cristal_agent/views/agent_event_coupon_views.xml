@@ -68,6 +68,7 @@
                             <field name="program_id"/>
                             <field name="date_start"/>
                             <field name="date_end"/>
+                            <field name="code_aliases"/>
                             <field name="keywords"/>
                             <field name="active"/>
                         </group>
