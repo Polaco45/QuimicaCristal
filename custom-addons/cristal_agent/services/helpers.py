@@ -837,3 +837,61 @@ def detect_opt_out_request(text):
     """True si el cliente pide explícitamente que no le escriban / manden más."""
     text = (text or '').strip()
     return bool(_RE_OPT_OUT.search(text)) and not _RE_OPT_OUT_TEMPORARY.search(text)
+
+
+# ─────────── v1.82.6 — El chat de WhatsApp DEL cliente ───────────
+# Sergio (26/11/2026): el seguimiento de una cotización a su nombre le salió a un
+# proveedor por el WhatsApp de Compras, porque se elegía "cualquier chat donde el contacto
+# participa" y él participa en todos los chats de Compras. Dos reglas, en un solo lugar:
+#   1) A los clientes se les escribe solo por las cuentas de ventas («Cuentas WhatsApp
+#      donde actúa el bot»). Nunca por Compras ni por Administración.
+#   2) El chat de un cliente es el del NÚMERO del cliente, no uno donde solo participa.
+def nonclient_wa_account_ids(env):
+    """Cuentas que no son de clientes: Compras y las del parámetro
+    sistemas.wa_cuentas_fuera_de_clientes."""
+    ids = set()
+    config = env['cristal.agent.config'].sudo().get_active()
+    if getattr(config, 'purchase_wa_account_id', False):
+        ids.add(config.purchase_wa_account_id.id)
+    raw = env['ir.config_parameter'].sudo().get_param(
+        'sistemas.wa_cuentas_fuera_de_clientes') or ''
+    ids.update(int(x) for x in re.findall(r'\d+', raw))
+    return ids
+
+
+def sales_wa_accounts(env):
+    """Cuentas por las que el agente les escribe a los clientes."""
+    Account = env['whatsapp.account'].sudo()
+    config = env['cristal.agent.config'].sudo().get_active()
+    accounts = config.restricted_wa_account_ids.sudo()
+    if not accounts:
+        # Sin lista cargada: todas menos las de administración.
+        accounts = Account.search([('name', 'not ilike', 'adm')])
+    excluded = nonclient_wa_account_ids(env)
+    return accounts.filtered(lambda a: a.id not in excluded)
+
+
+def customer_wa_channel(env, partner, account=None):
+    """Chat de WhatsApp del cliente en una cuenta de ventas (el más reciente), o vacío.
+    Es SU chat: el contacto es el dueño del chat o el número del chat es el suyo. Un chat
+    donde el contacto solo figura como participante (un empleado, Sergio) no cuenta."""
+    Channel = env['discuss.channel'].sudo()
+    if not partner:
+        return Channel.browse()
+    partner = partner.sudo()
+    accounts = account.sudo() if account else sales_wa_accounts(env)
+    if not accounts:
+        return Channel.browse()
+    base = [('channel_type', '=', 'whatsapp'), ('wa_account_id', 'in', accounts.ids)]
+    channel = Channel.search(base + [('whatsapp_partner_id', '=', partner.id)],
+                             order='write_date desc', limit=1)
+    if channel:
+        return channel
+    for number in (partner.mobile, partner.phone):
+        digits = re.sub(r'\D', '', number or '')[-10:]
+        if len(digits) == 10:
+            channel = Channel.search(base + [('whatsapp_number', 'like', digits)],
+                                     order='write_date desc', limit=1)
+            if channel:
+                return channel
+    return Channel.browse()

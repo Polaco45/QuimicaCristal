@@ -161,10 +161,8 @@ class ResPartner(models.Model):
             [('name', 'ilike', 'Mayorista')], limit=1)
         env2 = self.env(context=dict(self.env.context, from_cristal_agent=True,
                                      wa_transactional=True, cristal_system_attachments=True))
-        channel = self.env['discuss.channel'].sudo().search(
-            [('channel_type', '=', 'whatsapp'), ('channel_partner_ids', 'in', partner.ids)]
-            + ([('wa_account_id', '=', account.id)] if account else []),
-            order='write_date desc', limit=1)
+        from ..services.helpers import customer_wa_channel
+        channel = customer_wa_channel(self.env, partner, account=account or None)
         sent = {}
         if channel and channel.wa_account_id and channel.whatsapp_number:
             tool = ToolRegistry.get('send_whatsapp')

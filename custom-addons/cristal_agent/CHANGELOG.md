@@ -7,6 +7,16 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.82.6] — 2026-11-26
+
+### Fixed — Los mensajes a clientes salen solo por su propio chat, en una cuenta de ventas
+Sergio (26/11): el seguimiento de la cotización S07217, que estaba a su nombre, le salió a un
+proveedor por el WhatsApp de Compras. En diez lugares se elegía "el chat del cliente" como cualquier
+chat donde el contacto participa, y Sergio participa en todos los de Compras. Ahora hay una sola
+función (`helpers.customer_wa_channel`): el chat es el del número del cliente y solo en las cuentas
+de «Cuentas WhatsApp donde actúa el bot». Además `send_whatsapp` no escribe por una cuenta que no es
+de clientes ni a un número que no es el del chat. El autotest de Compras cubre los cuatro casos.
+
 ## [18.0.1.82.2] — 2026-11-26
 
 ### Added — Claudio pasa un pedido confirmado a retiro

@@ -157,10 +157,8 @@ class CristalAgentRouteDeparture(models.Model):
             if old != new and new and new >= self._local_today() and tool:
                 for order in orders:
                     partner = order.partner_id
-                    ch = self.env['discuss.channel'].sudo().search([
-                        ('channel_type', '=', 'whatsapp'),
-                        ('channel_partner_ids', 'in', partner.ids)],
-                        order='write_date desc', limit=1)
+                    from ..services.helpers import customer_wa_channel
+                    ch = customer_wa_channel(self.env, partner)
                     if not ch or not ch.wa_account_id or not ch.whatsapp_number:
                         continue
                     que = "pedido" if order.state == 'sale' else "cotización"

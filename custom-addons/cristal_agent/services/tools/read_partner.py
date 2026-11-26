@@ -103,10 +103,8 @@ class ReadPartner(AgentTool):
             }
 
         # Buscar canal de WhatsApp activo del partner (para mandar mensajes proactivos)
-        wa_channel = env['discuss.channel'].sudo().search([
-            ('channel_type', '=', 'whatsapp'),
-            ('channel_partner_ids', 'in', [partner.id]),
-        ], limit=1, order='write_date desc')
+        from ..helpers import customer_wa_channel
+        wa_channel = customer_wa_channel(env, partner)
         wa_channel_id = wa_channel.id if wa_channel else 0
         wa_account_id = 0
         if wa_channel and hasattr(wa_channel, 'wa_account_id') and wa_channel.wa_account_id:

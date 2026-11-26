@@ -44,9 +44,8 @@ class RegisterPaymentReceipt(AgentTool):
 
     def _last_inbound_media(self, env, partner):
         """Último archivo (foto/PDF) que mandó el cliente por WhatsApp en las últimas 48 h."""
-        channel = env['discuss.channel'].sudo().search([
-            ('channel_type', '=', 'whatsapp'), ('channel_partner_ids', 'in', partner.ids)],
-            order='write_date desc', limit=1)
+        from ..helpers import customer_wa_channel
+        channel = customer_wa_channel(env, partner)
         if not channel:
             return env['ir.attachment']
         msgs = env['mail.message'].sudo().search([
