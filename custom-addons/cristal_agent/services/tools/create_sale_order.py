@@ -644,6 +644,11 @@ class CreateSaleOrder(AgentTool):
         if not partner.exists():
             return {"error": f"partner_id={partner_id} no existe"}
 
+        # v1.82.4 — Cupón de evento (consumidor final): no se arman pedidos por acá.
+        block = env['cristal.agent.event.contact'].sudo().order_block(partner)
+        if block:
+            return block
+
         # v1.45 — CONSUMIDOR FINAL: precio público, sin mínimo ni 20% de primera compra.
         # El envío ($6.500, gratis desde $65.000) lo agrega la regla automática #73.
         is_cf = bool(consumidor_final)
