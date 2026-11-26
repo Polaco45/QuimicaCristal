@@ -32,3 +32,7 @@ access_cristal_agent_monthly_review_user,cristal.agent.monthly.review user,model
 access_cristal_agent_monthly_review_manager,cristal.agent.monthly.review manager,model_cristal_agent_monthly_review,base.group_system,1,1,1,1
 access_cristal_agent_supplier_draft_user,cristal.agent.supplier.draft user,model_cristal_agent_supplier_draft,base.group_user,1,0,0,0
 access_cristal_agent_supplier_draft_manager,cristal.agent.supplier.draft manager,model_cristal_agent_supplier_draft,base.group_system,1,1,1,1
+access_cristal_agent_event_user,cristal.agent.event user,model_cristal_agent_event,base.group_user,1,0,0,0
+access_cristal_agent_event_manager,cristal.agent.event manager,model_cristal_agent_event,base.group_system,1,1,1,1
+access_cristal_agent_event_contact_user,cristal.agent.event.contact user,model_cristal_agent_event_contact,base.group_user,1,0,0,0
+access_cristal_agent_event_contact_manager,cristal.agent.event.contact manager,model_cristal_agent_event_contact,base.group_system,1,1,1,1

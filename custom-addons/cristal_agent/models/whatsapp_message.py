@@ -292,6 +292,15 @@ class WhatsAppMessage(models.Model):
         except Exception as e:  # noqa: BLE001
             _logger.warning("No se pudo registrar la encuesta de %s: %s", partner.name, e)
 
+        # 5.6) v1.82 — Cupones de eventos (HISPANO15 / OUTLON15): registro por código del
+        # contacto (etiqueta, lead, lista), bajas y respuesta post-compra. Sin IA ni envíos.
+        try:
+            with self.env.cr.savepoint():
+                self.env['cristal.agent.event.contact'].sudo().capture_inbound(
+                    partner, plain_body, when=wa_message.create_date)
+        except Exception as e:  # noqa: BLE001
+            _logger.exception("Cupón de evento: no se pudo registrar a %s: %s", partner.name, e)
+
         # 6) Takeover humano activo? Bot pausado?
         if memory.is_takeover_active():
             # v1.60.1 — Si lo único que "intervino" fue una PLANTILLA mandada por campaña

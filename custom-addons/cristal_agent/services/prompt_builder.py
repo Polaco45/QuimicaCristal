@@ -366,6 +366,11 @@ def _build_partner_context(env, partner):
             and (datetime.utcnow() - partner.create_date).days <= 7:
         lines.append("- origen desconocido: en este intercambio preguntá UNA vez, natural y corto, "
                      "cómo nos conoció, y guardalo con set_origin.")
+    # v1.82 — Cupones de eventos (HISPANO15 / OUTLON15): texto exacto del día 0 y estado.
+    try:
+        lines.extend(env['cristal.agent.event.contact'].sudo().prompt_lines(partner))
+    except Exception as e:  # noqa: BLE001
+        _logger.warning("Cupón de evento: no pude armar el contexto de %s: %s", partner.id, e)
     if 'cristal_segment' in partner._fields and partner.cristal_segment \
             and partner.cristal_segment != 'sin_compras':
         seg = dict(partner._fields['cristal_segment'].selection).get(partner.cristal_segment)

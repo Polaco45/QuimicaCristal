@@ -2522,3 +2522,12 @@ class CristalAgentRouteSelftest(models.TransientModel):
             return ("Río Cuarto con dirección y $60.000 → confirmado · $200.000 → no · sin dirección → no · "
                     "ruta del camión → confirmado · cheque → no · apagado → no")
         self._case(results, "48. confirm_order: lista de control", c_confirm_order)
+
+        # v1.82 — Cupones de eventos (HISPANO15 / OUTLON15): entrada, fechas, envío simulado,
+        # compra, D/E, controles y medición (el detalle está en Cupones de eventos → Autotest).
+        def c_event_coupons():
+            sub = env['cristal.agent.event.contact'].selftest()
+            bad = [f"{n}: {d}" for n, ok, d in sub if not ok]
+            assert sub and not bad, ' | '.join(bad) or 'sin casos'
+            return f"{len(sub)} casos OK"
+        self._case(results, "75. Cupones de eventos", c_event_coupons)
