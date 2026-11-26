@@ -1056,6 +1056,100 @@ class CristalAgentEventContact(models.Model):
         case("Cupón evento: medición", c_medicion)
 
 
+class CristalAgentEventSimulation(models.AbstractModel):
+    """v1.82.4 — Prueba de una conversación REAL con Claudio, sin mandar nada.
+
+    Crea un contacto y su chat de WhatsApp de prueba, le "entra" cada mensaje como si lo
+    escribiera una persona (mismo registro, mismo prompt, misma IA, mismas tools y mismos
+    controles al enviar) y devuelve lo que Claudio habría contestado. Todo se revierte al
+    final: no queda el contacto, ni la oportunidad, ni mensajes, y no sale ningún WhatsApp
+    (context cristal_simulate: send_whatsapp y las tools que escriben hacia afuera solo
+    anotan). Usa la API de Claude de verdad (cuesta como una conversación normal)."""
+    _name = 'cristal.agent.event.simulation'
+    _description = 'Cristal Agent — Simulación de conversación (cupones de eventos)'
+
+    @api.model
+    def simulate_chat(self, messages, profile_name=None, mobile=None):
+        if isinstance(messages, str):
+            messages = [messages]
+        transcript, outbox = [], []
+
+        class _Rollback(Exception):
+            pass
+        try:
+            with self.env.cr.savepoint():
+                self._simulate(messages, profile_name, mobile, transcript, outbox)
+                raise _Rollback()
+        except _Rollback:
+            pass
+        return transcript
+
+    def _simulate(self, messages, profile_name, mobile, transcript, outbox):
+        from ..services.claude_client import dispatch_agent_for_message
+        env = self.env(user=1, context=dict(self.env.context, cristal_simulate=outbox,
+                                            tz='America/Argentina/Cordoba'))
+        config = env['cristal.agent.config'].sudo().get_active()
+        account = env['whatsapp.account'].sudo().search([('name', '=', 'Cristal Mayorista')],
+                                                        limit=1)
+        mobile = mobile or '+5493589' + fields.Datetime.now().strftime('%H%M%S')
+        partner = env['res.partner'].sudo().create({
+            'name': f"WhatsApp: {mobile[-10:]}", 'mobile': mobile, 'phone': mobile})
+        channel = env['discuss.channel'].sudo().create({
+            'name': profile_name or partner.name, 'channel_type': 'whatsapp',
+            'whatsapp_number': mobile, 'wa_account_id': account.id,
+            'whatsapp_partner_id': partner.id,
+            'channel_member_ids': [(0, 0, {'partner_id': partner.id})],
+        })
+        bot_pid = config.bot_partner_id.id if config.bot_partner_id else 2
+        Memory = env['cristal.agent.memory'].sudo()
+        for text in messages:
+            msg = env['mail.message'].sudo().create({
+                'model': 'discuss.channel', 'res_id': channel.id, 'body': text,
+                'message_type': 'whatsapp_message', 'author_id': partner.id,
+                'subtype_id': env.ref('mail.mt_comment').id})
+            wa_msg = env['whatsapp.message'].sudo().new({
+                'mobile_number': mobile, 'wa_account_id': account.id,
+                'mail_message_id': msg.id, 'state': 'received', 'message_type': 'inbound',
+                'body': text})
+            memory = Memory.get_or_create(partner)
+            memory.increment_received()
+            memory.write({'client_type': config.detect_client_type(
+                wa_account_id=account.id, partner=partner) or 'mayorista'})
+            env['cristal.agent.event.contact'].sudo().capture_inbound(partner, text)
+            try:
+                partner.agent_capture_origin(text, first_message=len(transcript) == 0)
+            except Exception:  # noqa: BLE001
+                pass
+            partner.write({'agent_last_inbound_at': fields.Datetime.now()})
+            transcript.append({'from': 'cliente', 'text': text})
+            start = len(outbox)
+            dispatch_agent_for_message(env, wa_msg, partner, memory, text)
+            for item in outbox[start:]:
+                if item.get('tool') == 'send_whatsapp':
+                    body = item['body'] or ''
+                    if not item.get('internal'):
+                        env['mail.message'].sudo().create({
+                            'model': 'discuss.channel', 'res_id': channel.id, 'body': body,
+                            'message_type': 'whatsapp_message', 'author_id': bot_pid,
+                            'subtype_id': env.ref('mail.mt_comment').id})
+                    text_out = re.sub(r'<br\s*/?>', '\n', body)
+                    text_out = re.sub(r'</p>\s*<p>', '\n\n', text_out)
+                    text_out = re.sub(r'<[^>]+>', '', text_out).strip()
+                    transcript.append({'from': 'canal interno (Joaco)' if item.get('internal')
+                                       else 'Claudio', 'text': text_out})
+                else:
+                    transcript.append({'from': f"[{item['tool']}]",
+                                       'text': str(item.get('args'))[:600]})
+            contact = env['cristal.agent.event.contact'].sudo().search(
+                [('partner_id', '=', partner.id)], limit=1)
+            transcript.append({'from': 'sistema', 'text': (
+                f"contacto: {partner.name} · etiquetas: {', '.join(partner.category_id.mapped('name'))}"
+                + (f" · cupón {contact.code} estado {contact.state}, cupón enviado: "
+                   f"{'sí' if contact.coupon_sent_at else 'no'}, nombre pedido: "
+                   f"{'sí' if contact.name_asked else 'no'}, oportunidad: {contact.lead_id.name}"
+                   if contact else " · sin registro de cupón"))})
+
+
 class ResPartnerEventCoupon(models.Model):
     _inherit = 'res.partner'
 
