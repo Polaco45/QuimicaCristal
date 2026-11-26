@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""v1.82 — Cupones de eventos (HISPANO15 / OUTLON15). Joaco, 26/11/2026.
+"""v1.82 — Cupones de eventos (HISPANO15 / OULTON15). Joaco, 26/11/2026.
 
 Química Cristal auspicia la Sociedad Española y los premios de RMI (CIMA Oulton). El QR
 abre WhatsApp al número de Claudio con "Hola! Quiero mi cupón del 15% - Código X".
@@ -86,7 +86,7 @@ class CristalAgentEvent(models.Model):
     active = fields.Boolean(default=True)
     code_aliases = fields.Char(
         string="Variantes del código",
-        help="Separadas por coma. Se reconocen como el mismo cupón (ej. OULTON15). El código "
+        help="Separadas por coma. Se reconocen como el mismo cupón (ej. OUTLON15). El código "
              "que se canjea en la web y en el local es siempre el principal.")
     keywords = fields.Char(
         string="Palabras del evento",
@@ -142,7 +142,7 @@ class CristalAgentEvent(models.Model):
 
     # ─── Detección en el texto entrante ───
     def all_codes(self):
-        """Código del cupón + variantes que también se reconocen (ej. OULTON15 por OUTLON15)."""
+        """Código del cupón + variantes que también se reconocen (ej. OUTLON15 por OULTON15)."""
         self.ensure_one()
         codes = [self.code] + [c.strip() for c in (self.code_aliases or '').split(',')]
         return [re.sub(r'[\s\-_.]', '', c).upper() for c in codes if c and c.strip()]
@@ -1024,12 +1024,12 @@ class CristalAgentEventContact(models.Model):
 
         def c_sin_campana():
             out = []
-            ev2 = Event.search([('code', '=', 'OUTLON15')], limit=1)
+            ev2 = Event.search([('code', '=', 'OULTON15')], limit=1)
             if ev2:
-                ev2.write({'code_aliases': 'OULTON15'})
-                c2 = Contact.capture_inbound(mk(), "Hola! Código OULTON15")
-                assert c2 and c2.event_id == ev2, "OULTON15 no se reconoce como OUTLON15"
-                out.append("OULTON15 → OUTLON15")
+                ev2.write({'code_aliases': 'OUTLON15'})
+                c2 = Contact.capture_inbound(mk(), "Hola! Quiero mi cupón del 15% - Código OUTLON15")
+                assert c2 and c2.event_id == ev2, "OUTLON15 no se reconoce como OULTON15"
+                out.append("OUTLON15 → OULTON15")
             from ..services.tool_registry import ToolRegistry
             from ..services import tools  # noqa: F401
             tool = ToolRegistry.get('send_whatsapp_template')
