@@ -603,8 +603,9 @@ class CristalAgentSupplierDraft(models.Model):
                         'name': client.name, 'channel_type': 'whatsapp',
                         'whatsapp_number': '5493580000004',
                         'whatsapp_partner_id': client.id, 'wa_account_id': sales.id})
-                    env['discuss.channel.member'].create({
-                        'channel_id': cli_ch.id, 'partner_id': owner.partner_id.id})
+                    if owner.partner_id not in cli_ch.channel_partner_ids:
+                        env['discuss.channel.member'].create({
+                            'channel_id': cli_ch.id, 'partner_id': owner.partner_id.id})
                     check("el chat del cliente es el de su número, en una cuenta de ventas",
                           hp.customer_wa_channel(env, client) == cli_ch
                           and hp.customer_wa_channel(env, owner.partner_id) != cli_ch,
