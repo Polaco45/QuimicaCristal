@@ -485,8 +485,8 @@ class CristalAgentConfig(models.Model):
         'product.product', string="Producto de flete",
         help="Producto servicio que se agrega como línea de flete (FLETE-ZONA).")
     route_preventa_cutoff_weekday = fields.Integer(
-        string="Cierre preventa — día", default=1,
-        help="Día de la semana del cierre de preventa (0=lunes … 6=domingo). Martes=1 (ruta de los jueves).")
+        string="Cierre preventa — día", default=2,
+        help="Día de la semana del cierre de preventa (0=lunes … 6=domingo). Miércoles=2: el día anterior a la salida del jueves (Joaco, 03/11/2026).")
     route_preventa_cutoff_hour = fields.Float(
         string="Cierre preventa — hora", default=18.0,
         help="Hora (formato float, 18.0 = 18:00) del cierre de preventa, hora Córdoba.")

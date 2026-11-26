@@ -236,6 +236,14 @@ class SendWhatsApp(AgentTool):
                 return {"error": instruction, "price_guard": True,
                         "unverified_lines": unverified}
 
+        # v1.82.4 — Simulación de una conversación real (prueba): pasó todos los controles,
+        # pero no se manda: se guarda lo que Claudio habría enviado.
+        sim = env.context.get('cristal_simulate')
+        if isinstance(sim, list):
+            sim.append({'tool': 'send_whatsapp', 'internal': is_internal_channel,
+                        'channel_id': int(channel_id), 'body': body_html})
+            return {"ok": True, "simulated": True, "summary": "Mensaje enviado."}
+
         # v1.39: ventana cerrada → el mismo texto (ya controlado) sale por plantilla.
         if closed_window_partner:
             return self._send_by_template(env, run, closed_window_partner, body_html,

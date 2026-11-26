@@ -7,6 +7,33 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.82.2] — 2026-11-26
+
+### Added — Claudio pasa un pedido confirmado a retiro
+- Caso Leila S07183: pedido del camión que la clienta pasó a retirar; Claudio prometió
+  "te confirmo el monto hoy" y hubo que hacerlo a mano.
+- Tool `switch_order_to_pickup(order_id, remove_product_names)`: pedido confirmado y sin
+  entregar → saca flete de ruta / envío a domicilio, saca la salida del camión, carrier
+  "Retirar en el Local", fecha de hoy (también en los remitos), nota en el pedido y le pide
+  la hora a Guillermo con `pickup_staff.ask_staff` (cubre los pedidos viejos que el cron no
+  toma por `pickup_staff_since`). Devuelve el total nuevo para decírselo al cliente ya.
+- Migración: bloque "PEDIDO CONFIRMADO QUE PASA A RETIRO" en el prompt.
+
+---
+
+## [18.0.1.81.3] — 2026-11-26
+
+### Fixed — "No me manden promociones" ahora marca No contactar solo
+- Claudio contestaba "listo, no te mandamos más" y no llamaba a `mark_opt_out`
+  (Cristian Merlo 25/11, Natalia Espinosa 26/11): el contacto seguía recibiendo envíos.
+- `helpers.detect_opt_out_request()` reconoce el pedido explícito ("no me manden
+  promociones", "no quiero que me envíes nada más", "no me escriban más", "dejen de
+  mandarme", "stop") y `_maybe_trigger_agent` marca No contactar ANTES de que responda
+  el modelo. No cuenta como baja: rechazar una promo, "por ahora / hasta el lunes /
+  esta semana", ni "lo di de baja al pedido".
+
+---
+
 ## [18.0.1.81.0] — 2026-11-20
 
 ### Added — Retiros: el depósito dice a qué hora queda listo
@@ -125,7 +152,49 @@ usuario que ejecutaba el envío (Joaco) y el equipo Ventas. Ahora nace con el bo
 el equipo Cristal Mayorista. Joaco (16/11): "está bien que las cree, lo que está mal es si se cargan
 en MI CRM".
 
-## [18.0.1.61.4] — 2026-11-10
+## [18.0.1.72.1] — 2026-11-12
+
+### Fixed — Autotest 57 (orgánico mensual)
+`generate_organic_month` también arma las historias del mes desde la v1.60; el autotest contaba
+todo junto (38 en vez de 8). Ahora cuenta solo los posteos orgánicos.
+
+## [18.0.1.63.5] — 2026-11-10
+
+### Changed — Kits en tarjetas, palos acostados y "Fabricado" solo para la categoría Fabricación
+En las placas, lo largo y finito (palos, cabos, secadores) va acostado sobre la mesada adelante y
+lo demás parado atrás; si todo es largo, foto cenital con cada pieza a lo ancho
+(`_lineup_lying`). Antes los palos quedaban parados como hilos y achicaban el resto.
+
+Además: solo lo de la categoría "Fabricación" cuenta como nuestro (Joaco 10/11). Las placas de combos
+dicen "Fabricado en Río Cuarto" solo si todo es de Fabricación; si no, "Con productos de nuestra
+fábrica" o "Química Cristal · Río Cuarto". Las placas mayoristas toman los más vendidos de Fabricación.
+El recorte mide la caja sobre lo que tiene color. Los kits van en tarjetas con el nombre de cada pieza
+(sin escenario) y si una opción no tiene foto se muestra otra de la misma parte del combo.
+
+## [18.0.1.63.4] — 2026-11-10
+
+### Fixed — Notificaciones que inundaban a Joaco (WhatsApp y bandeja de entrada)
+- Las actividades que OdooBot (crons/automatizaciones) le asigna a los partners silenciados ya no dejan el aviso "Te asignaron ..." en la bandeja de entrada; las que asigna una persona sí. La migración marca como leída la bandeja (1.287 avisos).
+- Los chats de WhatsApp de los partners del parámetro `cristal_agent.whatsapp_silenciar_partner_ids` (por defecto Joaco) nacen silenciados y la migración silencia y marca como leídos los existentes (eran 1.491 sin leer).
+- El aviso "Desfijó su conversación con X" (uno por cada chat vencido que Odoo desfija a diario) se descarta en el cliente web (`static/src/js/avisos_silenciosos.js`).
+
+## [18.0.1.63.1] — 2026-11-10
+
+### Changed — Placa mayorista de granel rediseñada
+Joaco: las etiquetas impresas sobre cada bidón quedaban corridas y no se entendía. Ahora la placa
+(`_render_granel`) es: título → tres bidones de 20 L limpios en el escenario (`_hero_bidones`) →
+tarjeta blanca "EN BIDONES DE 20 L" con la lista de productos en letra grande (`_granel_card`) →
+promo y CTA. `_pauta_photos` devuelve etiquetas (`("GRANEL", label)`) para lo a granel.
+
+## [18.0.1.62.2] — 2026-11-10
+
+### Changed — Lo a granel se muestra en el bidón de 20 L
+Joaco: "las placas mayoristas están hechas con los bidones de 5 cuando en realidad se hacen con
+los de 20 L". En las placas mayoristas (`_pauta_photos`) cada producto "a granel" se muestra con
+la foto del bidón plástico azul de 20 L (`static/img/bidon_20l.png`) y una etiqueta impresa con el
+producto y "20 LITROS" (`placa.bidon_granel()`, `_granel_label()`). Los combos para la casa no cambian.
+
+## [18.0.1.62.1] — 2026-11-10
 
 ### Changed — Placas con fotos REALES de los productos (sin IA)
 Joaco: "las publicaciones no están buenas, error en las etiquetas; que las fotos las saque de
@@ -140,9 +209,12 @@ una foto de Higgsfield con etiquetas inventadas ("limpito", "Demogante").
   `generate_cf_combo_placas()` + cron lunes 8:00 (`placa_cf_<variante>_feed|story.jpg`);
   `regenerate_future_images(from_day)` rearma lo ya programado.
 - Escenarios (static/img/escenas: cocina, lavadero, baño, pileta, almacén, depósito) generados SIN productos ni texto; los productos reales se recortan del fondo blanco y se paran en la mesada con sombra. Las fotos WEBP se abren importando WebPImagePlugin (Odoo no lo carga). El orgánico usa el Combo Emprendedor (no las ofertas de "1 caja de…").
+- Recorte (`_cutout`): saca el fondo claro y sin color conectado
+  con los bordes; lo que no tiene fondo para sacar va en tarjeta blanca. Sin fotos repetidas,
+  cada producto en su celda y una o dos filas según el ancho real.
 - Autotest 65.
 
-## [18.0.1.60.1] — 2026-11-05
+## [18.0.1.61.1] — 2026-11-05
 
 ### Fixed — Las campañas dejaban a los clientes sin respuesta 12 h
 Las plantillas de campaña ("Hola X. Como estas? …") mandadas con el usuario de Joaco cuentan
@@ -153,7 +225,7 @@ liberaba cada 5 min, pero el que respondía antes seguía sin respuesta.
 - `whatsapp.message._takeover_only_templates`: al llegar un mensaje con takeover por
   "Intervención manual", si desde que empezó solo se le mandaron PLANTILLAS (nada escrito a
   mano), se libera y contesta Claudio en el momento. Un mensaje a mano o un /off lo mantienen.
-- Autotest 60.
+- Autotest 63.
 
 ## [18.0.1.60.0] — 2026-11-05
 
@@ -173,6 +245,33 @@ le dijo "productos para toda la casa" y lo escaló a Joaco) y cotizar un combo s
   04/11 llegan a todos) y se corrigen restos de "camión los miércoles" (es el jueves).
 - Autotest 59: combos para la casa.
 
+## [18.0.1.54.3] — 2026-11-03
+
+### Changed — E-cheqs: ante la duda, se consulta (criterio de Sergio)
+
+Sergio (03/11): mismo criterio que la conciliación de transferencias. Sin facturas
+indicadas, el cheque se imputa solo si coincide (una factura del mismo importe, o las más
+viejas que suman justo) o si la diferencia con una sola factura parece retención (hasta
+10 %). Se sacó el último paso: si no hay coincidencia NO imputa a las más viejas, no
+registra, no manda mail y consulta en «Administración · Agente» (`needs_review`). Con
+facturas indicadas, la diferencia es retención solo si el cheque es menor y hasta un 10 %;
+si no, también consulta. Sergio queda como seguidor del recibo: si el cliente responde
+el mail, le llega. Arreglo: en los avisos del canal la mención a Sergio y el link al
+registro salían como texto HTML (se armaba un str y se sumaba a un Markup, que lo escapa).
+
+---
+
+## [18.0.1.54.2] — 2026-11-03
+
+### Changed — El cierre de preventa es el MIÉRCOLES 18 h (el día anterior al jueves)
+
+Joaco, 03/11: "Miércoles 18 h". Hasta acá el módulo cerraba dos días antes (martes). Migración:
+config a miércoles (2), KB #102, plantilla 252 y prompt en prod con "miércoles 18 h".
+Default del campo, migración 1.54.0 (para instalaciones limpias) y autotest (casos 2 y 5)
+en miércoles. El rescate sigue cerrando el miércoles 12 h.
+
+---
+
 ## [18.0.1.54.0] — 2026-11-03
 
 ### Changed — La ruta del camión vuelve a salir los JUEVES (v1.35-1.53: miércoles)
@@ -180,7 +279,7 @@ le dijo "productos para toda la casa" y lo escaló a Joaco) y cotizar un combo s
 Joaco, 03/11: "a partir de ahora la zona se hace los jueves, incluyendo esta zona Norte
 de esta semana".
 
-- Config: Río Cuarto sin reparto = jueves; cierre de preventa martes 18 h; rescate hasta
+- Config: Río Cuarto sin reparto = jueves; cierre de preventa miércoles 18 h (1.54.2); rescate hasta
   el miércoles 12 h (día anterior a la salida, como siempre). Defaults nuevos en el modelo.
 - Circuitos: jueves; primeras salidas Sur-Oeste 29/10, Norte 05/11, Este 12/11,
   Sur-Este 19/11. Migración: cada salida futura de miércoles pasa al jueves siguiente
@@ -189,7 +288,7 @@ de esta semana".
   KB #89 sin reparto los jueves. Avisa por el canal interno qué salidas movió.
 - Prompt v10 = v9 con jueves (se carga solo si la config estaba en v9). Los textos del
   bot siguen saliendo de la config (`rc_no_delivery_day`, `route_weekday`).
-- Autotest: casos 5, 6, 8 y 17 en jueves / martes / miércoles.
+- Autotest: casos 2, 5, 6, 8 y 17 en jueves / miércoles.
 - Plantillas WhatsApp ruta_* (252-256, en borrador) decían miércoles/lunes/martes: se
   corrigen por datos, no por código.
 

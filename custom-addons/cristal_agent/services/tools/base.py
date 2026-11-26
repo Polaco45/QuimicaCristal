@@ -14,6 +14,15 @@ import logging
 
 _logger = logging.getLogger(__name__)
 
+# v1.82.4 — Tools que en una simulación de conversación (context cristal_simulate) no se
+# ejecutan: mandan algo hacia afuera (WhatsApp a Joaco o al depósito, plantillas) o
+# confirman pedidos. send_whatsapp se simula adentro, después de sus controles.
+SIMULATED_TOOLS = {
+    'escalate_to_joaco', 'send_whatsapp_template', 'derive_delivery_issue', 'confirm_order',
+    'confirm_cf_order', 'confirm_sample_sent', 'swap_order_product', 'switch_order_to_pickup',
+    'register_payment_receipt', 'pause_bot',
+}
+
 
 class AgentTool:
     """
@@ -72,6 +81,14 @@ class AgentTool:
                     "transaction_aborted": True,
                 }
             _logger.warning("No se pudo chequear flag para %s: %s", self.name, e)
+
+        # v1.82.4 — Simulación de conversación: lo que escribe hacia afuera (avisos a
+        # Joaco, plantillas, confirmaciones) no se ejecuta; se anota lo que habría hecho.
+        sim = env.context.get('cristal_simulate')
+        if isinstance(sim, list) and self.name in SIMULATED_TOOLS:
+            sim.append({'tool': self.name, 'args': {k: v for k, v in kwargs.items()
+                                                    if k not in ('env', 'run')}})
+            return {"ok": True, "simulated": True, "summary": f"{self.name}: hecho."}
 
         try:
             return self._execute(env=env, run=run, **kwargs)

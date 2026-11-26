@@ -521,7 +521,9 @@ def _paste_fit(img, photo, cell):
     from PIL import Image
     x, y, w, h = cell
     p = photo.copy()
-    p.thumbnail((w, h), Image.LANCZOS)
+    # v1.63.2 — también agranda (fotos chicas de catálogo quedaban como estampillas)
+    f = min(w / p.width, h / p.height)
+    p = p.resize((max(1, int(p.width * f)), max(1, int(p.height * f))), Image.LANCZOS)
     img.paste(p, (x + (w - p.width) // 2, y + (h - p.height) // 2))
 
 
