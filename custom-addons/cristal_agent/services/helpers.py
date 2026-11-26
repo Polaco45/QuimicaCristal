@@ -801,3 +801,39 @@ def attention_status_line(env, now=None):
     return (f"Planta CERRADA en este momento (abre {st['next_open_text']}). Si tenés que "
             f"consultar algo, decí 'lo consulto y le confirmo {st['confirm_when']}'. "
             f"NUNCA prometas 'en un minuto' ni 'ya te aviso'.")
+
+
+# ─────────── v1.81.3 — pedido explícito de no recibir más mensajes ───────────
+# Casos reales: "No me manden promociones" (Natalia, 26/11), "no quiero que me enviés
+# nada mas, ya me contacto yo" (Cristian Merlo, 25/11). NO es baja: rechazar una promo
+# ("esta semana no", "no me interesa la promo") ni dar de baja un PEDIDO ("lo di de
+# baja al pedido").
+_RE_OPT_OUT = re.compile(
+    r"(?i)("
+    r"\bno\s+(?:me|nos)\s+(?:manden|mandes|mand[eé]s|env[ií]en|env[ií]es|env[ií][eé]s|"
+    r"escriban|escribas|escrib[aá]s|contacten|contactes|molesten|molestes|jodan|llamen)\s+"
+    r"(?:m[aá]s|nada|promo\w*|mensajes|publicidad|ofertas|cosas)\b"
+    r"|\bno\s+(?:me|nos)\s+(?:escriban|escribas|escrib[aá]s|contacten|molesten|jodan)\s*[.!]*\s*$"
+    r"|\bno\s+quiero\s+(?:que\s+(?:me|nos)\s+(?:manden|mandes|mand[eé]s|env[ií]en|"
+    r"env[ií]es|env[ií][eé]s|escriban|escribas|escrib[aá]s|contacten)\s+"
+    r"(?:m[aá]s|nada|promo\w*|mensajes|publicidad|ofertas|cosas)\b|recibir\s+(?:m[aá]s\s+)?"
+    r"(?:mensajes|promo|publicidad|ofertas)|m[aá]s\s+mensajes|promociones|publicidad)"
+    r"|\bdej(?:en|[aá])\s+de\s+(?:mandar(?:me)?|escribir(?:me)?|enviar(?:me)?|molestar(?:me)?)"
+    r"|\b(?:dar(?:me)?|denme|quiero\s+darme)\s+de\s+baja\s+(?:de|del)\s+"
+    r"(?:la\s+lista|los\s+mensajes|whatsapp|las\s+promo|la\s+difusi[oó]n)"
+    r"|\bbasta\s+de\s+(?:mensajes|promo|publicidad)"
+    r"|^\s*(?:stop|baja)\s*[.!]*\s*$"
+    r")"
+)
+
+
+# Pausa temporal ("no me mandes nada hasta el lunes", "por ahora no me escriban"): no es baja.
+_RE_OPT_OUT_TEMPORARY = re.compile(
+    r"(?i)\bhasta\b|\bpor\s+ahora\b|\btodav[ií]a\b|\besta\s+semana\b|\beste\s+mes\b|"
+    r"\bpor\s+unos\s+d[ií]as\b|\bm[aá]s\s+adelante\b")
+
+
+def detect_opt_out_request(text):
+    """True si el cliente pide explícitamente que no le escriban / manden más."""
+    text = (text or '').strip()
+    return bool(_RE_OPT_OUT.search(text)) and not _RE_OPT_OUT_TEMPORARY.search(text)

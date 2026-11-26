@@ -284,6 +284,20 @@ class WhatsAppMessage(models.Model):
         memory = Memory.get_or_create(partner)
         memory.increment_received()
 
+        # 5.4) v1.81.3 — "No me manden promociones" / "no quiero que me envíes nada más":
+        # se marca No contactar ACÁ, sin depender de que el modelo llame a mark_opt_out
+        # (25-26/11: Claudio contestaba "listo, no te mandamos más" y no lo marcaba).
+        # Claudio igual responde (se despide en una línea).
+        try:
+            from ..services.helpers import detect_opt_out_request
+            if plain_body and not partner.agent_opt_out and detect_opt_out_request(plain_body):
+                partner.set_agent_opt_out(
+                    'pidió que no le escriban más ("%s")' % plain_body.strip()[:150])
+                _logger.info("⛔ %s marcado No contactar por su mensaje: %s",
+                             partner.name, plain_body[:80])
+        except Exception as e:  # noqa: BLE001
+            _logger.warning("No se pudo marcar No contactar a %s: %s", partner.name, e)
+
         # 5.5) v1.70 — La respuesta a la encuesta se registra SIEMPRE, antes de cualquier
         # corte (takeover, bypass): hasta el 12/11 no había quedado guardada ninguna.
         try:

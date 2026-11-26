@@ -7,6 +7,19 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.81.3] — 2026-11-26
+
+### Fixed — "No me manden promociones" ahora marca No contactar solo
+- Claudio contestaba "listo, no te mandamos más" y no llamaba a `mark_opt_out`
+  (Cristian Merlo 25/11, Natalia Espinosa 26/11): el contacto seguía recibiendo envíos.
+- `helpers.detect_opt_out_request()` reconoce el pedido explícito ("no me manden
+  promociones", "no quiero que me envíes nada más", "no me escriban más", "dejen de
+  mandarme", "stop") y `_maybe_trigger_agent` marca No contactar ANTES de que responda
+  el modelo. No cuenta como baja: rechazar una promo, "por ahora / hasta el lunes /
+  esta semana", ni "lo di de baja al pedido".
+
+---
+
 ## [18.0.1.81.0] — 2026-11-20
 
 ### Added — Retiros: el depósito dice a qué hora queda listo
