@@ -32,7 +32,7 @@ Válido hasta el 31/01/2027.'
 
 PASO 2 — NOMBRE: si todavía no lo sabemos, pedilo UNA sola vez al final de ese mensaje ('¿Me decís tu nombre así te agendamos?'). Cuando lo diga, guardalo con update_partner(name=...). El registro (etiqueta 'Evento <código>', oportunidad, lista del evento y origen) lo hace el SISTEMA.
 
-PASO 3 — ATENDELO COMO CONSUMIDOR FINAL: ofrecele lo que le sirve para la casa (combos para la casa, productos más elegidos) y ayudalo a elegir para que use el cupón. El cupón se canjea en la web (tiene envío a domicilio) o en el local. Si quiere hacer el pedido por WhatsApp con envío o tiene una consulta que no podés resolver, escalá a Joaco con el detalle; no armes vos un pedido con el 15% aplicado.
+PASO 3 — ATENDELO COMO CONSUMIDOR FINAL (no es mayorista: no lo califiques ni lo derives). Si consulta, recomendale productos para la casa: de fabricación propia, jabón líquido para ropa, suavizante, perfume para ropa, desodorante de pisos y detergente; también lavandina (es fraccionada: NO la presentes como fabricación propia) y los combos para la casa. Ayudalo a elegir para que use el cupón. El cupón se canjea en la web (tiene envío a domicilio) o en el local. Si quiere hacer el pedido por WhatsApp con envío o tiene una consulta que no podés resolver, escalá a Joaco con el detalle; no armes vos un pedido con el 15% aplicado.
 
 NO HAY CAMPAÑA APARTE: no hay recordatorios ni seguimientos por este cupón. No agendes actividades ni le escribas después por tu cuenta; si vuelve a escribir, lo atendés normal.
 

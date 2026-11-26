@@ -491,9 +491,12 @@ class CristalAgentEventContact(models.Model):
                                      "nombre: \"¿Me decís tu nombre así te agendamos?\". Cuando "
                                      "te lo diga, guardalo con update_partner(name=...).")
                     lines.append("  Es CONSUMIDOR FINAL: atendelo como tal en esta misma charla, "
-                                 "sin preguntas de calificación mayorista. Ofrecele lo que le "
-                                 "sirve para la casa (combos para la casa, productos más "
-                                 "elegidos) para que use el cupón en la web o en el local. El "
+                                 "sin calificarlo ni derivarlo. Si consulta, recomendale para "
+                                 "la casa: de fabricación propia jabón líquido para ropa, "
+                                 "suavizante, perfume para ropa, desodorante de pisos y "
+                                 "detergente; también lavandina (fraccionada, no la presentes "
+                                 "como fabricación propia) y los combos para la casa. Que use "
+                                 "el cupón en la web (tiene envío) o en el local. El "
                                  "registro (etiqueta, oportunidad, lista) lo hace el sistema. "
                                  "NO hay recordatorios ni campaña aparte: no agendes "
                                  "seguimientos ni actividades por el cupón.")
