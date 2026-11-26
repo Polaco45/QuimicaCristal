@@ -7,6 +7,20 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.82.2] — 2026-11-26
+
+### Added — Claudio pasa un pedido confirmado a retiro
+- Caso Leila S07183: pedido del camión que la clienta pasó a retirar; Claudio prometió
+  "te confirmo el monto hoy" y hubo que hacerlo a mano.
+- Tool `switch_order_to_pickup(order_id, remove_product_names)`: pedido confirmado y sin
+  entregar → saca flete de ruta / envío a domicilio, saca la salida del camión, carrier
+  "Retirar en el Local", fecha de hoy (también en los remitos), nota en el pedido y le pide
+  la hora a Guillermo con `pickup_staff.ask_staff` (cubre los pedidos viejos que el cron no
+  toma por `pickup_staff_since`). Devuelve el total nuevo para decírselo al cliente ya.
+- Migración: bloque "PEDIDO CONFIRMADO QUE PASA A RETIRO" en el prompt.
+
+---
+
 ## [18.0.1.81.3] — 2026-11-26
 
 ### Fixed — "No me manden promociones" ahora marca No contactar solo
