@@ -1,5 +1,7 @@
 # Plan — Cupones de eventos HISPANO15 y OUTLON15 (cristal_agent 1.82.0)
 
+> **Cambio 1.82.2:** el código de CIMA Oulton es **OULTON15** (regla 101 del programa 92); OUTLON15 queda como variante reconocida.
+>
 > **Cambio 1.82.1 (Joaco, 26/11/2026): "no campaña aparte".** No hay mensajes proactivos: las cadencias A-E quedan apagadas (`cristal_agent.event_coupon_followups = 0`), las plantillas `cupon_evento_*` quedan archivadas sin enviar a Meta y el cron solo mide compras. Claudio atiende a quien escribe con el código como consumidor final y le ofrece productos para la casa. Se mantienen el registro del día 0, los controles al enviar y la medición. OULTON15 se reconoce como OUTLON15. Las secciones 2 y 4 de abajo (pasos A-E) quedan solo como referencia.
 
 Fuente: `Cadencia_Claudio_Cupones_Eventos.md` (Joaco, 26/11/2026). Número de Claudio 3586091684 = cuenta de WhatsApp **Cristal Mayorista (id 8)**.
