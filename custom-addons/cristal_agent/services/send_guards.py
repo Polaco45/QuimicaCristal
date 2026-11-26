@@ -356,4 +356,21 @@ def apply_send_guards(env, run, channel_id, body_html, partner=None):
             "escalate_to_joaco para que lo llame.",
             f"<p>{first}</p>")
 
+    # 7) v1.82 — Cupones de eventos: al que lo pidió se le da el cupón con el texto exacto;
+    # a quien no lo pidió, nunca se le ofrece.
+    if partner:
+        try:
+            Contact = env['cristal.agent.event.contact'].sudo()
+            g = Contact.guard(partner, plain)
+            if g and g.get('prepend'):
+                coupon_html = '<p>' + g['prepend'].replace('\n', '<br/>') + '</p>'
+                return block(g['guard'], g['instruction'], coupon_html + body_html)
+            if g and g.get('strip'):
+                rx = re.compile(r'[^.!?\n]*' + re.escape(g['strip']) + r'[^.!?\n]*[.!?]?',
+                                re.IGNORECASE)
+                return block(g['guard'], g['instruction'], _strip_sentences(body_html, rx))
+            Contact.note_outbound(partner, plain)
+        except Exception as e:  # noqa: BLE001
+            _logger.warning("Control de cupón de evento falló: %s", e)
+
     return body_html, None

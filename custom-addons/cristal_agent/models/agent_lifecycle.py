@@ -968,6 +968,12 @@ class CristalAgentNBA(models.Model):
                 ('partner_id', '=', partner.id), ('state', '=', 'sent'),
                 ('date', '>', fields.Datetime.to_datetime(since))]):
             return "ya recibió un mensaje de fidelización"
+        # v1.82 — Consumidor final que entró por un cupón de evento: lo sigue ese circuito
+        # (no las preguntas de calificación mayorista).
+        if 'cristal.agent.event.contact' in self.env and self.env['cristal.agent.event.contact'] \
+                .sudo().search_count([('partner_id', '=', partner.id),
+                                      ('state', 'in', ('active', 'purchased'))]):
+            return "en el circuito de un cupón de evento"
         return None
 
     @api.model

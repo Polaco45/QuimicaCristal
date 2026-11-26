@@ -1,0 +1,238 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v1.82 — Cupones de eventos (HISPANO15 / OUTLON15): eventos con su medición y contactos. -->
+<odoo>
+
+    <record id="view_cristal_agent_event_list" model="ir.ui.view">
+        <field name="name">cristal.agent.event.list</field>
+        <field name="model">cristal.agent.event</field>
+        <field name="arch" type="xml">
+            <list string="Eventos con cupón">
+                <field name="code"/>
+                <field name="name"/>
+                <field name="date_start"/>
+                <field name="date_end"/>
+                <field name="kpi_leads"/>
+                <field name="kpi_uses"/>
+                <field name="kpi_revenue"/>
+                <field name="kpi_conversion"/>
+                <field name="kpi_gift_cost"/>
+                <field name="kpi_ratio"/>
+                <field name="active" column_invisible="1"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_cristal_agent_event_form" model="ir.ui.view">
+        <field name="name">cristal.agent.event.form</field>
+        <field name="model">cristal.agent.event</field>
+        <field name="arch" type="xml">
+            <form string="Evento con cupón">
+                <header>
+                    <button name="action_selftest" type="object" string="🧪 Autotest del circuito"
+                            class="btn-secondary"/>
+                </header>
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_open_contacts" type="object" class="oe_stat_button"
+                                icon="fa-users">
+                            <field name="kpi_registered" widget="statinfo" string="En el circuito"/>
+                        </button>
+                    </div>
+                    <div class="oe_title">
+                        <h1><field name="code" placeholder="HISPANO15"/></h1>
+                        <field name="name" placeholder="Sociedad Española"/>
+                    </div>
+                    <field name="kpi_summary" readonly="1"/>
+                    <group>
+                        <group string="Medición">
+                            <field name="kpi_leads"/>
+                            <field name="kpi_active"/>
+                            <field name="kpi_wholesale"/>
+                            <field name="kpi_opted_out"/>
+                            <field name="kpi_uses"/>
+                            <field name="kpi_uses_web"/>
+                            <field name="kpi_uses_pos"/>
+                            <field name="kpi_unlinked"/>
+                        </group>
+                        <group string="Resultado">
+                            <field name="kpi_revenue"/>
+                            <field name="kpi_buyers"/>
+                            <field name="kpi_conversion"/>
+                            <field name="kpi_by_step"/>
+                            <field name="kpi_gift_cost"/>
+                            <field name="kpi_ratio"/>
+                        </group>
+                    </group>
+                    <group>
+                        <group string="Cupón">
+                            <field name="program_id"/>
+                            <field name="date_start"/>
+                            <field name="date_end"/>
+                            <field name="keywords"/>
+                            <field name="active"/>
+                        </group>
+                        <group string="Registro">
+                            <field name="partner_tag_id"/>
+                            <field name="crm_tag_id"/>
+                            <field name="team_id"/>
+                            <field name="mailing_list_id"/>
+                            <field name="gift_order_id"/>
+                        </group>
+                    </group>
+                    <separator string="Respuesta del día 0 (la manda Claudio tal cual)"/>
+                    <field name="reply_text" readonly="1"/>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_cristal_agent_event" model="ir.actions.act_window">
+        <field name="name">Cupones de eventos</field>
+        <field name="res_model">cristal.agent.event</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <record id="view_cristal_agent_event_contact_list" model="ir.ui.view">
+        <field name="name">cristal.agent.event.contact.list</field>
+        <field name="model">cristal.agent.event.contact</field>
+        <field name="arch" type="xml">
+            <list string="Contactos de cupones de eventos">
+                <field name="entry_date"/>
+                <field name="code"/>
+                <field name="partner_id"/>
+                <field name="mobile"/>
+                <field name="state" widget="badge"/>
+                <field name="proactive_count" string="Msj."/>
+                <field name="a_sent_at" optional="show"/>
+                <field name="b_sent_at" optional="show"/>
+                <field name="c_sent_at" optional="show"/>
+                <field name="purchase_ref" optional="show"/>
+                <field name="purchase_amount" sum="Total" optional="show"/>
+                <field name="purchase_step" optional="show"/>
+                <field name="last_note"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_cristal_agent_event_contact_form" model="ir.ui.view">
+        <field name="name">cristal.agent.event.contact.form</field>
+        <field name="model">cristal.agent.event.contact</field>
+        <field name="arch" type="xml">
+            <form string="Contacto de cupón de evento">
+                <sheet>
+                    <group>
+                        <group string="Entrada">
+                            <field name="event_id"/>
+                            <field name="partner_id"/>
+                            <field name="lead_id"/>
+                            <field name="entry_date"/>
+                            <field name="first_text"/>
+                            <field name="state"/>
+                            <field name="coupon_sent_at"/>
+                            <field name="name_asked"/>
+                        </group>
+                        <group string="Pasos">
+                            <field name="a_sent_at"/>
+                            <field name="b_sent_at"/>
+                            <field name="c_sent_at"/>
+                            <field name="d_sent_at"/>
+                            <field name="e_sent_at"/>
+                            <field name="skipped_steps"/>
+                            <field name="proactive_count"/>
+                            <field name="last_note"/>
+                        </group>
+                    </group>
+                    <group string="Compra">
+                        <group>
+                            <field name="purchase_date"/>
+                            <field name="purchase_ref"/>
+                            <field name="purchase_kind"/>
+                            <field name="purchase_amount"/>
+                        </group>
+                        <group>
+                            <field name="purchase_product"/>
+                            <field name="purchase_step"/>
+                            <field name="feedback"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_cristal_agent_event_contact_search" model="ir.ui.view">
+        <field name="name">cristal.agent.event.contact.search</field>
+        <field name="model">cristal.agent.event.contact</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="partner_id"/>
+                <field name="code"/>
+                <filter name="f_active" string="Siguiendo" domain="[('state', '=', 'active')]"/>
+                <filter name="f_bought" string="Compraron" domain="[('purchase_date', '!=', False)]"/>
+                <filter name="f_out" string="Bajas" domain="[('state', '=', 'opted_out')]"/>
+                <group expand="0" string="Agrupar">
+                    <filter name="g_event" string="Evento" context="{'group_by': 'event_id'}"/>
+                    <filter name="g_state" string="Estado" context="{'group_by': 'state'}"/>
+                    <filter name="g_step" string="Compró después de" context="{'group_by': 'purchase_step'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="view_cristal_agent_event_contact_pivot" model="ir.ui.view">
+        <field name="name">cristal.agent.event.contact.pivot</field>
+        <field name="model">cristal.agent.event.contact</field>
+        <field name="arch" type="xml">
+            <pivot string="Cupones de eventos">
+                <field name="event_id" type="row"/>
+                <field name="state" type="col"/>
+                <field name="purchase_amount" type="measure"/>
+            </pivot>
+        </field>
+    </record>
+
+    <record id="action_cristal_agent_event_contact" model="ir.actions.act_window">
+        <field name="name">Contactos de cupones de eventos</field>
+        <field name="res_model">cristal.agent.event.contact</field>
+        <field name="view_mode">list,pivot,form</field>
+        <field name="context">{'search_default_g_event': 1}</field>
+    </record>
+
+    <!-- Cadencias: el paso (A-E) que usa el cron de cupones de eventos. -->
+    <record id="view_cristal_agent_cadence_tree_event" model="ir.ui.view">
+        <field name="name">cristal.agent.cadence.tree.event</field>
+        <field name="model">cristal.agent.cadence</field>
+        <field name="inherit_id" ref="view_cristal_agent_cadence_tree"/>
+        <field name="arch" type="xml">
+            <field name="trigger_event" position="after">
+                <field name="step_code" optional="show"/>
+            </field>
+        </field>
+    </record>
+
+    <record id="view_cristal_agent_cadence_form_event" model="ir.ui.view">
+        <field name="name">cristal.agent.cadence.form.event</field>
+        <field name="model">cristal.agent.cadence</field>
+        <field name="inherit_id" ref="view_cristal_agent_cadence_form"/>
+        <field name="arch" type="xml">
+            <field name="trigger_event" position="after">
+                <field name="step_code" invisible="trigger_event not in ('event_coupon', 'event_coupon_purchase')"/>
+            </field>
+        </field>
+    </record>
+
+    <menuitem id="menu_mayorista_event_coupons_root"
+              name="🎟️ Cupones de eventos"
+              parent="menu_mayorista_root"
+              sequence="45"/>
+    <menuitem id="menu_mayorista_event_coupons"
+              name="Eventos y medición"
+              parent="menu_mayorista_event_coupons_root"
+              sequence="1"
+              action="action_cristal_agent_event"/>
+    <menuitem id="menu_mayorista_event_coupon_contacts"
+              name="Contactos"
+              parent="menu_mayorista_event_coupons_root"
+              sequence="2"
+              action="action_cristal_agent_event_contact"/>
+</odoo>

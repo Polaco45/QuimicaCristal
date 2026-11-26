@@ -257,7 +257,7 @@ class CristalAgentWeeklyReport(models.Model):
                                              'funnel_first_amount')})
         controls = self._conversion_controls(runs, a, b, funnel, escal)
         vals['body'] = (self._render(vals, reasons, guards, sample) + self._render_funnel(funnel)
-                        + self._render_controls(controls))
+                        + self._render_controls(controls) + self._render_event_coupons())
         rep = self.search([('week_start', '=', start)], limit=1)
         if rep:
             rep.write(vals)
@@ -456,6 +456,15 @@ class CristalAgentWeeklyReport(models.Model):
         except Exception as e:  # noqa: BLE001
             _logger.warning("control de recompra: %s", e)
         return {'rows': rows, 'med_prev': med_prev}
+
+    @api.model
+    def _render_event_coupons(self):
+        """v1.82 — Cupones de eventos (HISPANO15 / OUTLON15): contactos, usos, conversión."""
+        try:
+            return self.env['cristal.agent.event'].sudo().weekly_report_html() or ''
+        except Exception as e:  # noqa: BLE001
+            _logger.warning("Informe semanal: sección de cupones de eventos falló: %s", e)
+            return ''
 
     @api.model
     def _render_controls(self, ctrl):
