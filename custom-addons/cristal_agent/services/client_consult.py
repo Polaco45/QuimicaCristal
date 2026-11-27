@@ -35,6 +35,26 @@ KINDS = [('pedido', 'Pedido'), ('consulta', 'Consulta'), ('pago', 'Pago o cuenta
 NOTIFY_KINDS = ('pedido', 'reclamo')     # lo demás espera en la pantalla, sin WhatsApp
 MAYORISTA_NUMBER = '3586091684'
 
+# Lo que una persona del mostrador sabe sin mirar la ficha. Se edita en la configuración
+# (campo client_draft_knowledge) sin tocar código; esto es solo el arranque.
+DEFAULT_KNOWLEDGE = (
+    "- El papel higiénico viene en PAQUETE o BOLSÓN (por ejemplo 8 rollos de 300 m, cono "
+    "chico). Nunca en caja.\n"
+    "- Las toallas intercaladas vienen en CAJA; hay blancas y beige. Si el cliente dice «la "
+    "caja de papel», «el papel de manos» o «las intercaladas», son las toallas intercaladas.\n"
+    "- Las servilletas intercaladas también vienen en caja: se distinguen de las toallas por "
+    "lo que la cuenta compra y por el uso (mesa o cocina, no baño).\n"
+    "- La bobina y la toalla en rollo (por ejemplo pack 4 x 200 m) vienen en pack o por "
+    "unidad, no en caja.\n"
+    "- «Líquido de piso», «perfume de piso» y «desodorante de piso» son el limpiador "
+    "desodorante; la fragancia importa (lavanda, limón, pino, cherry, marina, arpège, "
+    "citronella).\n"
+    "- Los líquidos se piden por bidón de 5 L salvo que aclaren otra cosa: «10 litros de "
+    "lavandina» son 2 bidones de 5 L, salvo que la cuenta compre el de 10 o el de 20.\n"
+    "- «Cloro» puede ser lavandina, cloro líquido de pileta, granulado o pastillas: se "
+    "resuelve con lo que esa cuenta ya compró.\n"
+    "- «Rejilla» es el paño rejilla de cocina; «trapo» es el trapo de piso.")
+
 
 # ───────────────────────── configuración ─────────────────────────
 def is_enabled(config):
@@ -246,6 +266,14 @@ SYSTEM = (
     f"mayorista: {MAYORISTA_NUMBER}». Si es consumidor final: «Buenas!! Podés comunicarte al "
     f"{MAYORISTA_NUMBER} o comprar por nuestra web quimicacristal.com.ar». Si ofrece un "
     "servicio o es publicidad, responder=false.\n"
+    "- Sacate las dudas vos antes de trasladárselas a Joaco: si no queda claro de qué "
+    "producto habla, deducilo con el CONOCIMIENTO DEL RUBRO (cómo viene presentado cada "
+    "producto, cómo le dicen los clientes) y con lo que esa cuenta compró. Si con eso se "
+    "resuelve, dalo por resuelto y decí en la nota por qué («dice caja, y lo que viene en caja "
+    "son las toallas intercaladas»). Solo si de verdad no alcanza, el borrador le pregunta al "
+    "cliente el dato que falta.\n"
+    "- Si el cliente hace una pregunta, el borrador la contesta cuando la respuesta está en el "
+    "CONOCIMIENTO DEL RUBRO; si no está, dice que lo revisás y le confirmás.\n"
     "- La ficha de la cuenta manda: respetá sus particularidades (factura por sucursal, sede "
     "y quién recibe, presupuesto por mail, fragancias, tamaño de bidón).\n"
     "- El historial puede estar incompleto. No des por hecho que nadie respondió antes.\n"
@@ -304,7 +332,10 @@ def _ask_claude(env, config, user_text):
 def build_draft(env, config, draft, correction=None):
     """Arma (o corrige) el borrador. Devuelve (dict del modelo, productos candidatos)."""
     context, products = client_context(env, draft)
-    parts = ["LO QUE SABEMOS DE QUIEN ESCRIBE (Odoo):", context, "",
+    knowledge = (getattr(config, 'client_draft_knowledge', '') or '').strip() or DEFAULT_KNOWLEDGE
+    parts = ["CONOCIMIENTO DEL RUBRO (cargado por Joaco; vale para todas las cuentas):",
+             knowledge, "",
+             "LO QUE SABEMOS DE QUIEN ESCRIBE (Odoo):", context, "",
              "ÚLTIMOS MENSAJES DEL CHAT:",
              conversation(env, draft.channel_id) or '(sin historial)', "",
              "MENSAJE(S) NUEVO(S) A RESPONDER:", draft.incoming_text or '']

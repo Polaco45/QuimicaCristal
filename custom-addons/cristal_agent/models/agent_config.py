@@ -608,6 +608,11 @@ class CristalAgentConfig(models.Model):
         "Empresas: horas sin borradores después de que conteste una persona", default=2,
         help="Si alguien contestó el chat desde Odoo o desde el celular, durante este tiempo "
              "no se arman borradores en ese chat. 0 = nunca se corre.")
+    client_draft_knowledge = fields.Text(
+        "Empresas: conocimiento del rubro",
+        help="Lo que hay que saber para entender a los clientes y contestarles: cómo viene "
+             "cada producto, cómo le dicen, qué se hace ante un reclamo. Una regla por renglón. "
+             "Se usa en cada borrador; se puede cambiar cuando haga falta.")
     client_draft_selftest_log = fields.Text(
         "Empresas: último autotest", readonly=True)
 

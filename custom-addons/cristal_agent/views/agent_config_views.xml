@@ -293,6 +293,7 @@
                                 <field name="client_draft_notify_whatsapp"/>
                                 <field name="client_draft_wait_seconds"/>
                                 <field name="client_draft_quiet_hours"/>
+                                <field name="client_draft_knowledge"/>
                                 <field name="client_draft_selftest_log"/>
                             </group>
                             <div class="alert alert-info">
