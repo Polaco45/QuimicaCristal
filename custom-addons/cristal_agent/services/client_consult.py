@@ -115,18 +115,55 @@ def tell_owner(env, config, text):
     if test is not None:
         test.setdefault('owner', []).append(text)
         return True, False
+    # v1.83.1 — Las plantillas se pagan y el texto libre no. Si Joaco le escribió a Claudio
+    # en las últimas 24 h, el aviso sale como mensaje común. Con la ventana cerrada sale
+    # UNA sola plantilla por día pidiéndole que conteste; lo demás espera en la pantalla y
+    # se le manda apenas escribe (ver flush_unnotified).
     try:
-        from .owner_confirm import _send_to_owner
+        from .owner_confirm import _owner_channel, _send_to_owner
+        channel = _owner_channel(env, config)
+        if not channel or not channel.wa_account_id or not channel.whatsapp_number:
+            return False, False
+        account = channel.wa_account_id
+        number = '+' + pc.digits(channel.whatsapp_number)
+        if pc._window_open(env, account, number):
+            res = pc.wa_send(env, channel, account, number, text)
+            if res.get('ok'):
+                return True, res.get('mail_message_id') or False
+            _logger.warning("Borradores de empresas: el aviso a Joaco no salió: %s",
+                            res.get('error'))
+            return False, False
+        last = config.client_draft_last_template_at
+        if last and last >= fields.Datetime.now() - timedelta(hours=24):
+            return False, False
         from . import tools  # noqa: F401 — registra las herramientas
-        res = _send_to_owner(env, config, text) or {}
+        res = _send_to_owner(
+            env, config, "Tengo borradores del WhatsApp de empresas esperando tu OK. "
+                         "Contestame cualquier cosa por acá y te los paso.") or {}
+        if res.get('ok') and not res.get('error'):
+            config.sudo().write({'client_draft_last_template_at': fields.Datetime.now()})
     except Exception:  # noqa: BLE001
         _logger.exception("Borradores de empresas: falló el aviso a Joaco")
-        return False, False
-    if res.get('error') or not res.get('ok'):
-        _logger.warning("Borradores de empresas: el aviso a Joaco no salió: %s",
-                        res.get('error') or res)
-        return False, False
-    return True, res.get('mail_message_id') or False
+    return False, False
+
+
+def flush_unnotified(env, config):
+    """Joaco acaba de escribir (se abrió la ventana): se le mandan los pedidos y reclamos
+    que esperaban solo en la pantalla. Devuelve cuántos mandó."""
+    if not config.client_draft_notify_whatsapp:
+        return 0
+    drafts = env['cristal.agent.client.draft'].sudo().search([
+        ('state', '=', 'pending'), ('notify_via', '=', 'screen'),
+        ('kind', 'in', list(NOTIFY_KINDS)),
+        ('asked_at', '>=', fields.Datetime.now() - timedelta(hours=24))], order='id', limit=6)
+    sent = 0
+    for draft in drafts:
+        ok, mail_id = tell_owner(env, config, owner_text(draft))
+        if not ok:
+            break
+        draft.write({'notify_via': 'whatsapp', 'notify_mail_message_id': mail_id or False})
+        sent += 1
+    return sent
 
 
 # ───────────────────────── contexto del cliente ─────────────────────────
@@ -569,7 +606,13 @@ def handle_owner_message(env, config, wa_message, text):
     pending = _pending(env)
     if not explicit:
         if not pending:
-            return False
+            # No había nada avisado: si esperaban pedidos o reclamos solo en la pantalla,
+            # su mensaje abrió la ventana y se los mandamos ahora (gratis).
+            try:
+                return bool(pc._test(env) is None and flush_unnotified(env, config))
+            except Exception:  # noqa: BLE001
+                _logger.exception("Borradores de empresas: no pude mandar los pendientes")
+                return False
         # Un pedido que se le pidió confirmar («OK S07123») es de otro flujo.
         try:
             from .owner_confirm import pending_requests, _RE_ORDER
