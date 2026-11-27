@@ -58,6 +58,35 @@ def _money(amount):
     return f"$ {amount:,.0f}".replace(',', '.')
 
 
+def resolve_partner(env, partner, number):
+    """El contacto del chat, o el contacto conocido con ese mismo celular.
+
+    Cuando el número guardado no tiene el 9 de los celulares argentinos, Odoo no lo
+    reconoce y crea un contacto nuevo y suelto para el chat. Si el del chat no pertenece a
+    ninguna empresa ni tiene pedidos, se busca por los últimos 10 dígitos a quien sí."""
+    Partner = env['res.partner'].sudo()
+    partner = partner or Partner
+    tail = pc.digits(number)[-10:]
+    if len(tail) < 10:
+        return partner
+    SO = env['sale.order'].sudo()
+    if partner and (partner.parent_id or partner.is_company
+                    or SO.search_count([('partner_id', 'child_of', partner.id)], limit=1)):
+        return partner
+    domain = ['|', ('phone_sanitized', 'like', tail), ('mobile', 'like', tail)] \
+        if 'phone_sanitized' in Partner._fields else [('mobile', 'like', tail)]
+    others = Partner.search(domain + [('id', '!=', partner.id or 0)], order='id')
+    if not others:
+        # Números guardados con espacios y guiones: se comparan solo los dígitos.
+        loose = '%' + '%'.join(tail[-8:]) + '%'
+        others = Partner.search(['|', ('phone', 'like', loose), ('mobile', 'like', loose),
+                                 ('id', '!=', partner.id or 0)], order='id', limit=20)
+        others = others.filtered(lambda p: tail in (pc.digits(p.phone) + ' ' + pc.digits(p.mobile)))
+    with_company = others.filtered(lambda p: p.parent_id or p.is_company)
+    named = with_company.filtered(lambda p: p.name)
+    return (named or with_company or others)[:1] or partner
+
+
 # ───────────────────────── aviso a Joaco ─────────────────────────
 def tell_owner(env, config, text):
     """Le escribe a Joaco por su chat de siempre con Claudio (cuenta mayorista). Devuelve
