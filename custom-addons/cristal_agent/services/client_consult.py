@@ -344,7 +344,8 @@ def build_draft(env, config, draft, correction=None):
                   "CORRECCIÓN DE JOACO (aplicala; si es directamente el texto que quiere "
                   "mandar, usalo tal cual, sin agregar nada):", correction,
                   "", "Con una corrección de Joaco siempre responder=true. Mantené el mismo "
-                      "tipo y los mismos items salvo que la corrección los cambie."]
+                      "tipo y los mismos items salvo que la corrección los cambie, y reescribí "
+                      "la nota con lo que quedó resuelto."]
     verdict, cost = _ask_claude(env, config, '\n'.join(parts))
     draft.cost_usd = (draft.cost_usd or 0.0) + cost
     return verdict, products
@@ -417,10 +418,9 @@ def handle_owner_message(env, config, wa_message, text):
     is_yes = bool(pc._RE_YES.match(text)) and words <= 4
     is_no = bool(pc._RE_NO.match(text)) and words <= 6
     if not draft:
-        # Sin cita ni código solo se toma un «dale»/«no» corto cuando hay UN borrador
-        # esperando y ningún pedido que se le haya pedido confirmar (ese «OK» es de otro flujo).
-        if not (is_yes or is_no):
-            return False
+        # Sin cita ni código: se toma como respuesta al borrador solo cuando hay UNO esperando
+        # y ningún pedido que se le haya pedido confirmar (ese «OK» es de otro flujo). Un
+        # texto libre (corrección) además exige que el aviso sea de las últimas 6 horas.
         try:
             from .owner_confirm import pending_requests
             if pending_requests(env):
@@ -428,6 +428,11 @@ def handle_owner_message(env, config, wa_message, text):
         except Exception:  # noqa: BLE001
             return False
         pending = _pending(env)
+        if not (is_yes or is_no):
+            recent = pending.filtered(
+                lambda d: d.asked_at >= fields.Datetime.now() - timedelta(hours=6))
+            if not text or len(recent) != 1 or len(pending) != 1:
+                return False
         if len(pending) != 1:
             if len(pending) > 1:
                 names = ', '.join(f"{d.name} ({d.client_name})" for d in pending[:6])

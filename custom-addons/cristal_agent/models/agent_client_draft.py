@@ -321,7 +321,10 @@ class CristalAgentClientDraft(models.Model):
             cc.tell_owner(self.env, config, f"No pude aplicar la corrección a {self.name}. "
                                             f"Mandámela de nuevo o contestale vos.")
             return
-        self.draft_text = text
+        vals = {'draft_text': text}
+        if (verdict.get('nota') or '').strip():
+            vals['note'] = verdict['nota'].strip()[:250]
+        self.write(vals)
         self._ask_owner(config, corrected=True)
 
     # ───────────────────────── salida ─────────────────────────
@@ -547,6 +550,16 @@ class CristalAgentClientDraft(models.Model):
                 check("«dale»: sale el corregido y la cotización sigue en borrador",
                       d3.state == 'sent' and box['sent'][-1]['text'] == box['draft']
                       and d3.order_id.state == 'draft', (d3.state, d3.order_id.state))
+
+                # 4b) Texto libre sin código ni cita, con UN solo borrador avisado: es la corrección.
+                from ..services.owner_confirm import pending_requests
+                if not cc._pending(env) and not pending_requests(env):
+                    d3b = client_says("Y 3 detergentes más")
+                    taken = cc.handle_owner_message(env, config, owner_msg,
+                                                    "decile que se los llevamos el lunes")
+                    check("texto libre con un solo borrador esperando: es la corrección",
+                          taken and d3b.state == 'correcting', (taken, d3b.state))
+                    d3b._discard("autotest")
 
                 # 5) Un "ok" suelto de Joaco sin borradores esperando no se toma.
                 if not cc._pending(env):
