@@ -608,6 +608,9 @@ class CristalAgentConfig(models.Model):
         "Empresas: horas sin borradores después de que conteste una persona", default=2,
         help="Si alguien contestó el chat desde Odoo o desde el celular, durante este tiempo "
              "no se arman borradores en ese chat. 0 = nunca se corre.")
+    client_draft_last_template_at = fields.Datetime(
+        "Empresas: última plantilla de aviso", readonly=True,
+        help="Con la ventana de 24 h cerrada se manda una sola plantilla por día.")
     client_draft_knowledge = fields.Text(
         "Empresas: conocimiento del rubro",
         help="Lo que hay que saber para entender a los clientes y contestarles: cómo viene "
