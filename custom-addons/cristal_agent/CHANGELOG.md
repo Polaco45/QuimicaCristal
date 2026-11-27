@@ -7,6 +7,20 @@ adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [18.0.1.82.7] — 2026-11-27
+
+### Fixed — Nada sale por la cuenta Info: se manda por Cristal Mayorista
+- La cuenta "Quimica Cristal Info" tiene la conexión con Meta vencida ("Invalid OAuth
+  access token") y nunca recibió mensajes en Odoo. Del 03/11 al 26/11 Claudio intentó 86
+  seguimientos de cotización por ahí (plantilla `crm_hola_como_estas_copy`): todos fallaron.
+- `send_whatsapp`: si la cuenta no es de ventas (ni de las excluidas), sale por la primera
+  cuenta de ventas (Cristal Mayorista): por el chat del cliente si lo tiene, si no por la
+  plantilla genérica de esa cuenta.
+- `send_whatsapp_template`: la plantilla genérica de una cuenta que no es de ventas se
+  cambia por la de la cuenta de ventas (`hola_mayorista_crm`).
+
+---
+
 ## [18.0.1.82.6] — 2026-11-26
 
 ### Fixed — Los mensajes a clientes salen solo por su propio chat, en una cuenta de ventas

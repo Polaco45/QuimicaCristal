@@ -99,6 +99,39 @@ class SendWhatsApp(AgentTool):
         if not is_internal_channel and not (wa_account_id and mobile_number):
             return {"error": "Para enviar a un cliente WA externo, wa_account_id y mobile_number son obligatorios"}
 
+        # v1.82.7 — Cuenta que no es de ventas (Info: conexión con Meta vencida; del 03/11 al
+        # 26/11 se perdieron 86 seguimientos de cotización por ahí) → sale por la cuenta de
+        # ventas (Cristal Mayorista): por el chat del cliente si lo tiene, si no por plantilla.
+        force_template_partner = None
+        if not is_internal_channel:
+            from ..helpers import (sales_wa_accounts, nonclient_wa_account_ids,
+                                   customer_wa_channel)
+            sales = sales_wa_accounts(env)
+            if sales and int(wa_account_id) not in sales.ids \
+                    and int(wa_account_id) not in nonclient_wa_account_ids(env):
+                import re as _re0
+                partner_r = run.partner_id if run and run.partner_id else None
+                digits8 = _re0.sub(r'\D', '', mobile_number or '')[-8:]
+                if not partner_r and len(digits8) == 8:
+                    partner_r = env['res.partner'].sudo().search(
+                        ['|', ('mobile', 'ilike', digits8), ('phone', 'ilike', digits8)], limit=1)
+                if not partner_r:
+                    return {"error": "CUENTA_SIN_CLIENTE", "not_sent": True, "message": (
+                        "NO SE ENVIÓ NADA: esa cuenta de WhatsApp no se usa para clientes y no "
+                        "encontré al cliente para mandarlo por Cristal Mayorista. No anotes que "
+                        "le escribiste.")}
+                new_acc = sales[0]
+                ch = customer_wa_channel(env, partner_r, new_acc)
+                _logger.info("↪️ send_whatsapp: cuenta %s no es de ventas → %s (%s)",
+                             wa_account_id, new_acc.name,
+                             'chat %s' % ch.id if ch else 'plantilla')
+                wa_account_id = new_acc.id
+                if ch:
+                    channel_id = ch.id
+                    mobile_number = ch.whatsapp_number or mobile_number
+                else:
+                    force_template_partner = partner_r
+
         # v1.82.6 — Freno de última línea (Sergio 26/11/2026: un seguimiento de cotización
         # salió a un proveedor por el WhatsApp de Compras). Esta herramienta nunca escribe
         # por una cuenta que no es de clientes, ni a un número que no es el del chat.
@@ -144,7 +177,7 @@ class SendWhatsApp(AgentTool):
                 f"escribiste.")}
 
         skip_window_check = bool(run and getattr(run, 'trigger', None) == 'whatsapp_message')
-        closed_window_partner = None  # v1.39: ventana cerrada → va por plantilla
+        closed_window_partner = force_template_partner  # v1.39: ventana cerrada → plantilla
         if not is_internal_channel and not skip_window_check:
             from ..helpers import is_24h_window_open, hours_since_last_inbound
             # v1.10.1 FIX: el partner para el chequeo de ventana es el que

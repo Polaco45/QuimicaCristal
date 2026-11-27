@@ -113,6 +113,23 @@ class SendWhatsappTemplate(AgentTool):
                              f"por Meta (status: {template.status}). Escalá a Joaco."
                 }
 
+        # ─── 2 a. v1.82.7: plantilla genérica de una cuenta que no es de ventas (Info, con la
+        # conexión vencida) → la misma plantilla de la cuenta de ventas (Cristal Mayorista).
+        from ..helpers import (sales_wa_accounts, nonclient_wa_account_ids,
+                               closed_window_template, CLOSED_WINDOW_TEMPLATE_NAMES)
+        sales = sales_wa_accounts(env)
+        if sales and template.wa_account_id and template.wa_account_id not in sales \
+                and template.wa_account_id.id not in nonclient_wa_account_ids(env) \
+                and template.template_name in CLOSED_WINDOW_TEMPLATE_NAMES:
+            swap = closed_window_template(env, sales[0].id)
+            if swap:
+                _logger.info("↪️ Plantilla %s (%s) → %s (%s)", template.template_name,
+                             template.wa_account_id.name, swap.template_name,
+                             swap.wa_account_id.name)
+                template = swap
+                template_name = swap.template_name
+                wa_account_id = swap.wa_account_id.id
+
         # ─── 2 bis. ¿Vale la pena pagarla? (política de envío, 11/11/2026) ───
         # Contestarle a un cliente que escribió, o un pedido expreso de Joaco por el
         # canal interno, no es "enviar por enviar": pasa (solo se evita el duplicado).
