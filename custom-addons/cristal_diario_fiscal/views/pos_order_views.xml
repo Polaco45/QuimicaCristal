@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_pos_order_form_cristal_journal" model="ir.ui.view">
+        <field name="name">pos.order.form.cristal.journal</field>
+        <field name="model">pos.order</field>
+        <field name="inherit_id" ref="point_of_sale.view_pos_pos_form"/>
+        <field name="arch" type="xml">
+            <field name="fiscal_position_id" position="after">
+                <field name="cristal_journal_manual" invisible="not cristal_journal_manual"/>
+            </field>
+        </field>
+    </record>
+</odoo>
