@@ -188,6 +188,7 @@ class CristalAgentClientDraft(models.Model):
         config = self.env['cristal.agent.config'].sudo().get_active()
         if not cc.is_enabled(config):
             return
+        self._process_owner_queue(config)
         limit = fields.Datetime.now() - timedelta(seconds=config.client_draft_wait_seconds or 0)
         todo = self.sudo().search([
             '|', ('state', '=', 'correcting'),
@@ -208,6 +209,33 @@ class CristalAgentClientDraft(models.Model):
                 try:
                     draft.write({'state': 'error', 'resolution': str(e)[:200],
                                  'resolved_at': fields.Datetime.now()})
+                    self.env.cr.commit()
+                except Exception:  # noqa: BLE001
+                    self.env.cr.rollback()
+
+    @api.model
+    def _process_owner_queue(self, config):
+        """Atiende lo que Joaco contestó por WhatsApp sobre los borradores (fuera del webhook)."""
+        if pc._test(self.env) is not None:
+            return      # el autotest no toca la cola real ni hace commit
+        WA = self.env['whatsapp.message'].sudo()
+        for msg in WA.search([('cristal_client_owner_pending', '=', True)], order='id', limit=20):
+            msg.write({'cristal_client_owner_pending': False})
+            mm = msg.mail_message_id
+            text = pc.plain(mm.body) if mm else ''
+            hint = self.sudo().search([('notify_mail_message_id', '=', mm.parent_id.id)], limit=1) \
+                if (mm and mm.parent_id) else None
+            try:
+                cc.owner_turn(self.env(su=True), config, text, hint=hint or None)
+                self.env.cr.commit()
+            except Exception:  # noqa: BLE001
+                self.env.cr.rollback()
+                _logger.exception("Borradores de empresas: no pude atender a Joaco (%s)", msg.id)
+                try:
+                    msg.write({'cristal_client_owner_pending': False})
+                    cc.tell_owner(self.env, config,
+                                  "No pude procesar lo que me escribiste recién. Probá de "
+                                  "nuevo o resolvelo desde la pantalla de borradores.")
                     self.env.cr.commit()
                 except Exception:  # noqa: BLE001
                     self.env.cr.rollback()
@@ -300,18 +328,23 @@ class CristalAgentClientDraft(models.Model):
             _logger.exception("Borradores de empresas: no pude dejar la nota en %s", order.name)
         self.order_id = order.id
 
-    def _ask_owner(self, config, corrected=False):
+    def _ask_owner(self, config, corrected=False, extra=''):
         self.ensure_one()
         via, mail_id = 'screen', False
-        if self.kind in cc.NOTIFY_KINDS and config.client_draft_notify_whatsapp:
-            ok, mail_id = cc.tell_owner(self.env, config, cc.owner_text(self, corrected))
+        # Lo que Joaco ya está conversando por WhatsApp se le sigue contestando por ahí.
+        talking = corrected and self.notify_via == 'whatsapp'
+        if talking or (self.kind in cc.NOTIFY_KINDS and config.client_draft_notify_whatsapp):
+            ok, mail_id = cc.tell_owner(self.env, config,
+                                        cc.owner_text(self, corrected) + (extra or ''))
             if ok:
                 via = 'whatsapp'
         self.write({'state': 'pending', 'asked_at': fields.Datetime.now(),
                     'notify_via': via, 'notify_mail_message_id': mail_id or False,
                     'correction_text': False})
 
-    def _apply_correction(self, config):
+    def _apply_correction(self, config, send=False, extra=''):
+        """Reescribe el borrador con lo que pidió Joaco. send=True: además lo manda sin
+        volver a preguntar («decile tal cosa y mandalo»)."""
         self.ensure_one()
         verdict, _products = cc.build_draft(self.env, config, self,
                                             correction=self.correction_text)
@@ -325,7 +358,13 @@ class CristalAgentClientDraft(models.Model):
         if (verdict.get('nota') or '').strip():
             vals['note'] = verdict['nota'].strip()[:250]
         self.write(vals)
-        self._ask_owner(config, corrected=True)
+        if send:
+            self.write({'state': 'pending', 'correction_text': False})
+            self.send_to_client()
+            if extra:
+                cc.tell_owner(self.env, config, extra.strip())
+        else:
+            self._ask_owner(config, corrected=True, extra=extra)
 
     # ───────────────────────── salida ─────────────────────────
     def send_to_client(self):
@@ -539,13 +578,14 @@ class CristalAgentClientDraft(models.Model):
                 # 4) Corrección y después "dale".
                 d3 = client_says("Sumame 3 detergentes")
                 owner_msg = inbound("x", number='+5493580000009')
+                box['draft'] = 'Perfecto, mañana a la mañana te llega.'
+                box['owner'].clear()
                 cc.handle_owner_message(env, config, owner_msg,
                                         f"{d3.name} decile que mañana a la mañana")
-                check("corrección: queda en cola", d3.state == 'correcting', d3.state)
-                box['draft'] = 'Perfecto, mañana a la mañana te llega.'
-                Draft.cron_process()
                 check("corrección: vuelve a esperar el OK con el texto nuevo",
                       d3.state == 'pending' and d3.draft_text == box['draft'], d3.state)
+                check("corrección: le muestra a Joaco cómo quedó",
+                      box['owner'] and box['draft'] in box['owner'][-1], box['owner'][-1:])
                 cc.handle_owner_message(env, config, owner_msg, f"{d3.name} dale")
                 check("«dale»: sale el corregido y la cotización sigue en borrador",
                       d3.state == 'sent' and box['sent'][-1]['text'] == box['draft']
@@ -555,11 +595,25 @@ class CristalAgentClientDraft(models.Model):
                 from ..services.owner_confirm import pending_requests
                 if not cc._pending(env) and not pending_requests(env):
                     d3b = client_says("Y 3 detergentes más")
+                    box['draft'] = 'Dale, el lunes te los llevamos.'
+                    box['aprendizaje'] = 'Regla de autotest: las intercaladas vienen en caja'
                     taken = cc.handle_owner_message(env, config, owner_msg,
                                                     "decile que se los llevamos el lunes")
-                    check("texto libre con un solo borrador esperando: es la corrección",
-                          taken and d3b.state == 'correcting', (taken, d3b.state))
-                    d3b._discard("autotest")
+                    check("texto libre con un solo borrador esperando: lo corrige",
+                          taken and d3b.state == 'pending' and d3b.draft_text == box['draft'],
+                          (taken, d3b.state))
+                    check("lo que Joaco enseña queda anotado y se lo dice",
+                          'Regla de autotest' in (config.client_draft_knowledge or '')
+                          and 'Anotado' in box['owner'][-1], box['owner'][-1:])
+                    box['aprendizaje'] = ''
+                    box['owner_verdict'] = {'borrador': None, 'accion': 'enviar',
+                                            'instruccion': 'agregá que va con remito'}
+                    box['draft'] = 'Dale, el lunes te los llevamos, con remito.'
+                    cc.handle_owner_message(env, config, owner_msg, "agregale el remito y mandalo")
+                    check("«cambiale esto y mandalo»: corrige y sale sin segundo OK",
+                          d3b.state == 'sent' and box['sent'][-1]['text'] == box['draft'],
+                          d3b.state)
+                    box['owner_verdict'] = None
 
                 # 5) Un "ok" suelto de Joaco sin borradores esperando no se toma.
                 if not cc._pending(env):

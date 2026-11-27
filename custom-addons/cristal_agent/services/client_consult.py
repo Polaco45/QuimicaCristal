@@ -376,83 +376,212 @@ def split_items(verdict, products):
 # ───────────────────────── textos para Joaco ─────────────────────────
 def owner_text(draft, corrected=False):
     kind = dict(KINDS).get(draft.kind, 'Mensaje')
-    head = (f"Borrador corregido {draft.name} para {draft.client_name}:" if corrected else
-            f"Empresas {draft.name} · {kind} de {draft.client_name}:\n"
-            f"«{(draft.incoming_text or '')[:600]}»")
+    if corrected:
+        return (f"{draft.name} · para {draft.client_name} quedó así:\n«{draft.draft_text}»\n\n"
+                f"¿Lo mando? Decime *dale*, o contame qué le cambio.")
     extra = ''
-    if draft.order_id and not corrected:
+    if draft.order_id:
         extra += f"\n\nCotización armada: {draft.order_id.name} ({_money(draft.order_id.amount_total)})"
-    if draft.unmatched_text and not corrected:
+    if draft.unmatched_text:
         extra += f"\nSin identificar: {draft.unmatched_text[:300]}"
-    if draft.note and not corrected:
+    if draft.note:
         extra += f"\nNota: {draft.note}"
-    return (f"{head}{extra}\n\nBorrador:\n«{draft.draft_text}»\n\n"
-            f"Respondé citando este mensaje: *dale* lo manda, *no* lo descarta, o escribime "
-            f"la corrección. También sirve «{draft.name} dale».")
+    return (f"Empresas {draft.name} · {kind} de {draft.client_name}:\n"
+            f"«{(draft.incoming_text or '')[:600]}»{extra}\n\n"
+            f"Le contestaría:\n«{draft.draft_text}»\n\n"
+            f"Decime *dale* y lo mando, *no* y lo descarto, o contame qué le cambio.")
 
 
-# ───────────────────────── respuesta de Joaco ─────────────────────────
+# ───────────────────────── conversación con Joaco ─────────────────────────
 def _pending(env):
     return env['cristal.agent.client.draft'].sudo().search([
         ('state', '=', 'pending'), ('notify_via', '=', 'whatsapp'),
         ('asked_at', '>=', fields.Datetime.now() - timedelta(hours=48))], order='id desc')
 
 
-def handle_owner_message(env, config, wa_message, text):
-    """Joaco escribió por WhatsApp. Devuelve True si el mensaje era sobre un borrador de
-    empresas (y entonces ya quedó atendido); False para que siga su camino de siempre."""
+def learn(env, config, rule):
+    """Suma al conocimiento del rubro algo que Joaco enseñó. Devuelve la regla guardada."""
+    rule = re.sub(r'\s+', ' ', rule or '').strip(' -•').strip()
+    if len(rule) < 8:
+        return ''
+    current = (config.client_draft_knowledge or '').strip() or DEFAULT_KNOWLEDGE
+    if rule.lower() in current.lower():
+        return ''
+    stamp = fields.Date.context_today(config).strftime('%d/%m/%Y')
+    config.sudo().write({'client_draft_knowledge':
+                         f"{current}\n- {rule[:300]} (Joaco, {stamp})"})
+    return rule[:300]
+
+
+SYSTEM_OWNER = (
+    "Sos el asistente de atención a empresas de Química Cristal y trabajás con Joaco, el "
+    "dueño. Vos le proponés borradores de respuesta para los clientes y él te contesta por "
+    "WhatsApp como le hablaría a un empleado de confianza: suelto, sin fórmulas, a veces con "
+    "varias ideas en un mismo mensaje. Tu trabajo ahora es ENTENDER qué te está pidiendo y "
+    "decidir qué hacer, sin exigirle códigos ni formatos.\n\n"
+    "Te doy los borradores que están esperando y su mensaje. Decidí:\n"
+    "- borrador: el código (por ejemplo B12) del borrador del que habla. Si hay uno solo "
+    "esperando, es ese. Si hay varios, deducilo por el cliente o el tema que nombra; si no se "
+    "puede saber, null.\n"
+    "- accion:\n"
+    "  · enviar: aprueba y quiere que salga («dale», «mandalo», «perfecto», «sí», «va»). Si "
+    "además pide un cambio y que salga («decile tal cosa y mandalo», «agregale esto y "
+    "listo»), es enviar con instruccion.\n"
+    "  · corregir: pide cambios o agrega información y NO dijo que lo mandes. Un «perfecto» "
+    "seguido de cosas para agregar es corregir: quiere ver cómo queda.\n"
+    "  · descartar: no quiere que salga, o va a contestar él («no», «dejalo», «yo le escribo»).\n"
+    "  · nada: no habla de ningún borrador, o solo pregunta o comenta algo.\n"
+    "- instruccion: en tus palabras, TODO lo que hay que cambiar o sumar al borrador según su "
+    "mensaje (qué decirle al cliente, qué ofrecer, qué aclarar). Vacío si no pide cambios.\n"
+    "- aprendizaje: si su mensaje enseña algo que sirve para OTROS casos (cómo viene un "
+    "producto, cómo le dicen los clientes, qué se hace ante un tipo de reclamo, qué "
+    "alternativa ofrecer, cómo le gusta contestar), escribilo como una regla general corta, "
+    "sin nombrar a este cliente. Si es solo de este caso, vacío.\n"
+    "- respuesta: lo que le decís a Joaco, corto y natural, como un empleado: solo hace falta "
+    "cuando la accion es nada, o cuando no pudiste saber de qué borrador habla (ahí le "
+    "preguntás cuál). En los demás casos, vacío.\n\n"
+    "Respondé SOLO un JSON: {\"borrador\": \"B12\"|null, \"accion\": "
+    "\"enviar|corregir|descartar|nada\", \"instruccion\": \"...\", \"aprendizaje\": \"...\", "
+    "\"respuesta\": \"...\"}")
+
+
+def _ask_owner_router(env, config, user_text, raw_text):
+    test = pc._test(env)
+    if test is not None:
+        if test.get('owner_verdict'):
+            return dict(test['owner_verdict']), 0.0
+        m = _RE_CODE.search(raw_text)
+        body = (raw_text[:m.start()] + raw_text[m.end():]).strip(' ,.:-') if m else raw_text
+        words = len(body.split())
+        if pc._RE_YES.match(body) and words <= 4:
+            action, instr = 'enviar', ''
+        elif pc._RE_NO.match(body) and words <= 6:
+            action, instr = 'descartar', ''
+        else:
+            action, instr = 'corregir', body
+        return {'borrador': f"B{m.group(1)}" if m else None, 'accion': action,
+                'instruccion': instr, 'aprendizaje': test.get('aprendizaje', ''),
+                'respuesta': ''}, 0.0
+    import requests
+    key = env['cristal.agent.config'].sudo().get_api_key()
+    if not key:
+        raise RuntimeError("sin API key de Anthropic")
+    from .claude_client import _is_modern_model
+    model = config.anthropic_model
+    body = {"model": model, "max_tokens": 1500, "system": SYSTEM_OWNER,
+            "messages": [{"role": "user", "content": user_text}]}
+    if _is_modern_model(model):
+        body["output_config"] = {"effort": "low"}
+    resp = requests.post(
+        config.anthropic_api_url, timeout=90,
+        headers={"x-api-key": key, "anthropic-version": config.anthropic_version,
+                 "content-type": "application/json"},
+        json=body)
+    resp.raise_for_status()
+    data = resp.json()
+    text = ''.join(b.get('text', '') for b in data.get('content', [])
+                   if b.get('type') == 'text')
+    m = re.search(r'\{.*\}', text, re.S)
+    verdict = json.loads(m.group(0)) if m else {}
+    cost = 0.0
+    try:
+        cost = env['cristal.agent.run']._call_cost(model, data.get('usage') or {})
+    except Exception:  # noqa: BLE001
+        pass
+    return verdict, cost
+
+
+def owner_turn(env, config, text, hint=None):
+    """Atiende un mensaje de Joaco como lo haría una persona: entiende de qué borrador
+    habla y qué quiere (mandar, cambiar, descartar), y guarda lo que enseña."""
     Draft = env['cristal.agent.client.draft'].sudo()
     text = (text or '').strip()
-    draft, explicit = Draft, False
+    pending = _pending(env)
+    if hint and hint.state == 'pending':
+        pending |= hint
+    if not text:
+        return
+    lines = []
+    for d in pending.sorted('id')[:8]:
+        lines.append(
+            f"{d.name} · {dict(KINDS).get(d.kind, 'Mensaje')} de {d.client_name}\n"
+            f"  El cliente escribió: «{(d.incoming_text or '')[:400]}»\n"
+            f"  Borrador actual: «{(d.draft_text or '')[:500]}»"
+            + (f"\n  Cotización armada: {d.order_id.name}" if d.order_id else ''))
+    user_text = '\n'.join([
+        "BORRADORES ESPERANDO SU OK:", '\n'.join(lines) or '(ninguno)', "",
+        ("Joaco contestó citando el aviso de " + hint.name + "." if hint else ""),
+        "MENSAJE DE JOACO:", text])
+    verdict, cost = _ask_owner_router(env, config, user_text, text)
+    code = _RE_CODE.search(str(verdict.get('borrador') or ''))
+    draft = Draft.browse(int(code.group(1))).exists() if code else Draft
+    if not draft and hint:
+        draft = hint
+    if not draft and len(pending) == 1:
+        draft = pending
+    action = verdict.get('accion') or 'nada'
+    instruction = (verdict.get('instruccion') or '').strip()
+    learned = ''
+    try:
+        learned = learn(env, config, verdict.get('aprendizaje'))
+    except Exception:  # noqa: BLE001
+        _logger.exception("Borradores de empresas: no pude guardar el aprendizaje")
+    noted = f"\n\nAnotado para la próxima: {learned}" if learned else ''
+    if draft:
+        draft.cost_usd = (draft.cost_usd or 0.0) + cost
+    if action == 'nada' or not draft:
+        reply = (verdict.get('respuesta') or '').strip()
+        if not reply and action != 'nada':
+            names = ', '.join(f"{d.name} ({d.client_name})" for d in pending[:6])
+            reply = (f"¿De cuál me hablás? Tengo esperando: {names}." if names
+                     else "No tengo ningún borrador esperando ahora.")
+        if reply or noted:
+            tell_owner(env, config, (reply or "Listo.") + noted)
+        return
+    if draft.state != 'pending':
+        tell_owner(env, config, f"{draft.name} ya no está esperando "
+                                f"({draft._state_label()})." + noted)
+        return
+    if action == 'descartar':
+        draft._discard("Joaco lo descartó por WhatsApp.")
+        tell_owner(env, config, f"Listo, {draft.name} descartado. No salió nada." + noted)
+    elif action == 'enviar' and not instruction:
+        draft.send_to_client()
+        if noted:
+            tell_owner(env, config, noted.strip())
+    else:
+        draft.write({'state': 'correcting', 'correction_text': instruction or text})
+        draft._apply_correction(config, send=(action == 'enviar'), extra=noted)
+
+
+def handle_owner_message(env, config, wa_message, text):
+    """Joaco escribió por WhatsApp. Devuelve True si el mensaje era sobre los borradores
+    de empresas (y entonces ya quedó atendido o en cola); False para que siga su camino."""
+    Draft = env['cristal.agent.client.draft'].sudo()
+    text = (text or '').strip()
+    hint = Draft
     parent = wa_message.mail_message_id.parent_id if wa_message.mail_message_id else False
     if parent:
-        draft = Draft.search([('notify_mail_message_id', '=', parent.id)], limit=1)
-    m = _RE_CODE.search(text)
-    if not draft and m:
-        draft = Draft.browse(int(m.group(1))).exists()
-    if draft:
-        explicit = True
-        if m:
-            text = (text[:m.start()] + text[m.end():]).strip(' ,.:-')
-    words = len(text.split())
-    is_yes = bool(pc._RE_YES.match(text)) and words <= 4
-    is_no = bool(pc._RE_NO.match(text)) and words <= 6
-    if not draft:
-        # Sin cita ni código: se toma como respuesta al borrador solo cuando hay UNO esperando
-        # y ningún pedido que se le haya pedido confirmar (ese «OK» es de otro flujo). Un
-        # texto libre (corrección) además exige que el aviso sea de las últimas 6 horas.
+        hint = Draft.search([('notify_mail_message_id', '=', parent.id)], limit=1)
+    explicit = bool(hint or _RE_CODE.search(text))
+    if not text:
+        return explicit
+    pending = _pending(env)
+    if not explicit:
+        if not pending:
+            return False
+        # Un pedido que se le pidió confirmar («OK S07123») es de otro flujo.
         try:
-            from .owner_confirm import pending_requests
-            if pending_requests(env):
+            from .owner_confirm import pending_requests, _RE_ORDER
+            if _RE_ORDER.search(text) or pending_requests(env):
                 return False
         except Exception:  # noqa: BLE001
             return False
-        pending = _pending(env)
-        if not (is_yes or is_no):
-            recent = pending.filtered(
-                lambda d: d.asked_at >= fields.Datetime.now() - timedelta(hours=6))
-            if not text or len(recent) != 1 or len(pending) != 1:
-                return False
-        if len(pending) != 1:
-            if len(pending) > 1:
-                names = ', '.join(f"{d.name} ({d.client_name})" for d in pending[:6])
-                tell_owner(env, config,
-                           f"Tengo varios borradores de empresas esperando: {names}. Respondé "
-                           f"citando el mensaje o con el código, por ejemplo «{pending[0].name} dale».")
-                return True
-            return False
-        draft = pending
-    if draft.state != 'pending':
-        tell_owner(env, config, f"{draft.name} ya no está esperando ({draft._state_label()}).")
+    if pc._test(env) is not None:
+        owner_turn(env, config, text, hint=hint or None)
         return True
-    if not text:
-        return explicit
-    if is_yes:
-        draft.send_to_client()
-    elif is_no:
-        draft._discard("Joaco lo descartó por WhatsApp.")
-        tell_owner(env, config, f"Listo, {draft.name} descartado. No salió nada.")
-    else:
-        draft.write({'state': 'correcting', 'correction_text': text})
-        draft._trigger_cron()
+    # Entenderlo lleva una llamada a Claude: nunca dentro del webhook.
+    wa_message.sudo().write({'cristal_client_owner_pending': True})
+    Draft._trigger_cron(seconds=1)
     return True
+
