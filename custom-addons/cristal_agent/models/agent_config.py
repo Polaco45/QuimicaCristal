@@ -587,6 +587,30 @@ class CristalAgentConfig(models.Model):
              "muestra el borrador corregido y sale recién con su «dale». Prendido: el "
              "borrador corregido sale directo.")
 
+    # ─────────── v1.83 — WhatsApp de empresas en modo borrador (pedido de Joaco) ───────────
+    client_draft_enabled = fields.Boolean(
+        "Empresas: modo borrador", default=False,
+        help="Prendido: cuando un cliente escribe al WhatsApp de empresas, se arma un borrador "
+             "de respuesta (y la cotización, si es un pedido). No sale nada sin el OK.")
+    client_draft_wa_account_id = fields.Many2one(
+        'whatsapp.account', "Cuenta de WhatsApp de empresas", ondelete='set null')
+    client_draft_owner_user_id = fields.Many2one(
+        'res.users', "Quién aprueba los borradores", ondelete='set null',
+        help="Vacío = el dueño configurado arriba (Joaco).")
+    client_draft_notify_whatsapp = fields.Boolean(
+        "Empresas: avisar pedidos y reclamos por WhatsApp", default=True,
+        help="Prendido: los pedidos y reclamos se le avisan a quien aprueba por su chat con "
+             "Claudio. Las consultas y pagos esperan solo en la pantalla de borradores.")
+    client_draft_wait_seconds = fields.Integer(
+        "Empresas: espera antes de armar el borrador (segundos)", default=45,
+        help="Los clientes suelen mandar el pedido en varios mensajes seguidos.")
+    client_draft_quiet_hours = fields.Integer(
+        "Empresas: horas sin borradores después de que conteste una persona", default=2,
+        help="Si alguien contestó el chat desde Odoo o desde el celular, durante este tiempo "
+             "no se arman borradores en ese chat. 0 = nunca se corre.")
+    client_draft_selftest_log = fields.Text(
+        "Empresas: último autotest", readonly=True)
+
     purchase_selftest_log = fields.Text(
         "Compras: último autotest", readonly=True,
         help="Resultado del autotest que corre solo en cada actualización del módulo.")

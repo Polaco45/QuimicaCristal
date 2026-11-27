@@ -36,3 +36,5 @@ access_cristal_agent_event_user,cristal.agent.event user,model_cristal_agent_eve
 access_cristal_agent_event_manager,cristal.agent.event manager,model_cristal_agent_event,base.group_system,1,1,1,1
 access_cristal_agent_event_contact_user,cristal.agent.event.contact user,model_cristal_agent_event_contact,base.group_user,1,0,0,0
 access_cristal_agent_event_contact_manager,cristal.agent.event.contact manager,model_cristal_agent_event_contact,base.group_system,1,1,1,1
+access_cristal_agent_client_draft_user,cristal.agent.client.draft user,model_cristal_agent_client_draft,base.group_user,1,0,0,0
+access_cristal_agent_client_draft_manager,cristal.agent.client.draft manager,model_cristal_agent_client_draft,base.group_system,1,1,1,1

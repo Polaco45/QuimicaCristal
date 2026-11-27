@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ───────────── WhatsApp de empresas en modo borrador (v1.83) ───────────── -->
+    <record id="view_cristal_agent_client_draft_list" model="ir.ui.view">
+        <field name="name">cristal.agent.client.draft.list</field>
+        <field name="model">cristal.agent.client.draft</field>
+        <field name="arch" type="xml">
+            <list string="Borradores de empresas" create="0"
+                  decoration-warning="state == 'pending'"
+                  decoration-muted="state in ('discarded', 'superseded', 'no_reply', 'handled')"
+                  decoration-danger="state == 'error'">
+                <field name="name"/>
+                <field name="last_inbound_at" string="Escribió"/>
+                <field name="client_name"/>
+                <field name="kind" widget="badge"
+                       decoration-info="kind == 'pedido'" decoration-danger="kind == 'reclamo'"/>
+                <field name="incoming_text"/>
+                <field name="draft_text"/>
+                <field name="order_id" optional="show"/>
+                <field name="currency_id" column_invisible="1"/>
+                <field name="order_amount" optional="show"/>
+                <field name="state" widget="badge"/>
+                <button name="action_send" type="object" string="Enviar" class="btn-primary"
+                        invisible="state != 'pending'"/>
+                <button name="action_discard" type="object" string="Descartar"
+                        invisible="state not in ('pending', 'collecting', 'correcting')"/>
+                <field name="resolution" optional="hide"/>
+                <field name="notify_via" optional="hide"/>
+                <field name="cost_usd" sum="Total" optional="hide"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_cristal_agent_client_draft_form" model="ir.ui.view">
+        <field name="name">cristal.agent.client.draft.form</field>
+        <field name="model">cristal.agent.client.draft</field>
+        <field name="arch" type="xml">
+            <form string="Borrador de empresas" create="0">
+                <header>
+                    <button name="action_send" type="object" string="Enviar al cliente"
+                            class="btn-primary" invisible="state != 'pending'"/>
+                    <button name="action_discard" type="object" string="Descartar"
+                            invisible="state not in ('pending', 'collecting', 'correcting')"
+                            confirm="Se descarta el borrador y se cancela la cotización que se había armado. ¿Seguimos?"/>
+                    <button name="action_open_order" type="object" string="Ver la cotización"
+                            invisible="not order_id"/>
+                    <button name="action_open_chat" type="object" string="Abrir el chat"
+                            invisible="not channel_id"/>
+                    <field name="state" widget="statusbar"
+                           statusbar_visible="collecting,pending,sent"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1><field name="name"/> · <field name="client_name"/></h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="kind"/>
+                            <field name="client_id"/>
+                            <field name="partner_id"/>
+                            <field name="mobile_number"/>
+                            <field name="order_id"/>
+                            <field name="currency_id" invisible="1"/>
+                            <field name="order_amount" invisible="not order_id"/>
+                        </group>
+                        <group>
+                            <field name="last_inbound_at"/>
+                            <field name="asked_at"/>
+                            <field name="notify_via"/>
+                            <field name="resolved_at"/>
+                            <field name="resolution"/>
+                            <field name="wa_account_id"/>
+                            <field name="cost_usd"/>
+                        </group>
+                    </group>
+                    <group string="Qué escribió el cliente">
+                        <field name="incoming_text" nolabel="1" colspan="2" readonly="1"/>
+                    </group>
+                    <group string="Nota" invisible="not note">
+                        <field name="note" nolabel="1" colspan="2" readonly="1"/>
+                    </group>
+                    <group string="Renglones del pedido sin identificar (no se cargaron)"
+                           invisible="not unmatched_text">
+                        <field name="unmatched_text" nolabel="1" colspan="2" readonly="1"/>
+                    </group>
+                    <group string="Borrador (se puede editar antes de enviar)">
+                        <field name="draft_text" nolabel="1" colspan="2"
+                               readonly="state != 'pending'"/>
+                    </group>
+                    <group string="Lo que salió" invisible="not sent_text">
+                        <field name="sent_text" nolabel="1" colspan="2" readonly="1"/>
+                    </group>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_cristal_agent_client_draft_search" model="ir.ui.view">
+        <field name="name">cristal.agent.client.draft.search</field>
+        <field name="model">cristal.agent.client.draft</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="client_name"/>
+                <field name="incoming_text"/>
+                <filter name="pending" string="Esperando el OK" domain="[('state', '=', 'pending')]"/>
+                <filter name="orders" string="Pedidos" domain="[('kind', '=', 'pedido')]"/>
+                <filter name="claims" string="Reclamos" domain="[('kind', '=', 'reclamo')]"/>
+                <filter name="sent" string="Enviados" domain="[('state', '=', 'sent')]"/>
+                <filter name="error" string="No se pudo" domain="[('state', '=', 'error')]"/>
+                <group expand="0" string="Agrupar por">
+                    <filter name="by_state" string="Estado" context="{'group_by': 'state'}"/>
+                    <filter name="by_kind" string="Tipo" context="{'group_by': 'kind'}"/>
+                    <filter name="by_client" string="Cliente" context="{'group_by': 'client_id'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_cristal_agent_client_draft" model="ir.actions.act_window">
+        <field name="name">Borradores de empresas</field>
+        <field name="res_model">cristal.agent.client.draft</field>
+        <field name="view_mode">list,form</field>
+        <field name="context">{'search_default_pending': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">No hay borradores esperando</p>
+            <p>Cuando un cliente escribe al WhatsApp de empresas, acá aparece la respuesta
+               propuesta para que la envíes, la corrijas o la descartes.</p>
+        </field>
+    </record>
+
+    <record id="action_cristal_agent_client_draft_selftest" model="ir.actions.server">
+        <field name="name">Autotest de borradores de empresas</field>
+        <field name="model_id" ref="model_cristal_agent_client_draft"/>
+        <field name="state">code</field>
+        <field name="code">action = model.action_selftest()</field>
+    </record>
+
+    <!-- Hace falta el cron por _trigger; el de cada 5 min es la red por si el trigger falla. -->
+    <record id="cron_client_draft" model="ir.cron">
+        <field name="name">Cristal Agent: WhatsApp de empresas en modo borrador</field>
+        <field name="model_id" ref="model_cristal_agent_client_draft"/>
+        <field name="state">code</field>
+        <field name="code">model.cron_process()</field>
+        <field name="interval_number">5</field>
+        <field name="interval_type">minutes</field>
+        <field name="active" eval="True"/>
+    </record>
+
+    <!-- Corre el autotest que pide cada actualización del módulo. -->
+    <record id="cron_client_draft_selftest" model="ir.cron">
+        <field name="name">Cristal Agent: WhatsApp de empresas — autotest tras actualizar</field>
+        <field name="model_id" ref="model_cristal_agent_client_draft"/>
+        <field name="state">code</field>
+        <field name="code">model.cron_maintenance()</field>
+        <field name="interval_number">30</field>
+        <field name="interval_type">minutes</field>
+        <field name="active" eval="True"/>
+    </record>
+
+</odoo>
