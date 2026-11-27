@@ -58,6 +58,7 @@ class CristalAgentClientDraft(models.Model):
     sent_text = fields.Text("Lo que salió")
     resolution = fields.Char("Resultado")
     cost_usd = fields.Float("Costo (US$)", digits=(10, 4))
+    attempts = fields.Integer("Intentos fallidos", default=0)
 
     @api.depends('create_date')
     def _compute_name(self):
@@ -188,30 +189,59 @@ class CristalAgentClientDraft(models.Model):
         config = self.env['cristal.agent.config'].sudo().get_active()
         if not cc.is_enabled(config):
             return
+        test = pc._test(self.env)
         self._process_owner_queue(config)
         limit = fields.Datetime.now() - timedelta(seconds=config.client_draft_wait_seconds or 0)
-        todo = self.sudo().search([
-            '|', ('state', '=', 'correcting'),
-            '&', ('state', '=', 'collecting'), ('last_inbound_at', '<=', limit)], order='id')
+        domain = ['|', ('state', '=', 'correcting'),
+                  '&', ('state', '=', 'collecting'), ('last_inbound_at', '<=', limit)]
+        if test is not None:
+            # El autotest solo procesa SUS borradores: nunca los reales que estén en cola.
+            domain = [('channel_id', 'in', test.get('channels') or [0])] + domain
+        todo = self.sudo().search(domain, order='id')
         for draft in todo:
             try:
                 if draft.state == 'correcting':
                     draft._apply_correction(config)
                 else:
                     draft._prepare(config)
-                if pc._test(self.env) is None:
+                if test is None:
                     self.env.cr.commit()
             except Exception as e:  # noqa: BLE001
-                if pc._test(self.env) is not None:
+                if test is not None:
                     raise
                 self.env.cr.rollback()
                 _logger.exception("Borradores de empresas: falló %s", draft.name)
+                # Un mensaje nuevo del cliente justo durante la llamada, o la API caída un
+                # momento: se reintenta. Recién al tercer fallo se da por perdido y se avisa.
                 try:
-                    draft.write({'state': 'error', 'resolution': str(e)[:200],
+                    tries = (draft.attempts or 0) + 1
+                    if tries < 3:
+                        draft.write({'attempts': tries,
+                                     'state': 'collecting' if draft.state != 'correcting'
+                                     else 'correcting'})
+                        self.env.cr.commit()
+                        draft._trigger_cron(seconds=60)
+                        continue
+                    draft.write({'state': 'error', 'attempts': tries,
+                                 'resolution': str(e)[:200],
                                  'resolved_at': fields.Datetime.now()})
+                    self.env.cr.commit()
+                    cc.tell_owner(self.env, config,
+                                  f"{draft.client_name} escribió al WhatsApp de empresas y no "
+                                  f"pude armar el borrador ({draft.name}). Miralo en el chat.",
+                                  urgent=True)
                     self.env.cr.commit()
                 except Exception:  # noqa: BLE001
                     self.env.cr.rollback()
+        if test is None:
+            try:
+                # Si Joaco tiene la ventana abierta, se le mandan (gratis) los pedidos y
+                # reclamos que esperaban solo en la pantalla.
+                if cc.flush_unnotified(self.env, config):
+                    self.env.cr.commit()
+            except Exception:  # noqa: BLE001
+                self.env.cr.rollback()
+                _logger.exception("Borradores de empresas: no pude mandar los pendientes")
 
     @api.model
     def _process_owner_queue(self, config):
@@ -220,7 +250,10 @@ class CristalAgentClientDraft(models.Model):
             return      # el autotest no toca la cola real ni hace commit
         WA = self.env['whatsapp.message'].sudo()
         for msg in WA.search([('cristal_client_owner_pending', '=', True)], order='id', limit=20):
+            # Se desmarca y se confirma ANTES de atenderlo: si algo falla después, el mismo
+            # mensaje no se vuelve a procesar (un «dale» repetido mandaría dos veces).
             msg.write({'cristal_client_owner_pending': False})
+            self.env.cr.commit()
             mm = msg.mail_message_id
             text = pc.plain(mm.body) if mm else ''
             hint = self.sudo().search([('notify_mail_message_id', '=', mm.parent_id.id)], limit=1) \
@@ -232,7 +265,6 @@ class CristalAgentClientDraft(models.Model):
                 self.env.cr.rollback()
                 _logger.exception("Borradores de empresas: no pude atender a Joaco (%s)", msg.id)
                 try:
-                    msg.write({'cristal_client_owner_pending': False})
                     cc.tell_owner(self.env, config,
                                   "No pude procesar lo que me escribiste recién. Probá de "
                                   "nuevo o resolvelo desde la pantalla de borradores.")
@@ -284,7 +316,16 @@ class CristalAgentClientDraft(models.Model):
             return
         self.draft_text = text
         if kind == 'pedido':
-            self._build_order(config, verdict, products)
+            try:
+                with self.env.cr.savepoint():
+                    self._build_order(config, verdict, products)
+            except Exception:  # noqa: BLE001
+                if pc._test(self.env) is not None:
+                    raise
+                _logger.exception("Borradores de empresas: no pude armar la cotización de %s",
+                                  self.name)
+                self.note = ("No pude armar la cotización: cargala a mano. "
+                             + (self.note or ''))[:250]
         self._ask_owner(config)
 
     def _build_order(self, config, verdict, products):
@@ -302,7 +343,9 @@ class CristalAgentClientDraft(models.Model):
         if not last:
             return
         owner = cc.owner_user(config)
+        SO = SO.with_company(last.company_id)
         vals = {
+            'company_id': last.company_id.id,
             'partner_id': last.partner_id.id,
             'partner_invoice_id': last.partner_invoice_id.id,
             'partner_shipping_id': last.partner_shipping_id.id,
@@ -334,8 +377,10 @@ class CristalAgentClientDraft(models.Model):
         # Lo que Joaco ya está conversando por WhatsApp se le sigue contestando por ahí.
         talking = corrected and self.notify_via == 'whatsapp'
         if talking or (self.kind in cc.NOTIFY_KINDS and config.client_draft_notify_whatsapp):
+            # Un reclamo le llega siempre, aunque haya que usar una plantilla.
             ok, mail_id = cc.tell_owner(self.env, config,
-                                        cc.owner_text(self, corrected) + (extra or ''))
+                                        cc.owner_text(self, corrected) + (extra or ''),
+                                        urgent=(self.kind == 'reclamo' and not corrected))
             if ok:
                 via = 'whatsapp'
         self.write({'state': 'pending', 'asked_at': fields.Datetime.now(),
@@ -372,6 +417,19 @@ class CristalAgentClientDraft(models.Model):
         self.ensure_one()
         config = self.env['cristal.agent.config'].sudo().get_active()
         self._check_admin(also=cc.owner_user(config))
+        self = self.sudo()
+        test = pc._test(self.env)
+        if test is None:
+            # Nadie más puede estar mandando este mismo borrador (botón y «dale» a la vez).
+            try:
+                with self.env.cr.savepoint():
+                    self.env.cr.execute(
+                        "SELECT id FROM cristal_agent_client_draft "
+                        "WHERE id = %s FOR UPDATE NOWAIT", (self.id,))
+            except Exception:  # noqa: BLE001
+                raise UserError(_("%s se está procesando en este momento. Probá de nuevo "
+                                  "en unos segundos.") % self.name)
+            self.invalidate_recordset(['state', 'draft_text'])
         if self.state != 'pending':
             raise UserError(_("%s ya no está esperando el OK.") % self.name)
         text = (self.draft_text or '').strip()
@@ -379,6 +437,15 @@ class CristalAgentClientDraft(models.Model):
             raise UserError(_("El borrador está vacío."))
         account = self.wa_account_id or config.client_draft_wa_account_id
         by_whatsapp = self.notify_via == 'whatsapp'
+        if self._answered_after_inbound(config):
+            # Alguien ya le contestó a mano después de su mensaje: este borrador quedó viejo.
+            self._close('handled', "Ya se le había contestado a mano: no se mandó.",
+                        keep_order=True)
+            if by_whatsapp:
+                cc.tell_owner(self.env, config,
+                              f"{self.name} no salió: a {self.client_name} ya se le contestó "
+                              f"a mano después de su mensaje.")
+            return False
         if pc._test(self.env) is None and not pc._window_open(
                 self.env, account, self.mobile_number):
             self.write({'state': 'error', 'resolved_at': fields.Datetime.now(),
@@ -401,9 +468,26 @@ class CristalAgentClientDraft(models.Model):
         self.write({'state': 'sent', 'resolved_at': now, 'sent_text': text,
                     'resolution': "Enviado con el OK de Joaco."})
         self.activity_ids.action_done()
+        if test is None:
+            # El WhatsApp ya salió: que quede asentado pase lo que pase después.
+            self.env.cr.commit()
         if by_whatsapp:
-            cc.tell_owner(self.env, config, f"Enviado a {self.client_name} ({self.name}).")
+            cc.tell_owner(self.env, config,
+                          f"Enviado a {self.client_name} ({self.name}):\n«{text}»")
         return True
+
+    def _answered_after_inbound(self, config):
+        """True si una persona escribió en el chat después del último mensaje del cliente."""
+        self.ensure_one()
+        if not self.channel_id or not self.last_inbound_at:
+            return False
+        bot = config.bot_partner_id.id or 2
+        msgs = self.env['mail.message'].sudo().search([
+            ('model', '=', 'discuss.channel'), ('res_id', '=', self.channel_id.id),
+            ('message_type', '=', 'whatsapp_message'),
+            ('author_id', 'not in', [bot, self.channel_id.whatsapp_partner_id.id or 0]),
+            ('date', '>', self.last_inbound_at)])
+        return bool(msgs.filtered(lambda m: m.author_id.user_ids))
 
     def action_send(self):
         """Botón en Odoo: mismo efecto que el «dale» por WhatsApp."""
@@ -504,6 +588,13 @@ class CristalAgentClientDraft(models.Model):
                               'client_draft_quiet_hours': 2,
                               'client_draft_notify_whatsapp': True,
                               'owner_whatsapp_number': '3580000009'})
+                # Lo real que esté esperando no participa de la prueba (se revierte al final):
+                # así los casos de «un solo borrador avisado» se prueban siempre.
+                env.cr.execute("UPDATE cristal_agent_client_draft SET notify_via = 'screen' "
+                               "WHERE state = 'pending'")
+                env.cr.execute("UPDATE sale_order SET cristal_owner_confirm_at = NULL "
+                               "WHERE cristal_owner_confirm_at >= now() - interval '3 days'")
+                env.invalidate_all()
                 company = env['res.partner'].create({'name': 'Empresa Autotest', 'is_company': True})
                 contact = env['res.partner'].create({
                     'name': 'Compras Autotest', 'parent_id': company.id,
@@ -518,6 +609,7 @@ class CristalAgentClientDraft(models.Model):
                     'name': 'Autotest empresas', 'channel_type': 'whatsapp',
                     'wa_account_id': account.id, 'whatsapp_number': '5493580000002',
                     'whatsapp_partner_id': contact.id})
+                box['channels'] = [channel.id]
 
                 def inbound(text, number='+5493580000002', chan=None, parent=None):
                     chan = chan or channel
@@ -597,8 +689,10 @@ class CristalAgentClientDraft(models.Model):
                     d3b = client_says("Y 3 detergentes más")
                     box['draft'] = 'Dale, el lunes te los llevamos.'
                     box['aprendizaje'] = 'Regla de autotest: las intercaladas vienen en caja'
-                    taken = cc.handle_owner_message(env, config, owner_msg,
-                                                    "decile que se los llevamos el lunes")
+                    taken = cc.handle_owner_message(
+                        env, config, owner_msg,
+                        "decile que se los llevamos el lunes, y ojo que las intercaladas "
+                        "vienen en caja")
                     check("texto libre con un solo borrador esperando: lo corrige",
                           taken and d3b.state == 'pending' and d3b.draft_text == box['draft'],
                           (taken, d3b.state))
