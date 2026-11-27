@@ -47,14 +47,20 @@ class WhatsAppAccount(models.Model):
             return WA
         config = self.env['cristal.agent.config'].sudo().get_active()
         is_purchase = bool(config.purchase_wa_account_id == self)
+        # v1.83 — WhatsApp de empresas en modo borrador: mismo trato que Compras.
+        is_client_draft = bool(getattr(config, 'client_draft_enabled', False)
+                               and config.client_draft_wa_account_id == self)
+        draft_owner = (config.client_draft_owner_user_id or config.owner_user_id) \
+            if is_client_draft else False
         author = (config.purchase_owner_user_id.partner_id if is_purchase else False) \
+            or (draft_owner.partner_id if draft_owner else False) \
             or self.notify_user_ids[:1].partner_id \
             or config.bot_partner_id or self.env.ref('base.partner_root')
         # En Compras no interviene el agente de ventas: se evita su takeover (que además
         # crearía una memoria de cliente para el proveedor). En las demás cuentas, que una
         # persona escriba desde el celular SÍ pausa a Claudio, como cuando escribe en Odoo.
         MM = self.env['mail.message'].sudo()
-        if is_purchase:
+        if is_purchase or is_client_draft:
             MM = MM.with_context(from_cristal_agent=True)
         mail_msg = MM.create({
             'author_id': author.id, 'body': plaintext2html(text),
@@ -68,4 +74,6 @@ class WhatsAppAccount(models.Model):
         })
         if is_purchase:
             self.env['cristal.agent.supplier.draft'].sudo().mark_handled_by_phone(channel)
+        if is_client_draft:
+            self.env['cristal.agent.client.draft'].sudo().mark_handled_by_phone(channel)
         return wa_msg

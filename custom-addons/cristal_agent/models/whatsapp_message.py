@@ -151,6 +151,17 @@ class WhatsAppMessage(models.Model):
                 _logger.exception("Compras consulta: falló el mensaje %s: %s", wa_message.id, e)
             return
 
+        # 2.92) v1.83 — WhatsApp de empresas en modo borrador: lo que entra por esa cuenta
+        # tampoco pasa por el agente de ventas. Se arma un borrador y decide Joaco.
+        from ..services import client_consult as cc
+        if cc.is_client_message(config, wa_message):
+            try:
+                self._client_consult_inbound(config, wa_message, plain_body, phone_raw)
+            except Exception as e:  # noqa: BLE001
+                _logger.exception("Borradores de empresas: falló el mensaje %s: %s",
+                                  wa_message.id, e)
+            return
+
         # 2.95) v1.81 — ¿Es el DEPÓSITO (Guillermo) contestando a qué hora queda listo un
         # pedido para retirar? No es un cliente: nunca pasa por el agente de ventas.
         try:
@@ -186,6 +197,15 @@ class WhatsAppMessage(models.Model):
             # "no sirve"). Sus mensajes por WhatsApp ya NO disparan al bot; para
             # darle órdenes o preguntarle algo a Claudio, Joaco usa el CANAL
             # INTERNO de Odoo. Igual NUNCA se lo trata como cliente.
+            # v1.83 — ¿está contestando un borrador del WhatsApp de empresas? ("dale", "no"
+            # o una corrección, citando el aviso o con el código B123).
+            try:
+                if cc.is_enabled(config) and cc.handle_owner_message(
+                        self.env, config, wa_message, plain_body):
+                    _logger.info("🧑‍💼 Joaco respondió un borrador de empresas por WhatsApp.")
+                    return
+            except Exception as e:  # noqa: BLE001
+                _logger.exception("Respuesta de Joaco a un borrador de empresas falló: %s", e)
             # v1.67 — excepción: la confirmación de pedidos (Joaco 12/11/2026: "que me
             # escriba por WhatsApp para confirmar pedidos"). "OK S07123" / "NO S07123".
             try:
@@ -430,6 +450,34 @@ class WhatsAppMessage(models.Model):
                      partner.name, debounce, plain_body[:80])
         memory.enqueue_pending(plain_body, wa_message=wa_message)
         self._schedule_debounce_cron(config)
+
+    def _client_consult_inbound(self, config, wa_message, plain_body, phone_raw):
+        """v1.83 — Entrante en el WhatsApp de empresas: de Joaco desde su personal (respuesta
+        a un borrador) o de un cliente (se suma a la consulta en curso)."""
+        from ..services import client_consult as cc
+        from ..services import purchase_consult as pc
+        Draft = self.env['cristal.agent.client.draft'].sudo()
+        if pc.same_number(phone_raw, cc.owner_number(config)):
+            cc.handle_owner_message(self.env, config, wa_message, plain_body)
+            return
+        text = plain_body
+        audio = self._get_audio_attachment(wa_message) if not text else False
+        if audio:
+            # Se transcribe en el cron, nunca dentro del webhook.
+            Draft.enqueue_inbound(config, wa_message, '', audio=audio)
+            return
+        if not text and wa_message.mail_message_id:
+            mimes = [(a.mimetype or '').lower()
+                     for a in wa_message.mail_message_id.attachment_ids]
+            if any(m == 'application/pdf' for m in mimes):
+                text = "[mandó un PDF: miralo en el chat]"
+            elif any(m.startswith('image/') for m in mimes):
+                text = "[mandó una foto: mirala en el chat]"
+            elif mimes:
+                text = "[mandó un archivo: miralo en el chat]"
+        if not text:
+            return
+        Draft.enqueue_inbound(config, wa_message, text)
 
     def _purchase_consult_inbound(self, config, wa_message, plain_body, phone_raw):
         """v1.77 — Entrante en la cuenta de Compras: de Sergio (respuesta a un borrador) o

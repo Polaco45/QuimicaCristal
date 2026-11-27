@@ -246,6 +246,25 @@
               sequence="20"
               action="action_cristal_agent_supplier_selftest"/>
 
+    <!-- v1.83 — WhatsApp de empresas en modo borrador -->
+    <menuitem id="menu_empresas_root"
+              name="🏢 Empresas"
+              parent="menu_cristal_agent_root"
+              sequence="89"
+              groups="base.group_system"/>
+
+    <menuitem id="menu_empresas_drafts"
+              name="Borradores"
+              parent="menu_empresas_root"
+              sequence="10"
+              action="action_cristal_agent_client_draft"/>
+
+    <menuitem id="menu_empresas_selftest"
+              name="🧪 Autotest"
+              parent="menu_empresas_root"
+              sequence="20"
+              action="action_cristal_agent_client_draft_selftest"/>
+
     <menuitem id="menu_sistema_config"
               name="⚙️ Configuración general"
               parent="menu_sistema_root"

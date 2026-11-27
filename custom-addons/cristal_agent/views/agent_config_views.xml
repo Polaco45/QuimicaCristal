@@ -283,6 +283,25 @@
                                 corrección. Esa cuenta <b>no</b> tiene que estar entre las cuentas
                                 donde actúa el bot de ventas.
                             </div>
+
+                            <group string="🏢 WhatsApp de empresas en modo borrador">
+                                <field name="client_draft_enabled"/>
+                                <field name="client_draft_wa_account_id"
+                                       options="{'no_create': True}"/>
+                                <field name="client_draft_owner_user_id"
+                                       options="{'no_create': True}"/>
+                                <field name="client_draft_notify_whatsapp"/>
+                                <field name="client_draft_wait_seconds"/>
+                                <field name="client_draft_quiet_hours"/>
+                                <field name="client_draft_selftest_log"/>
+                            </group>
+                            <div class="alert alert-info">
+                                Cuando un cliente escribe a esa cuenta, se arma un <b>borrador</b>
+                                de respuesta y, si es un pedido, la <b>cotización en borrador</b>.
+                                Se aprueba en <i>Cristal Agent → Empresas → Borradores</i> o
+                                contestando <b>dale</b> al aviso por WhatsApp. Esa cuenta
+                                <b>no</b> tiene que estar entre las cuentas donde actúa el bot de ventas.
+                            </div>
                         </page>
 
                         <page string="🧭 Ciclo de vida" name="lifecycle">
