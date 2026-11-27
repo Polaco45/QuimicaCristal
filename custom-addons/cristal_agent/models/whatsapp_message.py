@@ -162,7 +162,9 @@ class WhatsAppMessage(models.Model):
         from ..services import client_consult as cc
         if cc.is_client_message(config, wa_message):
             try:
-                self._client_consult_inbound(config, wa_message, plain_body, phone_raw)
+                # savepoint: si algo falla acá, la recepción del mensaje no se pierde.
+                with self.env.cr.savepoint():
+                    self._client_consult_inbound(config, wa_message, plain_body, phone_raw)
             except Exception as e:  # noqa: BLE001
                 _logger.exception("Borradores de empresas: falló el mensaje %s: %s",
                                   wa_message.id, e)
@@ -206,8 +208,12 @@ class WhatsAppMessage(models.Model):
             # v1.83 — ¿está contestando un borrador del WhatsApp de empresas? ("dale", "no"
             # o una corrección, citando el aviso o con el código B123).
             try:
-                if cc.is_enabled(config) and cc.handle_owner_message(
-                        self.env, config, wa_message, plain_body):
+                taken = False
+                if cc.is_enabled(config):
+                    with self.env.cr.savepoint():
+                        taken = cc.handle_owner_message(
+                            self.env, config, wa_message, plain_body)
+                if taken:
                     _logger.info("🧑‍💼 Joaco respondió un borrador de empresas por WhatsApp.")
                     return
             except Exception as e:  # noqa: BLE001
