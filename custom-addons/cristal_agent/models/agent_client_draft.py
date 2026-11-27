@@ -94,7 +94,9 @@ class CristalAgentClientDraft(models.Model):
             draft.write({'incoming_text': ((draft.incoming_text or '') + '\n' + text).strip(),
                          'last_inbound_at': now})
         else:
-            partner = channel.whatsapp_partner_id if channel else self.env['res.partner']
+            partner = cc.resolve_partner(
+                self.env, channel.whatsapp_partner_id if channel else False,
+                wa_message.mobile_number)
             draft = self.sudo().create({
                 'channel_id': channel.id or False,
                 'wa_account_id': wa_message.wa_account_id.id,
@@ -399,16 +401,13 @@ class CristalAgentClientDraft(models.Model):
         out = {}
         try:
             with env.cr.savepoint():
-                tail = pc.digits(mobile_number)[-10:]
-                partner = env['res.partner'].search(
-                    ['|', ('phone_sanitized', 'like', tail), ('mobile', 'like', tail)],
-                    order='id desc', limit=1) if len(tail) == 10 else env['res.partner']
                 channel = pc._channel_for(env, account, mobile_number) if account else \
                     env['discuss.channel']
+                partner = cc.resolve_partner(
+                    env, channel.whatsapp_partner_id if channel else False, mobile_number)
                 draft = env['cristal.agent.client.draft'].create({
                     'channel_id': channel.id or False, 'wa_account_id': account.id or False,
-                    'partner_id': (channel.whatsapp_partner_id.id if channel else False)
-                    or partner.id or False,
+                    'partner_id': partner.id or False,
                     'mobile_number': mobile_number, 'incoming_text': text,
                     'last_inbound_at': fields.Datetime.now()})
                 verdict, products = cc.build_draft(env, config, draft)
