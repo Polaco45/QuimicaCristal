@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 {
     'name': 'Cristal — Diario por posición fiscal',
-    'version': '18.0.1.2.0',
+    'version': '18.0.1.2.1',
     'summary': 'Cada factura sale por el diario que corresponde a la posición fiscal '
                'del cliente (POS, órdenes de venta y facturas a mano). Si el cliente '
                'no tiene posición fiscal se usa la de su responsabilidad AFIP: sin '
