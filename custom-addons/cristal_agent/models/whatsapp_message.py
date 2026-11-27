@@ -50,6 +50,12 @@ class WhatsAppMessage(models.Model):
         help="Respuesta libre de Joaco por WhatsApp sobre un pedido, esperando que Claudio "
              "la atienda (cron).")
 
+    cristal_client_owner_pending = fields.Boolean(
+        "Respuesta de Joaco a un borrador de empresas pendiente", default=False, index=True,
+        copy=False,
+        help="v1.83.1 — Joaco contestó por WhatsApp sobre un borrador del WhatsApp de "
+             "empresas; lo interpreta y lo atiende el cron.")
+
     cristal_staff_pending = fields.Boolean(
         "Respuesta del depósito pendiente", default=False, index=True, copy=False,
         help="v1.81 — Guillermo contestó por WhatsApp sobre un pedido para retirar; lo "
