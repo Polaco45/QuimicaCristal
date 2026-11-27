@@ -4,6 +4,7 @@ import { _t } from "@web/core/l10n/translation";
 import { patch } from "@web/core/utils/patch";
 import { PosOrder } from "@point_of_sale/app/models/pos_order";
 import { PaymentScreen } from "@point_of_sale/app/screens/payment_screen/payment_screen";
+import { accountTaxHelpers } from "@account/helpers/account_tax";
 import { ask } from "@point_of_sale/app/store/make_awaitable_dialog";
 
 function idOf(value) {
@@ -32,6 +33,59 @@ patch(PosOrder.prototype, {
 });
 
 patch(PaymentScreen.prototype, {
+    // El descuento global (botón Descuento) es una línea que guarda los
+    // impuestos de la posición fiscal con la que se creó: si la venta cambia de
+    // posición hay que rearmarla, o la factura sale con IVA solo en el descuento.
+    _cristalDiscountLines(order) {
+        const product = this.pos.config.discount_product_id;
+        if (!product) {
+            return [];
+        }
+        return order.get_orderlines().filter((line) => line.get_product() === product);
+    },
+
+    _cristalDiscountableLines(order, lines) {
+        const discountLines = this._cristalDiscountLines(order);
+        return lines.filter(
+            (line) =>
+                !discountLines.includes(line) &&
+                (line.isGlobalDiscountApplicable ? line.isGlobalDiscountApplicable() : true)
+        );
+    },
+
+    _cristalGlobalDiscountPc(order) {
+        const discountLines = this._cristalDiscountLines(order);
+        if (!discountLines.length) {
+            return 0;
+        }
+        const base = order.calculate_base_amount(
+            this._cristalDiscountableLines(order, order.get_orderlines())
+        );
+        const discount = discountLines.reduce((sum, line) => sum + line.get_unit_price(), 0);
+        return base ? (-discount / base) * 100 : 0;
+    },
+
+    async _cristalReapplyGlobalDiscount(order, pc) {
+        const product = this.pos.config.discount_product_id;
+        this._cristalDiscountLines(order).forEach((line) => line.delete());
+        const linesByTax = order.get_orderlines_grouped_by_tax_ids();
+        for (const [taxIds, lines] of Object.entries(linesByTax)) {
+            const taxes = taxIds
+                .split(",")
+                .filter((id) => id !== "")
+                .map((id) => this.pos.models["account.tax"].get(Number(id)))
+                .filter((tax) => tax && accountTaxHelpers.can_be_discounted(tax));
+            const base = order.calculate_base_amount(this._cristalDiscountableLines(order, lines));
+            const discount = (-pc / 100.0) * base;
+            if (discount < 0) {
+                await this.pos.addLineToCurrentOrder(
+                    { product_id: product, price_unit: discount, tax_ids: [["link", ...taxes]] },
+                    { merge: false }
+                );
+            }
+        }
+    },
+
     // El vendedor puede cambiar el diario de ESTA venta, con confirmación. Lo
     // que se cambia es la posición fiscal de la venta (impuestos y diario van
     // juntos); la ficha del cliente no se toca.
@@ -85,8 +139,12 @@ patch(PaymentScreen.prototype, {
             return;
         }
         const totalBefore = order.get_total_with_tax();
+        const discountPc = this._cristalGlobalDiscountPc(order);
         order.update({ fiscal_position_id: position, cristal_journal_manual: true });
         order.set_invoice_journal_id(journal_id);
+        if (discountPc) {
+            await this._cristalReapplyGlobalDiscount(order, discountPc);
+        }
         const totalAfter = order.get_total_with_tax();
         if (Math.abs(totalAfter - totalBefore) > 0.005) {
             this.notification.add(
